@@ -21,7 +21,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 120,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-hss-aco-rapido.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/f50a7177-6b66-441c-992b-f18a209df38c.jpg'],
     featured: true,
     active: true,
     tags: ['Brocas', 'HSS', 'Metais']
@@ -380,7 +380,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 40,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/f50a7177-6b66-441c-992b-f18a209df38c.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', 'Marmoraria']
@@ -401,7 +401,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 60,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/suporte-de-plastico-p-lixa-de-agua.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/46be30c1-0211-4edd-9357-429cef6e35aa.jpg'],
     featured: false,
     active: true,
     tags: ['Suporte', 'Lixas']
@@ -569,7 +569,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 30,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/46be30c1-0211-4edd-9357-429cef6e35aa.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: true,
     active: true,
     tags: ['Broca Diamantada', '80mm']
@@ -590,7 +590,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 2,
     stock: 90,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-de-videa.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/7753b984-9f1d-4447-ba79-64e5d633c614.jpg'],
     featured: false,
     active: true,
     tags: ['Vídea', 'Concreto']
@@ -611,7 +611,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 28,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/7753b984-9f1d-4447-ba79-64e5d633c614.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '60mm']
@@ -632,7 +632,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 120,
     unit: 'cx',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/giz-de-marcacao-vermelho-12un.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/697690a8-e009-4a38-b164-b93e802e5d6f.jpg'],
     featured: false,
     active: true,
     tags: ['Marcação', 'Giz']
@@ -845,7 +845,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 45,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/697690a8-e009-4a38-b164-b93e802e5d6f.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/silicone-profissional-incolor-280g.jpg'],
     featured: true,
     active: true,
     tags: ['Aplicador', 'Silicone', 'PU']
@@ -866,7 +866,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 2,
     stock: 130,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/disco-flap.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/52018a30-cc3b-41b5-b8c2-5579016ad95a.jpg'],
     featured: false,
     active: true,
     tags: ['Flap', 'Acabamento']
@@ -1034,7 +1034,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 22,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/52018a30-cc3b-41b5-b8c2-5579016ad95a.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '110mm']
@@ -1055,7 +1055,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 65,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/martelo-unha-com-cabo-de-fibra.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/833fc982-fb65-4f94-912d-fa382432e338.jpg'],
     featured: false,
     active: true,
     tags: ['Martelo', 'Cabo Fibra']
@@ -1160,7 +1160,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 55,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/833fc982-fb65-4f94-912d-fa382432e338.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '10mm']
@@ -1202,7 +1202,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 60,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/026694e6-7b36-498a-b853-702628c313b4.jpg'],
     featured: false,
     active: true,
     tags: ['Porcelanato', '20mm']
@@ -1370,7 +1370,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 20,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/026694e6-7b36-498a-b853-702628c313b4.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '120mm']
@@ -1391,7 +1391,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 24,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/tanque-em-inox-403420cm.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/42df2430-de81-477e-befe-26e46dd24213.jpg'],
     featured: true,
     active: true,
     tags: ['Tanque', 'Inox']
@@ -1499,7 +1499,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 35,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/42df2430-de81-477e-befe-26e46dd24213.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '50mm']
@@ -1541,7 +1541,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 65,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/torques-para-armador.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/a2b58b7a-8645-4548-b18c-68347315fb5a.jpg'],
     featured: false,
     active: true,
     tags: ['Torques', 'Armador']
@@ -1604,7 +1604,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 35,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/products/a2b58b7a-8645-4548-b18c-68347315fb5a.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/broca-ceramica-porcelanato.jpg'],
     featured: false,
     active: true,
     tags: ['Broca Diamantada', '45mm']
@@ -1730,7 +1730,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 20,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/tanque-em-inox-404020cm.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/tanque-em-inox-404020cm.jpg'],
     featured: true,
     active: true,
     tags: ['Tanque', 'Inox 304']
@@ -1898,7 +1898,7 @@ export const MC_CATALOG_PRODUCTS: Product[] = [
     minOrderQuantity: 1,
     stock: 32,
     unit: 'un',
-    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/polibrilho-para-pedras-escuras.jpg'],
+    images: ['https://oysznehftuovxchrfmfx.supabase.co/storage/v1/object/public/product-images/seed/revitalizador-argacolor-incolor.jpg'],
     featured: true,
     active: true,
     tags: ['Brilho', 'Pedras Escuras']

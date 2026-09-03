@@ -106,7 +106,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_products`);
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+      if (saved) {
+        const parsed: Product[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Sanitizador estritamente cirúrgico e defensivo:
+          // Atua SOMENTE sobre itens de imagem que contenham comprovadamente o domínio de fotos fake
+          // ('images.unsplash.com') introduzido na intervenção anterior, preservando 100% de todos os outros
+          // campos (preço, estoque, SKU, nome, categoria, etc.), novos produtos e imagens customizadas do usuário.
+          // NUNCA modifica dados legítimos, pedidos, tenants ou URLs do Supabase V1.
+          const initialMap = new Map(INITIAL_PRODUCTS.map(p => [p.id, p]));
+          let hadCorruptedFakeImages = false;
+
+          const sanitized = parsed.map(p => {
+            if (!Array.isArray(p.images) || p.images.length === 0) {
+              return p;
+            }
+
+            const hasUnsplash = p.images.some(img => typeof img === 'string' && img.includes('images.unsplash.com'));
+            if (!hasUnsplash) {
+              return p;
+            }
+
+            hadCorruptedFakeImages = true;
+            const official = initialMap.get(p.id);
+
+            if (official && Array.isArray(official.images)) {
+              // Produto oficial do catálogo: substitui cirurgicamente apenas as URLs fake do Unsplash
+              // pela respectiva referência oficial histórica preservada, mantendo quaisquer outras fotos
+              const restoredImages = p.images.map((img, idx) => {
+                if (typeof img === 'string' && img.includes('images.unsplash.com')) {
+                  return official.images[idx] || official.images[0] || '';
+                }
+                return img;
+              }).filter(Boolean);
+
+              return { ...p, images: restoredImages };
+            }
+
+            // Produto customizado criado pelo usuário: remove estritamente o link fake sem alterar nada mais
+            const filteredImages = p.images.filter(img => !(typeof img === 'string' && img.includes('images.unsplash.com')));
+            return { ...p, images: filteredImages };
+          });
+
+          if (hadCorruptedFakeImages) {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY}_products`, JSON.stringify(sanitized));
+            return sanitized;
+          }
+
+          return parsed;
+        }
+      }
+      return INITIAL_PRODUCTS;
     } catch {
       return INITIAL_PRODUCTS;
     }

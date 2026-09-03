@@ -1,5 +1,7 @@
 # 🗄️ 02. Banco de Dados & RLS Supabase
 
+> **Nota de Implementação (Etapa 2):** Este documento descreve o blueprint e script DDL planejado para o Supabase. Na presente etapa técnica, **nenhuma migration foi executada, nenhuma tabela foi criada e as regras de RLS ainda não foram implantadas no banco**. O SDK `@supabase/supabase-js` e o cliente `src/lib/supabase.ts` foram adicionados como fundação, mas a persistência em runtime permanece temporariamente em `localStorage`.
+
 Este documento contém o script DDL SQL completo para criar e configurar a infraestrutura de dados no **Supabase (PostgreSQL)** com suporte a multitenancy e **Row Level Security (RLS)** ativo em 100% das tabelas.
 
 ---

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product, WholesaleTier } from '../../types';
+import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const ProductManager: React.FC = () => {
   const { 
@@ -35,6 +36,7 @@ export const ProductManager: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState<'list' | 'bulk_images'>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -55,7 +57,7 @@ export const ProductManager: React.FC = () => {
     minOrderQuantity: 1,
     stock: 10,
     unit: 'un',
-    images: ['https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&auto=format&fit=crop&q=80'],
+    images: [],
     featured: false,
     active: true,
     tags: []
@@ -95,7 +97,7 @@ export const ProductManager: React.FC = () => {
       minOrderQuantity: 1,
       stock: 50,
       unit: 'un',
-      images: ['https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=600&auto=format&fit=crop&q=80'],
+      images: [],
       featured: false,
       active: true,
       tags: ['Destaque']
@@ -225,33 +227,152 @@ export const ProductManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nome, SKU, categoria..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      {/* Navigation Sub-Tabs: Catálogo vs Importação de Imagens em Massa */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('list')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+            activeTab === 'list'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Package className="w-4 h-4" />
+          Produtos ({currentTenantProducts.length})
+        </button>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium">Categoria:</span>
-          <select
-            value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-            className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none font-medium"
-          >
-            <option value="all">Todas ({currentTenantProducts.length})</option>
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('bulk_images')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+            activeTab === 'bulk_images'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <UploadCloud className="w-4 h-4" />
+          Importar Imagens em Massa
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+            activeTab === 'bulk_images' ? 'bg-blue-500 text-white' : 'bg-amber-100 text-amber-800'
+          }`}>
+            Pendente Storage V2
+          </span>
+        </button>
       </div>
+
+      {activeTab === 'bulk_images' ? (
+        /* Painel Arquitetural: Importação de Imagens em Massa */
+        <div className="space-y-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-bold">Módulo de Importação de Imagens em Massa</h3>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  O upload será habilitado após a configuração do Supabase Storage V2 (em etapa posterior dedicada a Storage, Upload e Policies).
+                  Conforme a diretriz de integridade do projeto, o upload remoto em lote será ativado somente após
+                  a criação do bucket seguro e das políticas RLS. Nenhum upload falso ou simulado é executado nesta etapa.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Guidelines and SKU association specs */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">1</div>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Associação Estrita por SKU</h4>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                As imagens devem ser nomeadas com o código SKU exato do produto (ex: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">BR090.jpg</code> ou <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">CU010.webp</code>).
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">2</div>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Formatos e Otimização</h4>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Formatos aceitos inicialmente: JPG/JPEG, PNG e WebP. Resolução recomendada de 800x800px a 1200x1200px. O limite de 2MB é uma recomendação inicial configurável; a otimização de armazenamento final será feita na etapa de Storage.
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm">3</div>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Supabase Storage V2</h4>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Bucket dedicado <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[11px]">product-images</code> com isolamento por tenant. URLs originais V1 permanecem preservadas como referência histórica.
+              </p>
+            </div>
+          </div>
+
+          {/* Reference SKU table for batch preparation */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Referência de SKUs para Lote de Imagens ({currentTenantProducts.length} itens)</h4>
+                <p className="text-xs text-slate-500">Utilize os códigos abaixo para preparar os arquivos de imagem com nomenclatura correspondente</p>
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 sticky top-0 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-4">SKU</th>
+                    <th className="py-2.5 px-4">Nome do Produto</th>
+                    <th className="py-2.5 px-4">Categoria</th>
+                    <th className="py-2.5 px-4">Nome Sugerido do Arquivo</th>
+                    <th className="py-2.5 px-4 text-center">Status da Referência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {currentTenantProducts.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50/60">
+                      <td className="py-2 px-4 font-mono font-bold text-blue-700">{p.sku}</td>
+                      <td className="py-2 px-4 font-medium text-slate-800 line-clamp-1">{p.name}</td>
+                      <td className="py-2 px-4 text-slate-500">{p.category}</td>
+                      <td className="py-2 px-4 font-mono text-[11px] text-slate-600">{p.sku.toLowerCase()}.[jpg|png|webp]</td>
+                      <td className="py-2 px-4 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
+                          {p.images?.[0] ? 'Referência original preservada' : 'Sem imagem'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Filter and Search Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nome, SKU, categoria..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium">Categoria:</span>
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="text-xs px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none font-medium"
+              >
+                <option value="all">Todas ({currentTenantProducts.length})</option>
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
       {/* Products Grid / Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -282,10 +403,11 @@ export const ProductManager: React.FC = () => {
                     <td className="py-3.5 px-4 sm:px-6">
                       <div className="flex items-center gap-3">
                         <img
-                          src={prod.images[0] || 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=200'}
+                          src={getSafeProductImage(prod.images[0], prod.category)}
                           alt={prod.name}
                           className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
                           referrerPolicy="no-referrer"
+                          onError={(e) => handleProductImageError(e, prod.category)}
                         />
                         <div>
                           <div className="font-bold text-slate-900 text-sm line-clamp-1 flex items-center gap-1.5">
@@ -398,6 +520,8 @@ export const ProductManager: React.FC = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* Modal Add / Edit Product */}
       {isModalOpen && (
@@ -643,7 +767,7 @@ export const ProductManager: React.FC = () => {
 
               </div>
 
-              {/* Stock & Image */}
+              {/* Stock & Image Section */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
@@ -659,15 +783,40 @@ export const ProductManager: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    URL da Imagem Principal
+                    URL da Imagem Oficial
                   </label>
                   <input
                     type="url"
                     value={formData.images?.[0] || ''}
-                    onChange={e => setFormData({ ...formData, images: [e.target.value] })}
-                    placeholder="https://images.unsplash.com/..."
+                    onChange={e => {
+                      const val = e.target.value.trim();
+                      setFormData({ ...formData, images: val ? [val] : [] });
+                    }}
+                    placeholder="https://seu-dominio.com/imagens/produto.jpg"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+              </div>
+
+              {/* Product Image Integrity & Preview */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="w-16 h-16 rounded-xl border border-slate-200 bg-white overflow-hidden shrink-0 flex items-center justify-center shadow-xs">
+                  <img
+                    src={getSafeProductImage(formData.images?.[0], formData.category)}
+                    alt="Preview do produto"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleProductImageError(e, formData.category)}
+                  />
+                </div>
+                <div className="flex-1 text-xs">
+                  <div className="font-bold text-slate-800 flex items-center gap-1.5 mb-1">
+                    <ImageIcon className="w-4 h-4 text-blue-600" />
+                    Gestão de Imagens & Storage V2
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Apenas fotos reais oficiais do produto comercializado são aceitas. O upload direto de arquivos será habilitado após a configuração do Supabase Storage V2 (em etapa dedicada posterior à Etapa 3 de Schema e RLS).
+                  </p>
                 </div>
               </div>
 

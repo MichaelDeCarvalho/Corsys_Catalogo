@@ -51,6 +51,13 @@ Esta documentação foi estruturada para desenvolvedores, arquitetos de software
    - Projeções de MRR (Receita Recorrente Mensal) e ARR
    - Roteiro de expansão e estratégias de aquisição de novos lojistas e distribuidores
 
+8. **[09. Gestão de Produtos, Integridade de Imagens & Storage](./09_GESTAO_DE_PRODUTOS_E_IMAGENS.md)**
+   - Fonte canônica dos dados e proibição estrita de fotos genéricas, fake ou de IA
+   - Fluxos de cadastro, edição e importação em lote por associação de SKU
+   - Arquitetura do Supabase Storage V2, nomenclatura de arquivos e validações MIME/tamanho
+   - Políticas de RLS para leitura pública e escrita restrita a administradores do tenant
+   - Inventário técnico completo dos 92 produtos com referências originais V1 preservadas
+
 ---
 
 ## 🚀 Como Executar o Projeto Localmente
@@ -70,3 +77,14 @@ npm run build
 ```
 
 O dev server rodará em `http://localhost:3000`.
+
+---
+
+## ⚡ Status da Integração com Supabase (Etapa 2 - Fundação Técnica)
+
+- **SDK Instalado:** `@supabase/supabase-js` foi adicionado ao projeto preservando o lockfile `bun.lock`.
+- **Cliente Supabase:** Criado em `src/lib/supabase.ts` com validação estrita das variáveis de ambiente.
+- **Variáveis Públicas Necessárias:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` (documentadas em `.env.example`).
+- **Estado do Banco de Dados:** Banco, Autenticação, Buckets de Storage, RLS e migrations **AINDA NÃO** foram implantados/executados nesta etapa.
+- **Execução em Runtime:** A integração remota com o Supabase **AINDA NÃO** está ativa no fluxo de dados da aplicação.
+- **Persistência Atual:** O catálogo e pedidos continuam operando temporariamente via `localStorage` e dados estáticos locais, preservando integralmente o funcionamento atual da UI.

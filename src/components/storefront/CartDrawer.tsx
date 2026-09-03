@@ -21,6 +21,7 @@ import {
 import confetti from 'canvas-confetti';
 import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Order } from '../../types';
+import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const CartDrawer: React.FC = () => {
   const { 
@@ -260,9 +261,10 @@ export const CartDrawer: React.FC = () => {
                   {cart.map((item, idx) => (
                     <div key={`${item.product.id}-${idx}`} className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
                       <img
-                        src={item.product.images[0]}
+                        src={getSafeProductImage(item.product.images[0], item.product.category)}
                         alt={item.product.name}
                         className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
+                        onError={(e) => handleProductImageError(e, item.product.category)}
                       />
                       
                       <div className="flex-1 min-w-0">

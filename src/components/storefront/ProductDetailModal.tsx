@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Product } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const ProductDetailModal: React.FC<{
   product: Product | null;
@@ -83,10 +84,11 @@ export const ProductDetailModal: React.FC<{
           <div className="space-y-3">
             <div className="aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
               <img
-                src={product.images[selectedImageIdx] || product.images[0]}
+                src={getSafeProductImage(product.images[selectedImageIdx] || product.images[0], product.category)}
                 alt={product.name}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
+                onError={(e) => handleProductImageError(e, product.category)}
               />
             </div>
 
@@ -100,7 +102,12 @@ export const ProductDetailModal: React.FC<{
                       selectedImageIdx === idx ? 'border-blue-600 shadow-xs' : 'border-slate-200 opacity-60'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img 
+                      src={getSafeProductImage(img, product.category)} 
+                      alt="" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => handleProductImageError(e, product.category)}
+                    />
                   </button>
                 ))}
               </div>

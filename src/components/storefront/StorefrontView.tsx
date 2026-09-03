@@ -23,6 +23,7 @@ import { useApp } from '../../context/AppContext';
 import { Product } from '../../types';
 import { ProductDetailModal } from './ProductDetailModal';
 import { CartDrawer } from './CartDrawer';
+import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const StorefrontView: React.FC = () => {
   const { 
@@ -222,10 +223,11 @@ export const StorefrontView: React.FC = () => {
                     {/* Image Container */}
                     <div className="relative aspect-4/3 bg-slate-100 overflow-hidden">
                       <img
-                        src={product.images[0] || 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=500'}
+                        src={getSafeProductImage(product.images[0], product.category)}
                         alt={product.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         referrerPolicy="no-referrer"
+                        onError={(e) => handleProductImageError(e, product.category)}
                       />
                       
                       {/* Badges */}
@@ -341,9 +343,10 @@ export const StorefrontView: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <img
-                            src={prod.images[0]}
+                            src={getSafeProductImage(prod.images[0], prod.category)}
                             alt={prod.name}
-                            className="w-10 h-10 rounded-lg object-cover border border-slate-200"
+                            className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                            onError={(e) => handleProductImageError(e, prod.category)}
                           />
                           <div>
                             <div className="font-bold text-slate-900 text-xs line-clamp-1">{prod.name}</div>

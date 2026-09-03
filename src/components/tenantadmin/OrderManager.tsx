@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Order, OrderStatus } from '../../types';
+import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const OrderManager: React.FC = () => {
   const { 
@@ -409,9 +410,10 @@ export const OrderManager: React.FC = () => {
                     <div key={idx} className="p-3 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-3">
                         <img
-                          src={item.productImage || 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=100'}
+                          src={getSafeProductImage(item.productImage)}
                           alt={item.productName}
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-200"
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                          onError={(e) => handleProductImageError(e)}
                         />
                         <div>
                           <div className="font-bold text-slate-900">{item.productName}</div>
