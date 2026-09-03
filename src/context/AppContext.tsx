@@ -238,18 +238,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Derived current tenant
   const currentTenant = tenants.find(t => t.id === currentTenantId) || tenants[0] || INITIAL_TENANTS[0];
 
-  // Set default current user when tenant changes
+  // Limpa carrinho ao trocar de tenant (troca livre de papéis removida - autenticação real via AuthContext)
   useEffect(() => {
-    const tenantUser = users.find(u => u.tenantId === currentTenantId && u.role === 'tenant_admin');
-    if (tenantUser) {
-      setCurrentUser(tenantUser);
-    } else {
-      const anyUser = users.find(u => u.tenantId === currentTenantId);
-      setCurrentUser(anyUser || null);
-    }
-    // clear cart on tenant switch
     setCart([]);
-  }, [currentTenantId, users]);
+  }, [currentTenantId]);
 
   // Tenant filtered items
   const currentTenantProducts = products.filter(p => p.tenantId === currentTenantId);

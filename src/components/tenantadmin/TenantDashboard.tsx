@@ -16,6 +16,7 @@ import {
   Globe
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { ProductManager } from './ProductManager';
 import { OrderManager } from './OrderManager';
 import { TeamAccessManager } from './TeamAccessManager';
@@ -23,16 +24,22 @@ import { StoreSettings } from './StoreSettings';
 
 export const TenantDashboard: React.FC = () => {
   const { currentTenant, currentTenantProducts, currentTenantOrders, setViewMode, showToast } = useApp();
+  const { authTenant } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'team' | 'settings'>('products');
   const [copiedLink, setCopiedLink] = useState(false);
+
+  const displayTenantName = authTenant?.name || currentTenant.name;
+  const displayTenantSlug = authTenant?.slug || currentTenant.slug;
+  const displayTenantPlan = (authTenant?.plan || currentTenant.plan).toUpperCase();
 
   // Stats
   const totalRevenue = currentTenantOrders.reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = currentTenantOrders.filter(o => o.status === 'pending').length;
 
   const handleCopyPublicLink = () => {
-    const url = `https://${currentTenant.customization.customDomain || `app.com/${currentTenant.slug}`}`;
+    const domain = authTenant?.custom_domain || currentTenant.customization.customDomain || `app.com/${displayTenantSlug}`;
+    const url = `https://${domain}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     showToast(`Link do catálogo copiado: ${url}`);
@@ -52,21 +59,21 @@ export const TenantDashboard: React.FC = () => {
         <div className="relative z-10 flex items-start sm:items-center gap-4">
           <img
             src={currentTenant.customization.logoUrl || 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=200'}
-            alt={currentTenant.name}
+            alt={displayTenantName}
             className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-white/30 shadow-md bg-white shrink-0"
             referrerPolicy="no-referrer"
           />
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="bg-white/20 backdrop-blur-md text-white text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border border-white/20">
-                Plano {currentTenant.plan.toUpperCase()}
+                Plano {displayTenantPlan}
               </span>
               <span className="text-white/70 text-xs font-mono">
-                /{currentTenant.slug}
+                /{displayTenantSlug}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold font-['Outfit'] mt-1 text-white">
-              {currentTenant.name}
+              {displayTenantName}
             </h1>
             <p className="text-xs sm:text-sm text-white/80 max-w-xl line-clamp-1">
               {currentTenant.customization.segment || 'Distribuidora & Comércio Atacadista'}

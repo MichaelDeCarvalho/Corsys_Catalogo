@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/layout/Header';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { TenantDashboard } from './components/tenantadmin/TenantDashboard';
 import { StorefrontView } from './components/storefront/StorefrontView';
 import { SaasBlueprintGuide } from './components/architecture/SaasBlueprintGuide';
 import { NewTenantModal } from './components/modals/NewTenantModal';
+import { LoginModal } from './components/auth/LoginModal';
+import { AccessDeniedGate } from './components/auth/AccessDeniedGate';
 import { CheckCircle2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { viewMode, toastMessage } = useApp();
+  const { viewMode, toastMessage, currentTenant } = useApp();
+  const { canAccessSuperAdmin, canAccessTenantAdmin, authTenant } = useAuth();
   const [isNewTenantModalOpen, setIsNewTenantModalOpen] = useState(false);
 
   return (
@@ -18,10 +22,22 @@ const MainContent: React.FC = () => {
       {/* Universal SaaS Header & Tenant Bar */}
       <Header onOpenNewTenantModal={() => setIsNewTenantModalOpen(true)} />
 
-      {/* Main Routed View */}
+      {/* Main Routed View with Authentication & Role Protection */}
       <main className="flex-1 bg-slate-950 text-slate-100">
-        {viewMode === 'superadmin' && <SuperAdminDashboard onOpenNewTenant={() => setIsNewTenantModalOpen(true)} />}
-        {viewMode === 'tenant_admin' && <TenantDashboard />}
+        {viewMode === 'superadmin' && (
+          canAccessSuperAdmin ? (
+            <SuperAdminDashboard onOpenNewTenant={() => setIsNewTenantModalOpen(true)} />
+          ) : (
+            <AccessDeniedGate requiredRole="platform_admin" />
+          )
+        )}
+        {viewMode === 'tenant_admin' && (
+          canAccessTenantAdmin ? (
+            <TenantDashboard />
+          ) : (
+            <AccessDeniedGate requiredRole="tenant_admin" tenantName={authTenant?.name || currentTenant.name} />
+          )
+        )}
         {viewMode === 'storefront' && <StorefrontView />}
         {viewMode === 'blueprint_guide' && <SaasBlueprintGuide />}
       </main>
@@ -31,6 +47,7 @@ const MainContent: React.FC = () => {
         isOpen={isNewTenantModalOpen} 
         onClose={() => setIsNewTenantModalOpen(false)} 
       />
+      <LoginModal />
 
       {/* Global Notification Toast */}
       {toastMessage && (
@@ -47,7 +64,9 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <AuthProvider>
+        <MainContent />
+      </AuthProvider>
     </AppProvider>
   );
 }

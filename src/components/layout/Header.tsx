@@ -11,9 +11,13 @@ import {
   User, 
   Sparkles,
   Layers,
-  RotateCcw
+  RotateCcw,
+  LogIn,
+  LogOut,
+  Lock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
 export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpenNewTenantModal }) => {
   const {
@@ -24,9 +28,20 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
     setCurrentTenantId,
     cartItemsCount,
     setIsCartOpen,
-    currentUser,
+    showToast,
     resetToDefaultData
   } = useApp();
+
+  const {
+    session,
+    user,
+    isPlatformAdmin,
+    canAccessTenantAdmin,
+    canAccessSuperAdmin,
+    authRole,
+    openLoginModal,
+    signOut
+  } = useAuth();
 
   const [isTenantMenuOpen, setIsTenantMenuOpen] = useState(false);
 
@@ -140,21 +155,31 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
           {/* Navigation View Tabs */}
           <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 overflow-x-auto text-xs">
             <button
-              onClick={() => setViewMode('tenant_admin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+              onClick={() => {
+                if (!session) {
+                  openLoginModal('tenant_admin');
+                } else if (!canAccessTenantAdmin) {
+                  showToast('Acesso bloqueado: Requer perfil de Administrador desta loja (Tenant Admin).');
+                } else {
+                  setViewMode('tenant_admin');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 viewMode === 'tenant_admin'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
               id="nav-tenant-admin"
+              title={!session ? 'Login necessário para acessar' : !canAccessTenantAdmin ? 'Acesso restrito ao administrador da loja' : 'Painel de Gestão da Loja'}
             >
               <Store className="w-4 h-4" />
               <span>Painel da Loja</span>
+              {!session && <Lock className="w-3 h-3 text-slate-500 ml-0.5" />}
             </button>
 
             <button
               onClick={() => setViewMode('storefront')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 viewMode === 'storefront'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -166,22 +191,32 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
             </button>
 
             <button
-              onClick={() => setViewMode('superadmin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+              onClick={() => {
+                if (!session) {
+                  openLoginModal('superadmin');
+                } else if (!canAccessSuperAdmin) {
+                  showToast('Acesso bloqueado: Requer perfil de Administrador Global (Platform Admin).');
+                } else {
+                  setViewMode('superadmin');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 viewMode === 'superadmin'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
               id="nav-superadmin"
+              title={!session ? 'Login necessário para acessar' : !canAccessSuperAdmin ? 'Acesso restrito a Platform Admin' : 'Painel Master Global'}
             >
               <ShieldCheck className="w-4 h-4" />
               <span className="hidden md:inline">Painel Master</span>
               <span className="md:hidden">Master</span>
+              {!session && <Lock className="w-3 h-3 text-slate-500 ml-0.5" />}
             </button>
 
             <button
               onClick={() => setViewMode('blueprint_guide')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 viewMode === 'blueprint_guide'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -194,12 +229,12 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
             </button>
           </nav>
 
-          {/* Right Action: Cart or User Badge */}
+          {/* Right Action: Cart, Login button, or User Badge */}
           <div className="flex items-center gap-2">
             {viewMode === 'storefront' && (
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl font-semibold text-xs transition-all shadow-md shadow-emerald-900/30"
+                className="relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl font-semibold text-xs transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
                 id="header-cart-button"
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -212,15 +247,52 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
               </button>
             )}
 
-            {currentUser && (
-              <div className="hidden lg:flex items-center gap-2 pl-2 border-l border-slate-800 text-xs">
-                <div className="w-7 h-7 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300">
-                  <User className="w-3.5 h-3.5" />
+            {/* Authentication state indicator */}
+            {!session ? (
+              <button
+                onClick={() => openLoginModal()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/90 hover:bg-blue-600 text-white font-semibold text-xs transition-colors border border-blue-500/50 shadow-sm cursor-pointer"
+                id="header-login-button"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Entrar</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-800 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isPlatformAdmin 
+                      ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-sm ring-1 ring-indigo-400/50' 
+                      : 'bg-gradient-to-tr from-blue-500 to-cyan-600 text-white shadow-sm'
+                  }`}>
+                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="hidden lg:block text-left leading-tight max-w-[130px]">
+                    <div className="font-semibold text-slate-200 text-[11px] truncate">
+                      {user?.email}
+                    </div>
+                    <div className="text-[10px]">
+                      {isPlatformAdmin ? (
+                        <span className="text-indigo-400 font-semibold">Platform Admin</span>
+                      ) : (authRole === 'tenant_admin' || canAccessTenantAdmin) ? (
+                        <span className="text-blue-400 font-medium">Tenant Admin</span>
+                      ) : authRole ? (
+                        <span className="text-slate-300 capitalize">{authRole.replace('_', ' ')}</span>
+                      ) : (
+                        <span className="text-slate-400">Autenticado</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-left leading-none">
-                  <div className="font-medium text-slate-200 text-[11px] truncate max-w-[110px]">{currentUser.name.split(' ')[0]}</div>
-                  <div className="text-[9px] text-slate-400 capitalize">{currentUser.role.replace('_', ' ')}</div>
-                </div>
+
+                <button
+                  onClick={signOut}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-300 text-slate-400 border border-slate-700/80 transition-colors cursor-pointer"
+                  title="Encerrar Sessão (Logout)"
+                  id="header-logout-button"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
@@ -230,3 +302,4 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
     </header>
   );
 };
+

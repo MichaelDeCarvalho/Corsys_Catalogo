@@ -3,26 +3,26 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+export function isSupabaseConfigured(): boolean {
+  return Boolean(
+    supabaseUrl &&
+    supabaseUrl.trim() !== '' &&
+    supabaseUrl !== 'YOUR_SUPABASE_URL' &&
+    supabasePublishableKey &&
+    supabasePublishableKey.trim() !== '' &&
+    supabasePublishableKey !== 'YOUR_SUPABASE_PUBLISHABLE_KEY'
+  );
+}
+
 function initSupabaseClient(): SupabaseClient {
-  const missing: string[] = [];
-
-  if (!supabaseUrl || supabaseUrl.trim() === '' || supabaseUrl === 'YOUR_SUPABASE_URL') {
-    missing.push('VITE_SUPABASE_URL');
-  }
-
-  if (
-    !supabasePublishableKey ||
-    supabasePublishableKey.trim() === '' ||
-    supabasePublishableKey === 'YOUR_SUPABASE_PUBLISHABLE_KEY'
-  ) {
-    missing.push('VITE_SUPABASE_PUBLISHABLE_KEY');
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `[Supabase Client] Configuração ausente ou não inicializada: ${missing.join(', ')}. ` +
-      'Configure as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no ambiente para estabelecer a conexão.'
-    );
+  if (!isSupabaseConfigured()) {
+    // Retorna cliente seguro de fallback sem quebrar a renderização inicial do app
+    return createClient('https://placeholder-project.supabase.co', 'placeholder-anon-key', {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
   }
 
   return createClient(supabaseUrl, supabasePublishableKey, {
