@@ -5,22 +5,19 @@ import {
   Check, 
   Plus, 
   Minus, 
-  Tag, 
-  ShieldCheck, 
   Truck, 
-  MessageSquare, 
-  Star,
-  Info,
-  Package
+  MessageSquare,
+  Layers
 } from 'lucide-react';
-import { Product } from '../../types';
+import { Product, TenantPublicSettings } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
 export const ProductDetailModal: React.FC<{
   product: Product | null;
+  settings?: TenantPublicSettings | null;
   onClose: () => void;
-}> = ({ product, onClose }) => {
+}> = ({ product, settings, onClose }) => {
   const { currentTenant, addToCart, setIsCartOpen } = useApp();
 
   const [quantity, setQuantity] = useState(product?.minOrderQuantity || 1);
@@ -29,17 +26,11 @@ export const ProductDetailModal: React.FC<{
 
   if (!product) return null;
 
-  // Calculate unit price based on tiered scale
-  let currentUnitPrice = product.promotionalPrice || product.price;
-  if (product.wholesaleTiers && product.wholesaleTiers.length > 0) {
-    const sorted = [...product.wholesaleTiers].sort((a, b) => b.minQuantity - a.minQuantity);
-    const tierMatch = sorted.find(t => quantity >= t.minQuantity);
-    if (tierMatch) {
-      currentUnitPrice = tierMatch.price;
-    }
-  }
-
+  const currentUnitPrice = product.promotionalPrice || product.price;
   const totalPrice = currentUnitPrice * quantity;
+  const storeName = settings?.publicName || currentTenant.name || 'Corsys.Catálogo';
+  const whatsappNumber = settings?.whatsappNumber || currentTenant.customization?.whatsappNumber || '';
+  const hasWholesale = product.wholesalePrice !== null && product.wholesalePrice > 0;
 
   const handleAddToCart = () => {
     addToCart(product, quantity);
@@ -48,31 +39,31 @@ export const ProductDetailModal: React.FC<{
       setIsAdded(false);
       onClose();
       setIsCartOpen(true);
-    }, 800);
+    }, 600);
   };
 
   const handleDirectWhatsApp = () => {
-    const cleanPhone = currentTenant.customization.whatsappNumber.replace(/\D/g, '');
-    const phone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-    const text = `Olá, gostaria de tirar uma dúvida sobre o produto: *${product.name}* (SKU: ${product.sku}) do catálogo ${currentTenant.name}.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+    if (!whatsappNumber) return;
+    const cleanPhone = whatsappNumber.replace(/\D/g, '');
+    const text = `Olá, gostaria de tirar uma dúvida sobre o produto: *${product.name}* (SKU: ${product.sku}) do catálogo ${storeName}.`;
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E2E8F0]">
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
+            <span className="text-xs font-bold text-[#0F172A] bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
               {product.category}
             </span>
             <span className="text-xs text-slate-400 font-mono">SKU: {product.sku}</span>
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -82,7 +73,7 @@ export const ProductDetailModal: React.FC<{
           
           {/* Images */}
           <div className="space-y-3">
-            <div className="aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+            <div className="aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-[#E2E8F0]">
               <img
                 src={getSafeProductImage(product.images[selectedImageIdx] || product.images[0], product.category)}
                 alt={product.name}
@@ -98,8 +89,8 @@ export const ProductDetailModal: React.FC<{
                   <button
                     key={idx}
                     onClick={() => setSelectedImageIdx(idx)}
-                    className={`w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${
-                      selectedImageIdx === idx ? 'border-blue-600 shadow-xs' : 'border-slate-200 opacity-60'
+                    className={`w-14 h-14 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                      selectedImageIdx === idx ? 'border-[#FF5A00] shadow-xs' : 'border-[#E2E8F0] opacity-60'
                     }`}
                   >
                     <img 
@@ -113,17 +104,15 @@ export const ProductDetailModal: React.FC<{
               </div>
             )}
 
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1.5">
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                <Truck className="w-3.5 h-3.5 text-blue-600" />
-                Entrega & Disponibilidade
+                <Truck className="w-3.5 h-3.5 text-[#FF5A00]" />
+                Disponibilidade e Origem
               </div>
-              <div>Estoque garantido pela <strong>{currentTenant.name}</strong>.</div>
-              {currentTenant.customization.deliveryMethods.freeFreightThreshold && (
-                <div className="text-emerald-700 font-medium">
-                  Frete Grátis em pedidos acima de R$ {currentTenant.customization.deliveryMethods.freeFreightThreshold.toFixed(2).replace('.', ',')}!
-                </div>
-              )}
+              <div>Estoque oficial verificado por <strong>{storeName}</strong>.</div>
+              <div className="font-semibold text-slate-700">
+                Disponível para pronta entrega: {product.stock} {product.unit}
+              </div>
             </div>
           </div>
 
@@ -132,21 +121,21 @@ export const ProductDetailModal: React.FC<{
             
             <div className="space-y-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 font-['Outfit'] leading-snug">
+                <h2 className="text-lg font-bold text-[#0F172A] leading-snug">
                   {product.name}
                 </h2>
                 {product.brand && (
-                  <p className="text-xs text-slate-500 mt-0.5">Marca: <strong>{product.brand}</strong></p>
+                  <p className="text-xs text-slate-500 mt-0.5">Marca: <strong className="text-slate-800">{product.brand}</strong></p>
                 )}
               </div>
 
               {/* Price Display */}
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-[#E2E8F0] space-y-1">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Valor Unitário ({quantity} {product.unit})
+                  Preço Varejo ({quantity} {product.unit})
                 </div>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-2xl font-extrabold text-slate-900 font-['Outfit']">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-extrabold text-[#0F172A]">
                     R$ {currentUnitPrice.toFixed(2).replace('.', ',')}
                   </span>
                   <span className="text-xs text-slate-500 font-medium">/{product.unit}</span>
@@ -157,30 +146,13 @@ export const ProductDetailModal: React.FC<{
                     </span>
                   )}
                 </div>
-              </div>
 
-              {/* Wholesale Tiers Table */}
-              {product.wholesaleTiers && product.wholesaleTiers.length > 0 && (
-                <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-1.5">
-                  <div className="text-xs font-bold text-blue-900 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-blue-600" />
-                    Tabela de Desconto por Quantidade (Atacado)
+                {hasWholesale && (
+                  <div className="pt-2 mt-1 border-t border-slate-200 text-xs font-semibold text-emerald-700">
+                    Preço Atacado (B2B): <strong>R$ {product.wholesalePrice!.toFixed(2).replace('.', ',')}</strong>/{product.unit}
                   </div>
-                  <div className="space-y-1">
-                    {product.wholesaleTiers.map((tier, idx) => (
-                      <div 
-                        key={idx} 
-                        className={`flex items-center justify-between text-xs px-2.5 py-1 rounded-lg ${
-                          quantity >= tier.minQuantity ? 'bg-blue-600 text-white font-bold' : 'bg-white text-slate-700'
-                        }`}
-                      >
-                        <span>A partir de <strong>{tier.minQuantity} {product.unit}</strong>:</span>
-                        <span>R$ {tier.price.toFixed(2).replace('.', ',')}/{product.unit}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Description */}
               {product.description && (
@@ -223,30 +195,32 @@ export const ProductDetailModal: React.FC<{
               </div>
 
               {/* Subtotal */}
-              <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-[#E2E8F0]">
                 <span className="text-slate-600 font-medium">Subtotal deste item:</span>
-                <span className="text-sm font-extrabold text-blue-700">
+                <span className="text-sm font-extrabold text-[#0F172A]">
                   R$ {totalPrice.toFixed(2).replace('.', ',')}
                 </span>
               </div>
 
-              {/* Button */}
+              {/* Primary Action Button (Accent Orange #FF5A00) */}
               <button
                 onClick={handleAddToCart}
-                className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+                className="w-full py-3 rounded-2xl bg-[#FF5A00] hover:bg-[#D94E00] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
                 id="btn-modal-add-cart"
               >
-                {isAdded ? <Check className="w-4 h-4 text-emerald-300" /> : <ShoppingCart className="w-4 h-4" />}
+                {isAdded ? <Check className="w-4 h-4 text-white" /> : <ShoppingCart className="w-4 h-4" />}
                 {isAdded ? 'Item Adicionado ao Pedido!' : `Adicionar ${quantity} ${product.unit} ao Pedido`}
               </button>
 
-              <button
-                onClick={handleDirectWhatsApp}
-                className="w-full py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                Dúvidas? Fale no WhatsApp da Loja
-              </button>
+              {whatsappNumber && (
+                <button
+                  onClick={handleDirectWhatsApp}
+                  className="w-full py-2 rounded-xl border border-[#E2E8F0] hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-[#16A34A]" />
+                  Dúvidas? Fale no WhatsApp da Loja
+                </button>
+              )}
 
             </div>
 

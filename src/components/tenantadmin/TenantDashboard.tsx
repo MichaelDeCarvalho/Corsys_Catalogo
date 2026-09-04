@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, 
   Package, 
@@ -21,13 +21,48 @@ import { ProductManager } from './ProductManager';
 import { OrderManager } from './OrderManager';
 import { TeamAccessManager } from './TeamAccessManager';
 import { StoreSettings } from './StoreSettings';
+import { fetchAdminProducts } from '../../services/adminCatalogService';
+import { Product } from '../../types';
 
 export const TenantDashboard: React.FC = () => {
-  const { currentTenant, currentTenantProducts, currentTenantOrders, setViewMode, showToast } = useApp();
-  const { authTenant } = useAuth();
+  const { currentTenant, currentTenantOrders, setViewMode, showToast } = useApp();
+  const { authTenant, authTenantId, isPlatformAdmin } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'team' | 'settings'>('products');
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Resolução segura do Tenant Administrativo autenticado
+  const effectiveTenantId = authTenant?.id || authTenantId || (isPlatformAdmin ? currentTenant.id : '6f43b8f6-261c-407c-8b7d-24aa087b50ab');
+
+  // Estado dos produtos administrativos carregados do Supabase
+  const [adminProducts, setAdminProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState<boolean>(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+
+  const loadAdminProducts = useCallback(async () => {
+    if (!effectiveTenantId) {
+      setAdminProducts([]);
+      setProductsLoading(false);
+      return;
+    }
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const data = await fetchAdminProducts(effectiveTenantId);
+      setAdminProducts(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo administrativo do Supabase.';
+      console.error('[TenantDashboard] Erro ao carregar produtos:', err);
+      setProductsError(msg);
+      setAdminProducts([]);
+    } finally {
+      setProductsLoading(false);
+    }
+  }, [effectiveTenantId]);
+
+  useEffect(() => {
+    loadAdminProducts();
+  }, [loadAdminProducts]);
 
   const displayTenantName = authTenant?.name || currentTenant.name;
   const displayTenantSlug = authTenant?.slug || currentTenant.slug;
@@ -36,6 +71,7 @@ export const TenantDashboard: React.FC = () => {
   // Stats
   const totalRevenue = currentTenantOrders.reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = currentTenantOrders.filter(o => o.status === 'pending').length;
+  const activeProductsCount = adminProducts.filter(p => p.active).length;
 
   const handleCopyPublicLink = () => {
     const domain = authTenant?.custom_domain || currentTenant.customization.customDomain || `app.com/${displayTenantSlug}`;
@@ -128,10 +164,14 @@ export const TenantDashboard: React.FC = () => {
             </div>
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 font-['Outfit']">
-            {currentTenantProducts.length}
+            {productsLoading ? (
+              <span className="inline-block w-8 h-6 bg-slate-100 rounded animate-pulse" />
+            ) : (
+              activeProductsCount
+            )}
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">
-            Itens no catálogo online
+            {productsLoading ? 'Carregando catálogo...' : `${adminProducts.length} itens no total`}
           </div>
         </div>
 
@@ -180,7 +220,7 @@ export const TenantDashboard: React.FC = () => {
           id="tab-tenant-products"
         >
           <Package className="w-4 h-4" />
-          Produtos & Estoque ({currentTenantProducts.length})
+          Produtos & Estoque ({productsLoading ? '...' : adminProducts.length})
         </button>
 
         <button
@@ -231,7 +271,14 @@ export const TenantDashboard: React.FC = () => {
 
       {/* Tab Contents */}
       <div>
-        {activeTab === 'products' && <ProductManager />}
+        {activeTab === 'products' && (
+          <ProductManager 
+            products={adminProducts}
+            loading={productsLoading}
+            error={productsError}
+            onReload={loadAdminProducts}
+          />
+        )}
         {activeTab === 'orders' && <OrderManager />}
         {activeTab === 'team' && <TeamAccessManager />}
         {activeTab === 'settings' && <StoreSettings />}

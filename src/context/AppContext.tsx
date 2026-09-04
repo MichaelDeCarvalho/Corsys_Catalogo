@@ -90,7 +90,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'omnicatalogo_saas_data_v3';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [viewMode, setViewMode] = useState<AppViewMode>('tenant_admin');
+  const [viewMode, setViewMode] = useState<AppViewMode>('storefront');
   const [currentTenantId, setCurrentTenantId] = useState<string>('tenant-mc-distribuicao');
   
   // State lists

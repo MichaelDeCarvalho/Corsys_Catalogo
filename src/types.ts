@@ -54,15 +54,16 @@ export interface Product {
   tenantId: string;
   name: string;
   sku: string;
-  barcode?: string;
+  barcode?: string | null;
   category: string;
-  subcategory?: string;
-  brand?: string;
-  description: string;
-  costPrice?: number; // Custo (visível apenas para admins)
+  subcategory?: string | null;
+  brand?: string | null;
+  description?: string | null;
+  technicalSpecs?: Record<string, unknown>;
+  costPrice?: number | null; // Custo (visível apenas para admins)
   price: number; // Preço Varejo
-  promotionalPrice?: number; // Preço promocional
-  wholesalePrice?: number; // Preço Atacado base
+  promotionalPrice?: number | null; // Preço promocional
+  wholesalePrice?: number | null; // Preço Atacado base
   wholesaleTiers?: WholesaleTier[]; // Descontos por escala
   minOrderQuantity: number; // Qtd mínima de compra
   stock: number;
@@ -78,6 +79,27 @@ export interface Product {
     width: number;
     depth: number;
   };
+  sortOrder?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TenantPublicSettings {
+  tenantId: string;
+  slug: string;
+  publicName: string;
+  whatsappNumber: string;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  primaryColor: string;
+  accentColor: string;
+  minOrderValue: number;
+  wholesaleMinOrderValue: number | null;
+  allowB2bMode: boolean;
+  hidePricesWithoutLogin: boolean;
+  deliveryMethods: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TenantCustomization {
