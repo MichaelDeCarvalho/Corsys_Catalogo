@@ -19,6 +19,131 @@ import { useApp } from '../../context/AppContext';
 import { PaymentMethod, Order, TenantPublicSettings } from '../../types';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
+interface CartItemQuantityControlProps {
+  quantity: number;
+  stock?: number;
+  min?: number;
+  onUpdate: (qty: number) => void;
+}
+
+const CartItemQuantityControl: React.FC<CartItemQuantityControlProps> = ({
+  quantity,
+  stock,
+  min = 1,
+  onUpdate,
+}) => {
+  const [inputValue, setInputValue] = useState<string>(String(quantity));
+  const [isFocused, setIsFocused] = useState<boolean>(false);
+
+  // Sincroniza o valor local sempre que a quantidade mudar externamente (botões +/-, reloads, etc)
+  React.useEffect(() => {
+    if (!isFocused) {
+      setInputValue(String(quantity));
+    }
+  }, [quantity, isFocused]);
+
+  const maxAllowed = stock !== undefined && stock > 0 ? stock : Infinity;
+
+  const commitValue = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      // Vazio -> restaura a quantidade válida atual
+      setInputValue(String(quantity));
+      return;
+    }
+
+    let parsed = parseInt(trimmed, 10);
+    // Validação estrita: normaliza para mínimo válido respeitando a regra
+    if (isNaN(parsed) || parsed < min) {
+      parsed = min;
+    }
+
+    // Se houver limite por estoque, respeita sem criar backorder
+    if (parsed > maxAllowed) {
+      parsed = maxAllowed;
+    }
+
+    setInputValue(String(parsed));
+    if (parsed !== quantity) {
+      onUpdate(parsed);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Permite apenas dígitos inteiros ou string vazia temporária durante a digitação
+    const cleaned = e.target.value.replace(/\D/g, '');
+    setInputValue(cleaned);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    commitValue(inputValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      setInputValue(String(quantity));
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsFocused(true);
+    e.target.select();
+  };
+
+  const handleDecrease = () => {
+    const next = Math.max(min, quantity - 1);
+    setInputValue(String(next));
+    onUpdate(next);
+  };
+
+  const handleIncrease = () => {
+    const next = Math.min(maxAllowed, quantity + 1);
+    setInputValue(String(next));
+    onUpdate(next);
+  };
+
+  return (
+    <div className="flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-2xs">
+      <button
+        type="button"
+        onClick={handleDecrease}
+        disabled={quantity <= min}
+        className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-colors"
+        title="Diminuir quantidade"
+      >
+        <Minus className="w-3 h-3" />
+      </button>
+
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={inputValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="w-12 h-7 text-center text-xs font-bold text-slate-900 border-x border-slate-200 bg-transparent focus:outline-none focus:bg-orange-50 focus:border-[#FF5A00] transition-colors"
+        aria-label="Quantidade do produto"
+      />
+
+      <button
+        type="button"
+        onClick={handleIncrease}
+        disabled={quantity >= maxAllowed}
+        className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-colors"
+        title="Aumentar quantidade"
+      >
+        <Plus className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
+
 export const CartDrawer: React.FC<{
   settings?: TenantPublicSettings | null;
 }> = ({ settings }) => {
@@ -32,7 +157,11 @@ export const CartDrawer: React.FC<{
     setIsCartOpen, 
     cartSubtotal,
     createOrder,
-    showToast 
+    showToast,
+    shoppingMode,
+    minOrderValue: contextMinOrderValue,
+    isBelowMinOrder: contextIsBelowMinOrder,
+    missingAmount: contextMissingAmount
   } = useApp();
 
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
@@ -65,9 +194,20 @@ export const CartDrawer: React.FC<{
 
   const storeName = settings?.publicName || currentTenant.name || 'Corsys.Catálogo';
   const whatsappNumber = settings?.whatsappNumber || currentTenant.customization?.whatsappNumber || '';
-  const minOrderValue = settings?.minOrderValue !== undefined ? settings.minOrderValue : (currentTenant.customization?.minOrderValue || 0);
-  const isBelowMinOrder = cartSubtotal < minOrderValue;
-  const missingAmount = Math.max(0, minOrderValue - cartSubtotal);
+  
+  // Utiliza a validação central de pedido mínimo baseada no modo de compra (Varejo R$ 400 / Atacado R$ 1000)
+  const minOrderValue = contextMinOrderValue;
+  const isBelowMinOrder = contextIsBelowMinOrder;
+  const missingAmount = contextMissingAmount;
+
+  // Defesa adicional: verifica se há algum item com estoque menor que o mínimo de atacado
+  const hasInsufficientWholesaleItem = shoppingMode === 'wholesale' && cart.some(item => {
+    const isWholesale = Boolean(
+      item.product.wholesaleEnabled ?? (item.product.wholesalePrice !== null && (item.product.wholesalePrice ?? 0) > 0)
+    );
+    const minQty = isWholesale ? Math.max(1, item.product.wholesaleMinQuantity || 1) : 1;
+    return isWholesale && (item.product.stock < minQty || item.quantity < minQty);
+  });
 
   const shippingFee = 0;
   const orderTotal = cartSubtotal + shippingFee;
@@ -75,6 +215,10 @@ export const CartDrawer: React.FC<{
   const handleProceedToDetails = () => {
     if (cart.length === 0) {
       showToast('Seu carrinho está vazio');
+      return;
+    }
+    if (hasInsufficientWholesaleItem) {
+      showToast('Há itens no carrinho com estoque insuficiente para o mínimo de atacado.');
       return;
     }
     if (isBelowMinOrder) {
@@ -251,56 +395,86 @@ export const CartDrawer: React.FC<{
                   </div>
                 )}
 
+                {/* Insufficient Wholesale Stock Warning */}
+                {hasInsufficientWholesaleItem && (
+                  <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-xs text-red-800 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <div>
+                      Há item(ns) no pedido com estoque insuficiente para o mínimo de atacado. Remova-o(s) para continuar.
+                    </div>
+                  </div>
+                )}
+
                 {/* Items List */}
                 <div className="space-y-3">
-                  {cart.map((item, idx) => (
-                    <div key={`${item.product.id}-${idx}`} className="p-3 bg-slate-50 rounded-2xl border border-[#E2E8F0] flex items-center justify-between gap-3">
-                      <img
-                        src={getSafeProductImage(item.product.images[0], item.product.category)}
-                        alt={item.product.name}
-                        className="w-14 h-14 rounded-xl object-cover border border-[#E2E8F0] shrink-0"
-                        onError={(e) => handleProductImageError(e, item.product.category)}
-                      />
-                      
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.name}</h4>
-                        <div className="text-[11px] text-slate-500 font-mono">
-                          R$ {item.unitPrice.toFixed(2).replace('.', ',')} /{item.product.unit}
-                        </div>
-                        
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <div className="flex items-center border border-slate-300 rounded-lg bg-white">
-                            <button
-                              onClick={() => updateCartQuantity(item.product.id, item.quantity - 1, item.selectedVariant)}
-                              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-slate-100 cursor-pointer"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="w-8 text-center text-xs font-bold">{item.quantity}</span>
-                            <button
-                              onClick={() => updateCartQuantity(item.product.id, item.quantity + 1, item.selectedVariant)}
-                              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-slate-100 cursor-pointer"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
-                          <span className="text-[10px] text-slate-500">{item.product.unit}</span>
-                        </div>
-                      </div>
+                  {cart.map((item, idx) => {
+                    const isWholesaleItem = shoppingMode === 'wholesale' && Boolean(
+                      item.product.wholesaleEnabled ?? (item.product.wholesalePrice !== null && (item.product.wholesalePrice ?? 0) > 0)
+                    );
+                    const itemMinQty = isWholesaleItem
+                      ? Math.max(1, item.product.wholesaleMinQuantity || 1)
+                      : (item.product.minOrderQuantity || 1);
+                    const isItemInsufficientStock = isWholesaleItem && (item.product.stock < itemMinQty || item.quantity < itemMinQty);
 
-                      <div className="text-right shrink-0">
-                        <div className="text-xs font-extrabold text-[#0F172A]">
-                          R$ {(item.unitPrice * item.quantity).toFixed(2).replace('.', ',')}
+                    return (
+                      <div key={`${item.product.id}-${idx}`} className="p-3 bg-slate-50 rounded-2xl border border-[#E2E8F0] flex items-center justify-between gap-3">
+                        <img
+                          src={getSafeProductImage(item.product.images[0], item.product.category)}
+                          alt={item.product.name}
+                          className="w-14 h-14 rounded-xl object-cover border border-[#E2E8F0] shrink-0"
+                          onError={(e) => handleProductImageError(e, item.product.category)}
+                        />
+                        
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.name}</h4>
+                          <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5">
+                            <span>R$ {item.unitPrice.toFixed(2).replace('.', ',')} /{item.product.unit}</span>
+                            {shoppingMode === 'wholesale' && (
+                              <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-1.5 py-0.2 rounded">
+                                Atacado
+                              </span>
+                            )}
+                          </div>
+
+                          {isItemInsufficientStock && (
+                            <div className="text-[10px] text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 mt-1 inline-flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 shrink-0" />
+                              <span>Estoque insuficiente para o mínimo de atacado (disponível: {item.product.stock})</span>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <CartItemQuantityControl
+                              quantity={item.quantity}
+                              stock={item.product.stock}
+                              min={itemMinQty}
+                              onUpdate={(newQty) => updateCartQuantity(item.product.id, newQty, item.selectedVariant)}
+                            />
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              <span>{item.product.unit}</span>
+                              {shoppingMode === 'wholesale' && itemMinQty > 1 && (
+                                <span className="text-blue-600 block text-[9px] font-bold">
+                                  Mín. {itemMinQty}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => removeFromCart(item.product.id, item.selectedVariant)}
-                          className="text-slate-400 hover:text-red-500 p-1 mt-1 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-extrabold text-[#0F172A]">
+                            R$ {(item.unitPrice * item.quantity).toFixed(2).replace('.', ',')}
+                          </div>
+                          <button
+                            onClick={() => removeFromCart(item.product.id, item.selectedVariant)}
+                            className="text-slate-400 hover:text-red-500 p-1 mt-1 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="text-right">
@@ -596,9 +770,9 @@ export const CartDrawer: React.FC<{
             {checkoutStep === 'cart' ? (
               <button
                 onClick={handleProceedToDetails}
-                disabled={isBelowMinOrder}
+                disabled={isBelowMinOrder || hasInsufficientWholesaleItem}
                 className={`w-full py-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all ${
-                  isBelowMinOrder
+                  (isBelowMinOrder || hasInsufficientWholesaleItem)
                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                     : 'bg-[#FF5A00] hover:bg-[#D94E00] text-white cursor-pointer'
                 }`}

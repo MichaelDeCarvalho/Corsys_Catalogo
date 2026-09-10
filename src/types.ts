@@ -64,6 +64,8 @@ export interface Product {
   price: number; // Preço Varejo
   promotionalPrice?: number | null; // Preço promocional
   wholesalePrice?: number | null; // Preço Atacado base
+  wholesaleEnabled?: boolean; // Se o produto participa da modalidade atacado
+  wholesaleMinQuantity?: number | null; // Qtd mínima necessária no atacado
   wholesaleTiers?: WholesaleTier[]; // Descontos por escala
   minOrderQuantity: number; // Qtd mínima de compra
   stock: number;
@@ -211,4 +213,32 @@ export interface CartItem {
   quantity: number;
   selectedVariant?: string;
   unitPrice: number;
+}
+
+export type WholesaleCustomerStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
+
+export interface WholesaleCustomer {
+  id: string;
+  tenantId: string;
+  userId?: string | null;
+  cnpj: string;
+  legalName: string;
+  tradeName?: string | null;
+  contactName: string;
+  email: string;
+  phone: string;
+  city?: string | null;
+  state?: string | null;
+  status: WholesaleCustomerStatus;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WholesaleItemData {
+  productId: string;
+  sku: string;
+  wholesalePrice: number;
+  wholesaleMinQuantity: number;
 }

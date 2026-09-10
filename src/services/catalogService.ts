@@ -44,6 +44,8 @@ export interface RawCatalogProductRow {
   price: number | string;
   promotional_price: number | string | null;
   wholesale_price: number | string | null;
+  wholesale_enabled?: boolean | null;
+  wholesale_min_quantity?: number | string | null;
   min_order_quantity: number | string;
   stock: number | string;
   unit: string | null;
@@ -98,6 +100,26 @@ export function adaptCatalogProduct(row: RawCatalogProductRow): Product {
   const wholesalePrice = row.wholesale_price !== null && row.wholesale_price !== undefined
     ? (typeof row.wholesale_price === 'number' ? row.wholesale_price : Number(row.wholesale_price))
     : null;
+
+  // Bootstrap rule: se wholesale_enabled estiver gravado, usa ele. Caso contrário, se wholesale_price > 0 -> true
+  let wholesaleEnabled = false;
+  if (row.wholesale_enabled !== undefined && row.wholesale_enabled !== null) {
+    wholesaleEnabled = Boolean(row.wholesale_enabled);
+  } else {
+    wholesaleEnabled = Boolean(wholesalePrice !== null && wholesalePrice > 0);
+  }
+
+  let wholesaleMinQuantity: number | null = null;
+  if (wholesaleEnabled) {
+    if (row.wholesale_min_quantity !== undefined && row.wholesale_min_quantity !== null) {
+      wholesaleMinQuantity = typeof row.wholesale_min_quantity === 'number'
+        ? row.wholesale_min_quantity
+        : Number(row.wholesale_min_quantity) || 1;
+    } else {
+      wholesaleMinQuantity = 1;
+    }
+  }
+
   const stock = typeof row.stock === 'number' ? row.stock : Number(row.stock) || 0;
   const minOrderQuantity = typeof row.min_order_quantity === 'number' ? row.min_order_quantity : Number(row.min_order_quantity) || 1;
   const sortOrder = typeof row.sort_order === 'number' ? row.sort_order : Number(row.sort_order) || 0;
@@ -116,7 +138,9 @@ export function adaptCatalogProduct(row: RawCatalogProductRow): Product {
     costPrice: null, // Propositalmente nulo: cost_price NUNCA é lido ou exposto pelo storefront
     price,
     promotionalPrice,
-    wholesalePrice,
+    wholesalePrice: wholesaleEnabled ? wholesalePrice : null,
+    wholesaleEnabled,
+    wholesaleMinQuantity,
     wholesaleTiers: [], // Sem tiers artificiais na fonte oficial
     minOrderQuantity,
     stock,
@@ -169,7 +193,7 @@ export async function fetchCatalogProducts(tenantId: string): Promise<Product[]>
 
   const { data, error } = await supabase
     .from('catalog_products')
-    .select('id, tenant_id, name, sku, barcode, category, subcategory, brand, description, technical_specs, price, promotional_price, wholesale_price, min_order_quantity, stock, unit, images, featured, is_new, sort_order, created_at, updated_at')
+    .select('*')
     .eq('tenant_id', tenantId)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });

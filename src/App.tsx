@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { WholesaleAccessProvider } from './context/WholesaleAccessContext';
 import { Header } from './components/layout/Header';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { TenantDashboard } from './components/tenantadmin/TenantDashboard';
@@ -8,6 +9,9 @@ import { StorefrontView } from './components/storefront/StorefrontView';
 import { SaasBlueprintGuide } from './components/architecture/SaasBlueprintGuide';
 import { NewTenantModal } from './components/modals/NewTenantModal';
 import { LoginModal } from './components/auth/LoginModal';
+import { B2BGateModal } from './components/storefront/B2BGateModal';
+import { B2BRegisterModal } from './components/storefront/B2BRegisterModal';
+import { B2BSwitchModeConfirmModal } from './components/storefront/B2BSwitchModeConfirmModal';
 import { AccessDeniedGate } from './components/auth/AccessDeniedGate';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -48,6 +52,9 @@ const MainContent: React.FC = () => {
         onClose={() => setIsNewTenantModalOpen(false)} 
       />
       <LoginModal />
+      <B2BGateModal />
+      <B2BRegisterModal />
+      <B2BSwitchModeConfirmModal />
 
       {/* Global Notification Toast */}
       {toastMessage && (
@@ -65,7 +72,9 @@ export default function App() {
   return (
     <AppProvider>
       <AuthProvider>
-        <MainContent />
+        <WholesaleAccessProvider>
+          <MainContent />
+        </WholesaleAccessProvider>
       </AuthProvider>
     </AppProvider>
   );

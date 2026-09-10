@@ -13,3 +13,19 @@
 - Nenhuma consulta ou mutação pode omitir `tenant_id`.
 - Todas as operações administrativas continuam filtradas por `private.get_current_tenant_id()` e validadas contra `tenant_users`.
 - A migration `20260903_000002_import_official_catalog.sql` não cria tenants e não altera `tenant_public_settings`.
+
+## 3. Segurança no Supabase Storage (`tenant-assets`)
+- **Prevenção contra XSS:**
+  - Formato SVG (`image/svg+xml`) expressamente rejeitado no frontend por MIME e magic bytes (`<svg`), e restrito a `image/png, image/jpeg, image/webp` na configuração do bucket. Hardening client-side complementado por restrições no bucket (`allowed_mime_types`).
+- **Proteção contra Path Traversal e Spoofing Multi-tenant:**
+  - O primeiro segmento da URI de storage é estritamente o UUID canônico do tenant (`<tenant_uuid>/branding/...`).
+  - Falha fechada (`isValidUUID`): Nenhum upload ou deleção é aceito se o tenant autenticado não tiver um UUID v4 válido. Slugs ou fallbacks arbitrários são recusados.
+- **Princípio do Menor Privilégio nas Policies RLS:**
+  - `SELECT`: Concedido estritamente a usuários autenticados para objetos do seu próprio `tenant_id` (`tenant_admin`) ou `platform_admin`. Esta política é indispensável pois a API `storage.remove()` do Supabase requer verificação via SELECT + DELETE. Não há policy SELECT pública em `storage.objects` (anon não pode enumerar arquivos; imagens são entregues via URL pública de CDN do bucket).
+  - `INSERT`: Restrito estritamente a `tenant_admin` autenticado no diretório do seu próprio `tenant_id` ou `platform_admin`.
+  - `UPDATE`: Não concedido a nenhuma role. Todos os arquivos são versionados por timestamp com `upsert: false`.
+  - `DELETE`: Restrito estritamente a `tenant_admin` no diretório do seu próprio `tenant_id` ou `platform_admin` para fluxos compensatórios e substituição de mídia.
+- **Deleção Segura e Compatibilidade com Registros Legados:**
+  - Validação estrita via `extractOwnedBrandingPath`: Apenas URLs/paths comprovadamente originados do bucket `tenant-assets` e dentro do diretório `<tenant_uuid>/branding/` são passíveis de exclusão física.
+  - Registros antigos ou URLs externas (ex: `https://site-externo.com/logo.png`) são substituídos no banco de dados sem tentativa de remoção no Storage, evitando erros e tentativas de acesso fora do boundary do tenant.
+

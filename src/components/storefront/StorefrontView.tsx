@@ -14,14 +14,22 @@ import {
   Layers, 
   PackageX,
   X,
-  Package
+  Package,
+  Lock,
+  Clock,
+  Building2,
+  CheckCircle,
+  Info
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useWholesaleAccess } from '../../context/WholesaleAccessContext';
 import { Product, TenantPublicSettings } from '../../types';
 import { ProductDetailModal } from './ProductDetailModal';
 import { CartDrawer } from './CartDrawer';
+import { VariantGroupCard } from './VariantGroupCard';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import { loadStorefrontData } from '../../services/catalogService';
+import { buildCatalogDisplayItems, matchesDisplayItemSearch, CatalogDisplayItem } from '../../services/variantCatalogService';
 import { PUBLIC_TENANT_SLUG } from '../../config/tenant';
 
 export const StorefrontView: React.FC = () => {
@@ -38,13 +46,48 @@ export const StorefrontView: React.FC = () => {
     setB2bQuickMode
   } = useApp();
 
+  const {
+    purchaseMode,
+    requestSwitchPurchaseMode,
+    isApproved,
+    isPending,
+    wholesaleCompany,
+    wholesaleCatalogMap,
+    openB2BRegisterModal
+  } = useWholesaleAccess();
+
   // Estados oficiais do catálogo Supabase
   const [products, setProducts] = useState<Product[]>([]);
   const [settings, setSettings] = useState<TenantPublicSettings | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  // Estado do modal de detalhe do produto (suporta produto simples e família de variações)
+  const [detailModalState, setDetailModalState] = useState<{
+    item?: CatalogDisplayItem | null;
+    product?: Product | null;
+    groupItem?: Extract<CatalogDisplayItem, { type: 'variant-group' }> | null;
+    initialSku?: string;
+  } | null>(null);
+
+  const handleOpenSingleProduct = (product: Product) => {
+    setDetailModalState({
+      item: { type: 'single', product },
+      product,
+    });
+  };
+
+  const handleOpenGroupDetail = (
+    groupItem: Extract<CatalogDisplayItem, { type: 'variant-group' }>,
+    initialSku?: string
+  ) => {
+    setDetailModalState({
+      item: groupItem,
+      groupItem,
+      initialSku,
+    });
+  };
+
   const [quickQuantities, setQuickQuantities] = useState<Record<string, number>>({});
 
   // Carregamento oficial de dados via Supabase (sem fallback para mock em caso de erro)
@@ -70,23 +113,88 @@ export const StorefrontView: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Quando em modo atacado aprovado, enriquece a lista com os dados oficiais autorizados retornados pela RPC get_wholesale_catalog
+  const effectiveProducts = React.useMemo(() => {
+    if (purchaseMode !== 'wholesale' || !isApproved || wholesaleCatalogMap.size === 0) {
+      return products;
+    }
+
+    return products.map(p => {
+      const wData = wholesaleCatalogMap.get(p.id);
+      if (wData) {
+        return {
+          ...p,
+          wholesaleEnabled: true,
+          wholesalePrice: wData.wholesalePrice,
+          wholesaleMinQuantity: wData.wholesaleMinQuantity,
+        };
+      }
+      return {
+        ...p,
+        wholesaleEnabled: false,
+        wholesalePrice: null,
+      };
+    });
+  }, [products, purchaseMode, isApproved, wholesaleCatalogMap]);
+
+  // Construção em memória da camada comercial de apresentação (agrupamento aprovado)
+  const catalogData = React.useMemo(() => buildCatalogDisplayItems(effectiveProducts), [effectiveProducts]);
+
   // Lista dinâmica de categorias dos produtos reais carregados
-  const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category))).filter(Boolean)];
+  const categories = React.useMemo(() => {
+    return ['Todos', ...Array.from(new Set(effectiveProducts.map(p => p.category))).filter(Boolean)];
+  }, [effectiveProducts]);
 
-  const filteredProducts = products.filter(p => {
+  // Filtro de apresentação sobre os DisplayItems da Vitrine
+  const filteredDisplayItems = React.useMemo(() => {
+    return catalogData.displayItems
+      .map(item => {
+        const itemCategory = item.type === 'variant-group' ? item.category : item.product.category;
+        const matchesCategory = selectedCategory === 'Todos' || itemCategory === selectedCategory;
+        if (!matchesCategory) return null;
+
+        if (item.type === 'single' && !item.product.active) {
+          return null;
+        }
+
+        const searchResult = matchesDisplayItemSearch(item, storefrontSearch);
+        if (!searchResult.matches) {
+          return null;
+        }
+
+        return {
+          item,
+          matchedSkus: searchResult.matchedSkus,
+        };
+      })
+      .filter((entry): entry is { item: CatalogDisplayItem; matchedSkus: string[] } => entry !== null);
+  }, [catalogData.displayItems, selectedCategory, storefrontSearch]);
+
+  const totalSkusInView = React.useMemo(() => {
+    return filteredDisplayItems.reduce((acc, entry) => {
+      if (entry.item.type === 'variant-group') {
+        return acc + entry.item.variants.length;
+      }
+      return acc + 1;
+    }, 0);
+  }, [filteredDisplayItems]);
+
+  const filteredProducts = React.useMemo(() => {
     const searchLower = storefrontSearch.toLowerCase().trim();
-    const matchesSearch = 
-      !searchLower ||
-      p.name.toLowerCase().includes(searchLower) ||
-      p.sku.toLowerCase().includes(searchLower) ||
-      (p.brand && p.brand.toLowerCase().includes(searchLower)) ||
-      (p.category && p.category.toLowerCase().includes(searchLower));
+    return effectiveProducts.filter(p => {
+      const matchesSearch = 
+        !searchLower ||
+        p.name.toLowerCase().includes(searchLower) ||
+        p.sku.toLowerCase().includes(searchLower) ||
+        (p.brand && p.brand.toLowerCase().includes(searchLower)) ||
+        (p.category && p.category.toLowerCase().includes(searchLower));
 
-    const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
-    const matchesActive = p.active;
+      const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
+      const matchesActive = p.active;
 
-    return matchesSearch && matchesCategory && matchesActive;
-  });
+      return matchesSearch && matchesCategory && matchesActive;
+    });
+  }, [effectiveProducts, storefrontSearch, selectedCategory]);
 
   const handleQuickQtyChange = (productId: string, val: number) => {
     setQuickQuantities(prev => ({
@@ -100,8 +208,14 @@ export const StorefrontView: React.FC = () => {
     Object.entries(quickQuantities).forEach(([prodId, rawQty]) => {
       const qty = Number(rawQty) || 0;
       if (qty > 0) {
-        const prod = products.find(p => p.id === prodId);
+        const prod = effectiveProducts.find(p => p.id === prodId);
         if (prod) {
+          if (purchaseMode === 'wholesale') {
+            const minQty = Math.max(1, prod.wholesaleMinQuantity || 1);
+            if (prod.stock < minQty || qty < minQty) {
+              return;
+            }
+          }
           addToCart(prod, qty);
           addedCount += qty;
         }
@@ -205,7 +319,7 @@ export const StorefrontView: React.FC = () => {
                     <ShieldCheck className="w-3 h-3 text-emerald-700" /> Catálogo Oficial
                   </span>
                   <span className="text-[11px] bg-slate-100 text-slate-800 font-extrabold px-2.5 py-0.5 rounded-lg border border-slate-200 flex items-center gap-1">
-                    <Package className="w-3 h-3 text-[#FF5A00]" /> {products.length} produtos
+                    <Package className="w-3 h-3 text-[#FF5A00]" /> {products.length} SKUs ({catalogData.stats.totalCards} produtos e famílias)
                   </span>
                 </div>
                 
@@ -231,7 +345,7 @@ export const StorefrontView: React.FC = () => {
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#475569] pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Pesquisar por nome, marca ou SKU..."
+                  placeholder="Pesquisar por nome, variação, marca ou SKU..."
                   value={storefrontSearch}
                   onChange={e => setStorefrontSearch(e.target.value)}
                   style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}
@@ -254,8 +368,114 @@ export const StorefrontView: React.FC = () => {
         </div>
       </div>
 
+      {/* Banner Informativo Oficial: Atacado B2B Ativo */}
+      {purchaseMode === 'wholesale' && isApproved && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 py-3 px-4 shadow-xs">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-amber-950 font-bold">
+              <div className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-black shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <span>
+                  Catálogo Atacadista Exclusivo liberado para <strong className="underline decoration-amber-600">{wholesaleCompany?.tradeName || wholesaleCompany?.legalName}</strong> (CNPJ: {wholesaleCompany?.cnpj})
+                </span>
+                <div className="text-[11px] text-amber-800 font-normal">
+                  Preços de atacado autorizados via Supabase RPC • Pedido mínimo geral R$ 1.000,00
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-extrabold text-amber-950 bg-amber-200/80 px-3 py-1 rounded-full border border-amber-300">
+                Status: APROVADO
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        
+        {/* Top Noble Bar: Seletor Varejo / Atacado e Acesso B2B */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Modalidade de Compra:
+            </span>
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200/70">
+              <button
+                type="button"
+                onClick={() => requestSwitchPurchaseMode('retail')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  purchaseMode === 'retail'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+                id="btn-mode-retail"
+              >
+                <span>Varejo</span>
+                <span className="text-[10px] font-normal text-slate-500">(Mín. R$ 400)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => requestSwitchPurchaseMode('wholesale')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  purchaseMode === 'wholesale'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs ring-2 ring-amber-500/20'
+                    : isPending
+                    ? 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+                id="btn-mode-wholesale"
+                title={
+                  isApproved
+                    ? 'Acesso ao Atacado Liberado'
+                    : isPending
+                    ? 'Cadastro em análise pelo administrador'
+                    : 'Exige empresa cadastrada e aprovada com CNPJ'
+                }
+              >
+                {!isApproved && !isPending && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                {isPending && <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-pulse" />}
+                <span>Atacado</span>
+                {isApproved ? (
+                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded-full">
+                    Liberado
+                  </span>
+                ) : isPending ? (
+                  <span className="text-[9px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-full">
+                    Em análise
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-normal text-slate-400">(CNPJ)</span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Atalhos para B2B e Status Comercial */}
+          <div className="flex items-center gap-2">
+            {!isApproved && (
+              isPending ? (
+                <div className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-3 py-1 rounded-xl text-xs border border-amber-200">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                  <span className="font-semibold">Cadastro B2B sob análise administrativa</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openB2BRegisterModal}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1.5 cursor-pointer py-1"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Cadastrar empresa para Atacado</span>
+                </button>
+              )
+            )}
+          </div>
+        </div>
         
         {/* Controls: Categories & View Mode Switcher */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -263,7 +483,12 @@ export const StorefrontView: React.FC = () => {
           {/* Categories Pill Bar */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
             {categories.map(cat => {
-              const count = cat === 'Todos' ? products.length : products.filter(p => p.category === cat).length;
+              const count = cat === 'Todos'
+                ? catalogData.stats.totalCards
+                : catalogData.displayItems.filter(item => {
+                    const c = item.type === 'variant-group' ? item.category : item.product.category;
+                    return c === cat;
+                  }).length;
               return (
                 <button
                   key={cat}
@@ -319,13 +544,27 @@ export const StorefrontView: React.FC = () => {
         {/* Counter Info Bar */}
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <div>
-            Exibindo <strong className="text-[#0F172A] font-bold">{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'produto' : 'produtos'} {
-              (storefrontSearch || selectedCategory !== 'Todos') ? (
-                <span>(filtrado de um total de <strong className="text-[#0F172A]">{products.length}</strong> produtos no catálogo)</span>
-              ) : (
-                <span>disponíveis no catálogo</span>
-              )
-            }
+            {!b2bQuickMode ? (
+              <>
+                Exibindo <strong className="text-[#0F172A] font-bold">{filteredDisplayItems.length}</strong> {filteredDisplayItems.length === 1 ? 'produto/família' : 'produtos e famílias'} (<strong className="text-[#0F172A]">{totalSkusInView}</strong> SKUs) {
+                  (storefrontSearch || selectedCategory !== 'Todos') ? (
+                    <span>(filtrado de um total de <strong className="text-[#0F172A]">{products.length}</strong> SKUs e <strong className="text-[#0F172A]">{catalogData.stats.totalCards}</strong> produtos no catálogo)</span>
+                  ) : (
+                    <span>disponíveis no catálogo oficial ({products.length} SKUs no total)</span>
+                  )
+                }
+              </>
+            ) : (
+              <>
+                Exibindo <strong className="text-[#0F172A] font-bold">{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'SKU individual' : 'SKUs individuais'} {
+                  (storefrontSearch || selectedCategory !== 'Todos') ? (
+                    <span>(filtrado de um total de <strong className="text-[#0F172A]">{products.length}</strong> SKUs no catálogo)</span>
+                  ) : (
+                    <span>disponíveis para pedido rápido em lote</span>
+                  )
+                }
+              </>
+            )}
           </div>
           {storefrontSearch && (
             <button
@@ -338,7 +577,7 @@ export const StorefrontView: React.FC = () => {
         </div>
 
         {/* 3. ESTADO EMPTY */}
-        {filteredProducts.length === 0 ? (
+        {(!b2bQuickMode ? filteredDisplayItems.length === 0 : filteredProducts.length === 0) ? (
           <div className="bg-white rounded-3xl border border-[#E2E8F0] p-12 text-center max-w-md mx-auto my-8 space-y-4 shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
               <PackageX className="w-7 h-7" />
@@ -359,20 +598,37 @@ export const StorefrontView: React.FC = () => {
             )}
           </div>
         ) : !b2bQuickMode ? (
-          /* VIEW MODE 1: VISUAL PRODUCT GRID */
+          /* VIEW MODE 1: VISUAL PRODUCT GRID WITH APPROVED VARIANT GROUPS */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-            {filteredProducts.map(product => {
+            {filteredDisplayItems.map(({ item, matchedSkus }) => {
+              if (item.type === 'variant-group') {
+                return (
+                  <VariantGroupCard
+                    key={item.groupId}
+                    groupItem={item}
+                    highlightedSkus={matchedSkus}
+                    onAddToCart={addToCart}
+                    onSelectProduct={(prod) => handleOpenGroupDetail(item, prod.sku)}
+                    onOpenGroupDetail={handleOpenGroupDetail}
+                  />
+                );
+              }
+
+              const product = item.product;
               const hasWholesale = product.wholesalePrice !== null && product.wholesalePrice > 0;
+              const wholesaleMin = Math.max(1, product.wholesaleMinQuantity || 1);
+              const isOutOfStock = product.stock <= 0;
+              const isStockInsufficientForWholesale = purchaseMode === 'wholesale' && hasWholesale && product.stock > 0 && product.stock < wholesaleMin;
 
               return (
                 <div
                   key={product.id}
-                  onClick={() => setSelectedProduct(product)}
+                  onClick={() => handleOpenSingleProduct(product)}
                   className="bg-white rounded-2xl border border-[#E2E8F0] shadow-xs hover:shadow-lg transition-all overflow-hidden flex flex-col justify-between group cursor-pointer"
                 >
                   <div>
                     {/* Image Container (Neutral SVG placeholder if empty) */}
-                    <div className="relative aspect-4/3 bg-slate-100 overflow-hidden">
+                    <div className="relative aspect-4/3 bg-slate-100 overflow-hidden cursor-pointer group-hover:opacity-95 transition-opacity">
                       <img
                         src={getSafeProductImage(product.images[0], product.category)}
                         alt={product.name}
@@ -383,10 +639,28 @@ export const StorefrontView: React.FC = () => {
                       
                       {/* Badges */}
                       <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
-                        {hasWholesale && (
-                          <span className="bg-[#0F172A] text-[#FF5A00] text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-xs border border-slate-700">
-                            Atacado B2B
-                          </span>
+                        {purchaseMode === 'wholesale' ? (
+                          hasWholesale ? (
+                            isStockInsufficientForWholesale ? (
+                              <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs border border-rose-200">
+                                Estoque insuficiente para o mínimo de atacado
+                              </span>
+                            ) : (
+                              <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs border border-amber-400">
+                                Atacado B2B (Mín. {wholesaleMin} un)
+                              </span>
+                            )
+                          ) : (
+                            <span className="bg-slate-700/90 text-slate-200 text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-xs">
+                              Somente Varejo
+                            </span>
+                          )
+                        ) : (
+                          product.promotionalPrice && (
+                            <span className="bg-rose-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-xs">
+                              Oferta Varejo
+                            </span>
+                          )
                         )}
                       </div>
 
@@ -401,7 +675,7 @@ export const StorefrontView: React.FC = () => {
                         <span className="font-bold text-slate-500 uppercase tracking-wider">
                           {product.category}
                         </span>
-                        <span className={`font-semibold ${product.stock > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        <span className={`font-semibold ${product.stock > 0 ? (isStockInsufficientForWholesale ? 'text-rose-600' : 'text-emerald-700') : 'text-slate-400'}`}>
                           Estoque: {product.stock} {product.unit}
                         </span>
                       </div>
@@ -416,22 +690,51 @@ export const StorefrontView: React.FC = () => {
 
                       {/* Pricing Block */}
                       <div className="pt-2 border-t border-slate-100">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-lg font-extrabold text-[#0F172A]">
-                            R$ {(product.promotionalPrice || product.price).toFixed(2).replace('.', ',')}
-                          </span>
-                          <span className="text-[11px] text-slate-400">/{product.unit}</span>
-                          
-                          {product.promotionalPrice && (
-                            <span className="text-xs text-slate-400 line-through">
-                              R$ {product.price.toFixed(2).replace('.', ',')}
+                        {purchaseMode === 'wholesale' ? (
+                          hasWholesale ? (
+                            <div>
+                              <div className="flex items-baseline gap-1.5">
+                                <span className="text-lg font-black text-amber-600">
+                                  R$ {product.wholesalePrice!.toFixed(2).replace('.', ',')}
+                                </span>
+                                <span className="text-[11px] text-slate-400">/{product.unit}</span>
+                                <span className="text-[10px] font-bold text-slate-500 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                  Preço Atacado
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                Varejo ref: R$ {(product.promotionalPrice || product.price).toFixed(2).replace('.', ',')}
+                              </div>
+                              {isStockInsufficientForWholesale && (
+                                <div className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                                  <span>Estoque insuficiente para o mínimo de atacado</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="text-sm font-bold text-slate-400">
+                                R$ {product.price.toFixed(2).replace('.', ',')}
+                              </div>
+                              <div className="text-[11px] text-amber-800 font-semibold mt-0.5 flex items-center gap-1">
+                                <Info className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span>Indisponível no atacado (somente varejo)</span>
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-lg font-extrabold text-[#0F172A]">
+                              R$ {(product.promotionalPrice || product.price).toFixed(2).replace('.', ',')}
                             </span>
-                          )}
-                        </div>
-
-                        {hasWholesale && (
-                          <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                            Atacado: <strong>R$ {product.wholesalePrice!.toFixed(2).replace('.', ',')}</strong>
+                            <span className="text-[11px] text-slate-400">/{product.unit}</span>
+                            
+                            {product.promotionalPrice && (
+                              <span className="text-xs text-slate-400 line-through">
+                                R$ {product.price.toFixed(2).replace('.', ',')}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -440,16 +743,51 @@ export const StorefrontView: React.FC = () => {
 
                   {/* Card Footer Button (Accent Orange #FF5A00) */}
                   <div className="p-4 pt-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToCart(product, product.minOrderQuantity || 1);
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-[#FF5A00] hover:bg-[#D94E00] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                    >
-                      <ShoppingCart className="w-3.5 h-3.5" />
-                      Adicionar ({product.minOrderQuantity || 1} {product.unit})
-                    </button>
+                    {purchaseMode === 'wholesale' && !hasWholesale ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        Disponível apenas no Varejo
+                      </button>
+                    ) : purchaseMode === 'wholesale' && isStockInsufficientForWholesale ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed flex items-center justify-center gap-1.5 shadow-none"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                        Estoque insuficiente para o mínimo de atacado
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const qtyToAdd = purchaseMode === 'wholesale' 
+                            ? wholesaleMin
+                            : (product.minOrderQuantity || 1);
+                          addToCart(product, qtyToAdd);
+                        }}
+                        disabled={isOutOfStock}
+                        className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs ${
+                          isOutOfStock
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            : purchaseMode === 'wholesale'
+                            ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 cursor-pointer font-black'
+                            : 'bg-[#FF5A00] hover:bg-[#D94E00] text-white cursor-pointer'
+                        }`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        {isOutOfStock 
+                          ? 'Esgotado' 
+                          : purchaseMode === 'wholesale'
+                          ? `Adicionar Atacado (${wholesaleMin} ${product.unit})`
+                          : `Adicionar (${product.minOrderQuantity || 1} ${product.unit})`}
+                      </button>
+                    )}
                   </div>
 
                 </div>
@@ -496,15 +834,19 @@ export const StorefrontView: React.FC = () => {
                   {filteredProducts.map(prod => (
                     <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
+                        <div 
+                          onClick={() => handleOpenSingleProduct(prod)}
+                          className="flex items-center gap-3 cursor-pointer group/row"
+                          title={`Ver detalhes de ${prod.name}`}
+                        >
                           <img
                             src={getSafeProductImage(prod.images[0], prod.category)}
                             alt={prod.name}
-                            className="w-10 h-10 rounded-lg object-cover border border-[#E2E8F0] shrink-0"
+                            className="w-10 h-10 rounded-lg object-cover border border-[#E2E8F0] shrink-0 group-hover/row:scale-105 transition-transform"
                             onError={(e) => handleProductImageError(e, prod.category)}
                           />
                           <div>
-                            <div className="font-bold text-slate-900 text-xs line-clamp-1">{prod.name}</div>
+                            <div className="font-bold text-slate-900 text-xs line-clamp-1 group-hover/row:text-[#FF5A00] transition-colors">{prod.name}</div>
                             <div className="text-[10px] text-slate-400 font-mono">SKU: {prod.sku}</div>
                           </div>
                         </div>
@@ -524,12 +866,26 @@ export const StorefrontView: React.FC = () => {
                       </td>
 
                       <td className="py-3 px-4">
-                        {prod.wholesalePrice !== null && prod.wholesalePrice > 0 ? (
-                          <div className="text-[11px] text-emerald-700 font-semibold">
-                            R$ {prod.wholesalePrice.toFixed(2).replace('.', ',')}
-                          </div>
+                        {purchaseMode === 'wholesale' ? (
+                          prod.wholesalePrice !== null && prod.wholesalePrice > 0 ? (
+                            <div>
+                              <div className="text-xs font-black text-amber-600">
+                                R$ {prod.wholesalePrice.toFixed(2).replace('.', ',')}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Mín. {prod.wholesaleMinQuantity || 1} {prod.unit}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-amber-800 bg-amber-50 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-200">
+                              Somente Varejo
+                            </span>
+                          )
                         ) : (
-                          <span className="text-slate-400 text-[10px]">—</span>
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+                            <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>Apenas CNPJ Aprovado</span>
+                          </div>
                         )}
                       </td>
 
@@ -538,28 +894,136 @@ export const StorefrontView: React.FC = () => {
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => handleQuickQtyChange(prod.id, (quickQuantities[prod.id] || 0) - 1)}
-                            className="w-7 h-7 rounded-lg border border-slate-300 hover:bg-slate-100 flex items-center justify-center text-slate-600 cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            value={quickQuantities[prod.id] || 0}
-                            onChange={e => handleQuickQtyChange(prod.id, Number(e.target.value))}
-                            style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}
-                            className="w-14 text-center text-xs font-bold border border-slate-300 rounded-lg py-1 focus:outline-none focus:ring-1 focus:ring-[#FF5A00] text-slate-900 bg-white"
-                          />
-                          <button
-                            onClick={() => handleQuickQtyChange(prod.id, (quickQuantities[prod.id] || 0) + 1)}
-                            className="w-7 h-7 rounded-lg border border-slate-300 hover:bg-slate-100 flex items-center justify-center text-slate-600 cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
+                        {purchaseMode === 'wholesale' && (!prod.wholesalePrice || prod.wholesalePrice <= 0) ? (
+                          <span className="text-[10px] text-slate-400 italic">Indisponível no atacado</span>
+                        ) : (() => {
+                          const isWholesale = purchaseMode === 'wholesale';
+                          const minQty = isWholesale ? Math.max(1, prod.wholesaleMinQuantity || 1) : 1;
+                          const stockVal = prod.stock !== undefined ? prod.stock : 0;
+                          const isOutOfStock = stockVal <= 0;
+                          const isInsufficientStock = isWholesale && stockVal < minQty;
+                          const current = quickQuantities[prod.id] || 0;
+
+                          if (isOutOfStock) {
+                            return (
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded border border-slate-200 block text-center">
+                                Esgotado
+                              </span>
+                            );
+                          }
+
+                          if (isInsufficientStock) {
+                            return (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-200 block text-center">
+                                Estoque insuficiente para o mínimo de atacado
+                              </span>
+                            );
+                          }
+
+                          const maxStock = stockVal;
+
+                          const handleMinus = () => {
+                            if (isWholesale) {
+                              if (current > minQty) {
+                                handleQuickQtyChange(prod.id, current - 1);
+                              }
+                            } else {
+                              if (current > 0) {
+                                handleQuickQtyChange(prod.id, current - 1);
+                              }
+                            }
+                          };
+
+                          const handlePlus = () => {
+                            if (current === 0) {
+                              handleQuickQtyChange(prod.id, minQty);
+                            } else if (current < maxStock) {
+                              handleQuickQtyChange(prod.id, current + 1);
+                            }
+                          };
+
+                          const handleCommitManual = (rawStr: string) => {
+                            const trimmed = rawStr.trim();
+                            if (trimmed === '' || trimmed === '0') {
+                              handleQuickQtyChange(prod.id, 0);
+                              return;
+                            }
+                            let parsed = parseInt(trimmed, 10);
+                            if (isNaN(parsed) || parsed <= 0) {
+                              handleQuickQtyChange(prod.id, 0);
+                              return;
+                            }
+                            if (isWholesale && parsed < minQty) {
+                              parsed = minQty;
+                            }
+                            if (parsed > maxStock) {
+                              parsed = maxStock;
+                            }
+                            handleQuickQtyChange(prod.id, parsed);
+                          };
+
+                          const minusDisabled = isWholesale ? (current === 0 || current <= minQty) : current === 0;
+                          const plusDisabled = current >= maxStock;
+
+                          return (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={minusDisabled}
+                                onClick={handleMinus}
+                                className={`w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 ${
+                                  minusDisabled
+                                    ? 'opacity-40 cursor-not-allowed bg-slate-50'
+                                    : 'hover:bg-slate-100 cursor-pointer'
+                                }`}
+                                title={isWholesale && current === minQty ? `Mínimo de atacado: ${minQty}` : 'Diminuir'}
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={current === 0 ? '' : current}
+                                placeholder="0"
+                                onChange={e => {
+                                  const val = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0);
+                                  handleQuickQtyChange(prod.id, val);
+                                }}
+                                onBlur={e => handleCommitManual(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                style={{ color: '#0F172A', backgroundColor: '#FFFFFF' }}
+                                className="w-14 text-center text-xs font-bold border border-slate-300 rounded-lg py-1 focus:outline-none focus:ring-1 focus:ring-[#FF5A00] text-slate-900 bg-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={handlePlus}
+                                disabled={plusDisabled}
+                                className={`w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 ${
+                                  plusDisabled
+                                    ? 'opacity-40 cursor-not-allowed bg-slate-50'
+                                    : 'hover:bg-slate-100 cursor-pointer'
+                                }`}
+                                title="Aumentar"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              {current > 0 && (
+                                <button
+                                  type="button"
+                                  title="Remover / Zerar item"
+                                  onClick={() => handleQuickQtyChange(prod.id, 0)}
+                                  className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer ml-0.5"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -624,9 +1088,12 @@ export const StorefrontView: React.FC = () => {
 
       {/* Product Detail Modal */}
       <ProductDetailModal
-        product={selectedProduct}
+        item={detailModalState?.item}
+        product={detailModalState?.product}
+        groupItem={detailModalState?.groupItem}
+        initialSku={detailModalState?.initialSku}
         settings={settings}
-        onClose={() => setSelectedProduct(null)}
+        onClose={() => setDetailModalState(null)}
       />
 
       {/* Cart Drawer */}

@@ -19,10 +19,22 @@ import {
 } from '../data/initialData';
 
 export type AppViewMode = 'superadmin' | 'tenant_admin' | 'storefront' | 'blueprint_guide';
+export type ShoppingMode = 'retail' | 'wholesale';
 
 interface AppContextType {
   viewMode: AppViewMode;
   setViewMode: (mode: AppViewMode) => void;
+  
+  // Shopping Mode (Varejo / Atacado)
+  shoppingMode: ShoppingMode;
+  setShoppingMode: (mode: ShoppingMode) => void;
+  requestShoppingModeChange: (newMode: ShoppingMode) => void;
+  confirmShoppingModeChange: (action: 'recalculate' | 'clear' | 'remove_incompatible') => void;
+  cancelShoppingModeChange: () => void;
+  pendingShoppingMode: ShoppingMode | null;
+  minOrderValue: number;
+  isBelowMinOrder: boolean;
+  missingAmount: number;
   
   // Current Tenant
   currentTenantId: string;
@@ -187,6 +199,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
+  // Shopping Mode (Varejo / Atacado)
+  const [shoppingMode, setShoppingModeState] = useState<ShoppingMode>('retail');
+  const [pendingShoppingMode, setPendingShoppingMode] = useState<ShoppingMode | null>(null);
+
   // Storefront search & filters
   const [storefrontSearch, setStorefrontSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -248,46 +264,165 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentTenantOrders = orders.filter(o => o.tenantId === currentTenantId);
   const currentTenantUsers = users.filter(u => u.tenantId === currentTenantId);
 
+  // Shopping Mode Handlers
+  const requestShoppingModeChange = (newMode: ShoppingMode) => {
+    if (newMode === shoppingMode) return;
+    if (cart.length === 0) {
+      setShoppingModeState(newMode);
+      showToast(`Modalidade alterada para ${newMode === 'wholesale' ? 'Atacado (Mínimo R$ 1.000)' : 'Varejo (Mínimo R$ 400)'}`);
+    } else {
+      setPendingShoppingMode(newMode);
+    }
+  };
+
+  const confirmShoppingModeChange = (action: 'recalculate' | 'clear' | 'remove_incompatible') => {
+    if (!pendingShoppingMode) return;
+    const targetMode = pendingShoppingMode;
+
+    if (action === 'clear') {
+      setCart([]);
+      setShoppingModeState(targetMode);
+      setPendingShoppingMode(null);
+      showToast(`Carrinho esvaziado. Modalidade alterada para ${targetMode === 'wholesale' ? 'Atacado' : 'Varejo'}.`);
+    } else {
+      // Verifica se existem produtos incompatíveis com o modo atacadista
+      if (targetMode === 'wholesale') {
+        const incompatibleItems = cart.filter(item => {
+          const participatesWholesale = Boolean(
+            item.product.wholesaleEnabled &&
+            item.product.wholesalePrice !== null &&
+            item.product.wholesalePrice !== undefined &&
+            item.product.wholesalePrice > 0
+          );
+          if (!participatesWholesale) return true;
+          const minQty = item.product.wholesaleMinQuantity || 1;
+          if (item.product.stock < minQty) return true;
+          return false;
+        });
+
+        // Se houver incompatíveis e a ação for apenas recalcular sem consentimento explícito, NÃO remove e bloqueia
+        if (incompatibleItems.length > 0 && action !== 'remove_incompatible') {
+          showToast(`Existem ${incompatibleItems.length} item(ns) incompatível(is) no carrinho. Remova-os ou autorize a remoção para alterar.`);
+          return;
+        }
+      }
+
+      let removedIncompatibleCount = 0;
+      const updatedCart: CartItem[] = [];
+
+      for (const item of cart) {
+        if (targetMode === 'wholesale') {
+          const participatesWholesale = Boolean(
+            item.product.wholesaleEnabled &&
+            item.product.wholesalePrice !== null &&
+            item.product.wholesalePrice !== undefined &&
+            item.product.wholesalePrice > 0
+          );
+
+          const minQty = item.product.wholesaleMinQuantity || 1;
+          const isIncompatible = !participatesWholesale || item.product.stock < minQty;
+
+          if (isIncompatible) {
+            if (action === 'remove_incompatible') {
+              removedIncompatibleCount++;
+              continue; // Removido somente com autorização explícita
+            } else {
+              // Não remove silenciosamente
+              return;
+            }
+          }
+
+          const unitPrice = item.product.wholesalePrice!;
+          const quantity = Math.max(item.quantity, minQty);
+
+          updatedCart.push({
+            ...item,
+            quantity,
+            unitPrice
+          });
+        } else {
+          // Voltando para varejo
+          const unitPrice = item.product.promotionalPrice || item.product.price;
+          updatedCart.push({
+            ...item,
+            unitPrice
+          });
+        }
+      }
+
+      setCart(updatedCart);
+      setShoppingModeState(targetMode);
+      setPendingShoppingMode(null);
+
+      if (removedIncompatibleCount > 0) {
+        showToast(`Modalidade alterada para Atacado. ${removedIncompatibleCount} item(ns) incompatível(is) foram removido(s) com sua confirmação.`);
+      } else {
+        showToast(`Modalidade alterada para ${targetMode === 'wholesale' ? 'Atacado' : 'Varejo'}. Preços e quantidades recalculados!`);
+      }
+    }
+  };
+
+  const cancelShoppingModeChange = () => {
+    setPendingShoppingMode(null);
+  };
+
   // Cart operations
   const addToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
+    let appliedPrice = product.promotionalPrice || product.price;
+    let effectiveQty = quantity;
+
+    if (shoppingMode === 'wholesale') {
+      const isWholesale = Boolean(
+        product.wholesaleEnabled &&
+        product.wholesalePrice !== null &&
+        product.wholesalePrice !== undefined &&
+        product.wholesalePrice > 0
+      );
+
+      if (isWholesale) {
+        const wholesaleMin = product.wholesaleMinQuantity || 1;
+        // Validação: se estoque < mínimo, bloqueia adição no atacado
+        if (product.stock < wholesaleMin) {
+          showToast(`Estoque insuficiente para o mínimo de atacado (Disponível: ${product.stock}, Mínimo: ${wholesaleMin} ${product.unit}).`);
+          return;
+        }
+        effectiveQty = Math.max(quantity, wholesaleMin);
+        appliedPrice = product.wholesalePrice!;
+      } else {
+        // Bloqueio de itens somente varejo no atacado (Regra 48)
+        showToast(`"${product.name}" está disponível apenas no Varejo e não pode ser adicionado ao pedido de Atacado.`);
+        return;
+      }
+    } else {
+      effectiveQty = Math.max(1, quantity);
+    }
+
     setCart(prev => {
       const existingIndex = prev.findIndex(item => 
         item.product.id === product.id && item.selectedVariant === selectedVariant
       );
       
-      const newQty = existingIndex > -1 ? prev[existingIndex].quantity + quantity : quantity;
-      
-      // Calculate unit price based on wholesale tiers if applicable
-      let applicablePrice = product.promotionalPrice || product.price;
-      if (product.wholesaleTiers && product.wholesaleTiers.length > 0) {
-        const sortedTiers = [...product.wholesaleTiers].sort((a, b) => b.minQuantity - a.minQuantity);
-        const matchTier = sortedTiers.find(tier => newQty >= tier.minQuantity);
-        if (matchTier) {
-          applicablePrice = matchTier.price;
-        } else if (product.wholesalePrice && newQty >= product.minOrderQuantity) {
-          applicablePrice = product.wholesalePrice;
-        }
-      }
+      const newQty = existingIndex > -1 ? prev[existingIndex].quantity + effectiveQty : effectiveQty;
 
       if (existingIndex > -1) {
         const updated = [...prev];
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQty,
-          unitPrice: applicablePrice
+          unitPrice: appliedPrice
         };
         return updated;
       } else {
         return [...prev, {
           product,
-          quantity: newQty,
+          quantity: effectiveQty,
           selectedVariant,
-          unitPrice: applicablePrice
+          unitPrice: appliedPrice
         }];
       }
     });
 
-    showToast(`Adicionado ao carrinho: ${product.name.slice(0, 30)}...`);
+    showToast(`Adicionado ao pedido: ${product.name.slice(0, 30)}...`);
   };
 
   const updateCartQuantity = (productId: string, quantity: number, selectedVariant?: string) => {
@@ -298,16 +433,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCart(prev => prev.map(item => {
       if (item.product.id === productId && item.selectedVariant === selectedVariant) {
-        // Re-evaluate tiered pricing
-        let applicablePrice = item.product.promotionalPrice || item.product.price;
-        if (item.product.wholesaleTiers && item.product.wholesaleTiers.length > 0) {
-          const sortedTiers = [...item.product.wholesaleTiers].sort((a, b) => b.minQuantity - a.minQuantity);
-          const matchTier = sortedTiers.find(tier => quantity >= tier.minQuantity);
-          if (matchTier) {
-            applicablePrice = matchTier.price;
+        let finalQty = quantity;
+
+        if (shoppingMode === 'wholesale') {
+          const isWholesale = Boolean(
+            item.product.wholesaleEnabled &&
+            item.product.wholesalePrice !== null &&
+            item.product.wholesalePrice !== undefined &&
+            item.product.wholesalePrice > 0
+          );
+          if (isWholesale) {
+            const minQty = item.product.wholesaleMinQuantity || 1;
+            if (finalQty < minQty) {
+              finalQty = minQty;
+              showToast(`Quantidade mínima de atacado para este item é ${minQty} ${item.product.unit}.`);
+            }
           }
         }
-        return { ...item, quantity, unitPrice: applicablePrice };
+
+        return { ...item, quantity: finalQty };
       }
       return item;
     }));
@@ -323,6 +467,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cartSubtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
   const cartItemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Mínimo de Pedido Oficial por Modalidade: Varejo R$ 400,00 | Atacado R$ 1.000,00
+  const minOrderValue = shoppingMode === 'wholesale' ? 1000 : 400;
+  const isBelowMinOrder = cartSubtotal < minOrderValue;
+  const missingAmount = Math.max(0, minOrderValue - cartSubtotal);
 
   // Tenant Handlers
   const addTenant = (tenantData: Omit<Tenant, 'id' | 'createdAt' | 'stats'>): Tenant => {
@@ -597,6 +746,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCartOpen,
         cartSubtotal,
         cartItemsCount,
+        shoppingMode,
+        setShoppingMode: setShoppingModeState,
+        requestShoppingModeChange,
+        confirmShoppingModeChange,
+        cancelShoppingModeChange,
+        pendingShoppingMode,
+        minOrderValue,
+        isBelowMinOrder,
+        missingAmount,
         toastMessage,
         showToast,
         storefrontSearch,

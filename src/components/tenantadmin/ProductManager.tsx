@@ -14,13 +14,25 @@ import {
   Tag, 
   DollarSign, 
   UploadCloud, 
-  Check
+  Check,
+  Edit3,
+  Trash2,
+  SlidersHorizontal,
+  CheckSquare
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Product } from '../../types';
-import { fetchAdminProducts } from '../../services/adminCatalogService';
+import { 
+  fetchAdminProducts, 
+  isValidUuid, 
+  bulkUpdateAdminProducts, 
+  bulkSoftDeleteAdminProducts 
+} from '../../services/adminCatalogService';
+import { fetchTenantPublicSettings } from '../../services/catalogService';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
+import { ProductEditModal } from './ProductEditModal';
+import { ProductBulkEditModal } from './ProductBulkEditModal';
 
 export interface ProductManagerProps {
   products?: Product[];
@@ -38,24 +50,45 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const { currentTenant, showToast } = useApp();
   const { authTenant, authTenantId, isPlatformAdmin } = useAuth();
 
-  // Tenant ID efetivo autenticado
-  const effectiveTenantId = authTenant?.id || authTenantId || (isPlatformAdmin ? currentTenant.id : '6f43b8f6-261c-407c-8b7d-24aa087b50ab');
-
   // Estado interno caso não seja fornecido via props
   const [internalProducts, setInternalProducts] = useState<Product[]>([]);
   const [internalLoading, setInternalLoading] = useState<boolean>(true);
   const [internalError, setInternalError] = useState<string | null>(null);
+  const [activeTenantId, setActiveTenantId] = useState<string>('');
+
+  const resolveTargetTenantId = useCallback(async (): Promise<string> => {
+    if (!isPlatformAdmin) {
+      if (authTenantId && isValidUuid(authTenantId)) {
+        return authTenantId;
+      }
+      if (authTenant?.id && isValidUuid(authTenant.id)) {
+        return authTenant.id;
+      }
+      throw new Error('Contexto administrativo inválido: tenant_id real do Supabase não foi resolvido para este administrador.');
+    }
+
+    if (authTenantId && isValidUuid(authTenantId)) {
+      return authTenantId;
+    }
+    if (authTenant?.id && isValidUuid(authTenant.id)) {
+      return authTenant.id;
+    }
+
+    const publicSlug = (import.meta as any).env?.VITE_PUBLIC_TENANT_SLUG || 'corsys-catalogo-demo';
+    const settings = await fetchTenantPublicSettings(publicSlug);
+    if (!settings?.tenantId || !isValidUuid(settings.tenantId)) {
+      throw new Error('Contexto administrativo inválido: tenant_id real do Supabase não foi resolvido pelo slug público.');
+    }
+    return settings.tenantId;
+  }, [authTenantId, authTenant, isPlatformAdmin]);
 
   const loadInternalProducts = useCallback(async () => {
-    if (!effectiveTenantId) {
-      setInternalProducts([]);
-      setInternalLoading(false);
-      return;
-    }
     setInternalLoading(true);
     setInternalError(null);
     try {
-      const data = await fetchAdminProducts(effectiveTenantId);
+      const resolvedTenantId = await resolveTargetTenantId();
+      setActiveTenantId(resolvedTenantId);
+      const data = await fetchAdminProducts(resolvedTenantId);
       setInternalProducts(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo administrativo do Supabase.';
@@ -65,7 +98,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     } finally {
       setInternalLoading(false);
     }
-  }, [effectiveTenantId]);
+  }, [resolveTargetTenantId]);
 
   useEffect(() => {
     if (propProducts === undefined) {
@@ -85,6 +118,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'list' | 'bulk_images'>('list');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
+  // Estados de Seleção e Edição Real
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState<boolean>(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState<boolean>(false);
+
   // Categorias únicas derivadas dinamicamente dos produtos reais do Supabase
   const categories = Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort();
 
@@ -100,6 +139,82 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  // Funções de Seleção de Produtos
+  const toggleSelect = (id: string) => {
+    setSelectedProductIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const isAllVisibleSelected = 
+    filteredProducts.length > 0 && 
+    filteredProducts.every(p => selectedProductIds.includes(p.id));
+
+  const isSomeVisibleSelected = 
+    filteredProducts.some(p => selectedProductIds.includes(p.id)) && !isAllVisibleSelected;
+
+  const toggleSelectAllVisible = () => {
+    if (isAllVisibleSelected) {
+      const visibleIds = new Set(filteredProducts.map(p => p.id));
+      setSelectedProductIds(prev => prev.filter(id => !visibleIds.has(id)));
+    } else {
+      const newIds = new Set([...selectedProductIds, ...filteredProducts.map(p => p.id)]);
+      setSelectedProductIds(Array.from(newIds));
+    }
+  };
+
+  // Funções de Ações em Massa
+  const handleBulkStatusChange = async (active: boolean) => {
+    if (selectedProductIds.length === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const resolvedTenantId = activeTenantId || await resolveTargetTenantId();
+      await bulkUpdateAdminProducts(resolvedTenantId, selectedProductIds, { active });
+      showToast(`${selectedProductIds.length} produtos ${active ? 'ativados' : 'pausados'} com sucesso no Supabase!`);
+      setSelectedProductIds([]);
+      handleReload();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao atualizar produtos em massa.';
+      showToast(`Erro: ${msg}`);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProductIds.length === 0) return;
+    const confirmed = window.confirm(`Deseja realmente desativar/excluir os ${selectedProductIds.length} produtos selecionados do catálogo?`);
+    if (!confirmed) return;
+
+    setIsBulkProcessing(true);
+    try {
+      const resolvedTenantId = activeTenantId || await resolveTargetTenantId();
+      await bulkSoftDeleteAdminProducts(resolvedTenantId, selectedProductIds);
+      showToast(`${selectedProductIds.length} produtos desativados/excluídos com sucesso!`);
+      setSelectedProductIds([]);
+      handleReload();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao excluir produtos em massa.';
+      showToast(`Erro: ${msg}`);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleIndividualEditSuccess = (updatedProduct: Product) => {
+    setInternalProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    setEditingProduct(null);
+    showToast(`Produto "${updatedProduct.name}" atualizado com sucesso no Supabase!`);
+    handleReload();
+  };
+
+  const handleBulkEditSuccess = () => {
+    setIsBulkEditOpen(false);
+    setSelectedProductIds([]);
+    showToast('Produtos atualizados com sucesso no Supabase!');
+    handleReload();
+  };
 
   const handleExportCSV = () => {
     if (products.length === 0) {
@@ -375,12 +490,91 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
             )}
           </div>
 
+          {/* Bulk Actions Floating/Sticky Toolbar */}
+          {selectedProductIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-900 text-white rounded-2xl shadow-xl border border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-3">
+                <span className="px-2.5 py-1 rounded-lg bg-blue-600 font-mono text-xs font-bold">
+                  {selectedProductIds.length} selecionado(s)
+                </span>
+                <span className="text-xs text-slate-300 hidden sm:inline">
+                  Ações em massa no Supabase:
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleBulkStatusChange(true)}
+                  disabled={isBulkProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Ativar produtos selecionados"
+                >
+                  <Check className="w-3.5 h-3.5" /> Ativar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBulkStatusChange(false)}
+                  disabled={isBulkProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Pausar produtos selecionados"
+                >
+                  Pausar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBulkEditOpen(true)}
+                  disabled={isBulkProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Editar categoria, status ou atacado em massa"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" /> Editar em Massa
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={isBulkProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Excluir/desativar produtos selecionados"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Excluir
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductIds([])}
+                  disabled={isBulkProcessing}
+                  className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Desmarcar todos"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Products Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-600">
                 <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
+                    <th className="py-3.5 px-3 sm:px-4 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllVisibleSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isSomeVisibleSelected;
+                        }}
+                        onChange={toggleSelectAllVisible}
+                        disabled={loading || filteredProducts.length === 0}
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        title="Selecionar todos os produtos visíveis"
+                      />
+                    </th>
                     <th className="py-3.5 px-4 sm:px-6">Produto</th>
                     <th className="py-3.5 px-4">SKU / Categoria</th>
                     <th className="py-3.5 px-4">Preço Custo</th>
@@ -394,7 +588,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-400">
+                      <td colSpan={9} className="py-16 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-3">
                           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                           <p className="text-xs font-semibold text-slate-600">Carregando catálogo do Supabase...</p>
@@ -404,7 +598,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     </tr>
                   ) : filteredProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Package className="w-8 h-8 text-slate-300" />
                           <p className="text-xs font-semibold text-slate-600">Nenhum produto encontrado</p>
@@ -418,6 +612,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         key={prod.id} 
                         className={`hover:bg-slate-50/80 transition-colors ${!prod.active ? 'opacity-60 bg-slate-50/40' : ''}`}
                       >
+                        <td className="py-3.5 px-3 sm:px-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductIds.includes(prod.id)}
+                            onChange={() => toggleSelect(prod.id)}
+                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
                         
                         <td className="py-3.5 px-4 sm:px-6">
                           <div className="flex items-center gap-3">
@@ -480,8 +682,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         {/* Preço de Atacado (Preço simples importado do banco oficial) */}
                         <td className="py-3.5 px-4">
                           {prod.wholesalePrice !== null && prod.wholesalePrice !== undefined ? (
-                            <div className="text-xs font-semibold text-blue-700">
-                              R$ {prod.wholesalePrice.toFixed(2).replace('.', ',')}
+                            <div>
+                              <div className="text-xs font-semibold text-blue-700">
+                                R$ {prod.wholesalePrice.toFixed(2).replace('.', ',')}
+                              </div>
+                              {prod.wholesaleMinQuantity && (
+                                <span className="text-[10px] text-blue-600 font-medium block">
+                                  Mín. {prod.wholesaleMinQuantity} {prod.unit}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 font-normal">—</span>
@@ -516,16 +725,26 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           </span>
                         </td>
 
-                        {/* Ações: Visualização em Modo Leitura */}
+                        {/* Ações: Edição Real e Visualização */}
                         <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => setSelectedProduct(prod)}
-                            className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-colors inline-flex items-center gap-1 text-xs font-semibold cursor-pointer"
-                            title="Visualizar Detalhes do Produto"
-                          >
-                            <Eye className="w-4 h-4" />
-                            <span className="hidden md:inline">Detalhes</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setEditingProduct(prod)}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors inline-flex items-center gap-1 text-xs font-bold cursor-pointer"
+                              title="Editar Produto e Atacado"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Editar</span>
+                            </button>
+
+                            <button
+                              onClick={() => setSelectedProduct(prod)}
+                              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors inline-flex items-center text-xs cursor-pointer"
+                              title="Visualizar Detalhes"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
 
                       </tr>
@@ -659,6 +878,28 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Edição Individual Real */}
+      {editingProduct && (
+        <ProductEditModal
+          product={editingProduct}
+          tenantId={activeTenantId || currentTenant.id}
+          categories={categories}
+          onClose={() => setEditingProduct(null)}
+          onSuccess={handleIndividualEditSuccess}
+        />
+      )}
+
+      {/* Modal de Edição em Massa Real */}
+      {isBulkEditOpen && (
+        <ProductBulkEditModal
+          selectedProductIds={selectedProductIds}
+          tenantId={activeTenantId || currentTenant.id}
+          categories={categories}
+          onClose={() => setIsBulkEditOpen(false)}
+          onSuccess={handleBulkEditSuccess}
+        />
       )}
 
     </div>

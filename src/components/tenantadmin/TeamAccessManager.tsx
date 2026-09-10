@@ -348,7 +348,7 @@ export const TeamAccessManager: React.FC = () => {
                   value={formData.name}
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Ex: Roberto Silva"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
@@ -363,7 +363,7 @@ export const TeamAccessManager: React.FC = () => {
                     value={formData.email}
                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                     placeholder="usuario@loja.com.br"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
 
@@ -376,7 +376,7 @@ export const TeamAccessManager: React.FC = () => {
                     value={formData.phone}
                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="11999998888"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
                   />
                 </div>
               </div>
@@ -388,7 +388,7 @@ export const TeamAccessManager: React.FC = () => {
                 <select
                   value={formData.role}
                   onChange={e => handleRoleChange(e.target.value as UserRole)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium text-slate-900 cursor-pointer"
                 >
                   <option value="sales_rep">Vendedor / Representante Comercial (Link com Comissão)</option>
                   <option value="stock_manager">Operador de Estoque / Expedição</option>
@@ -408,7 +408,7 @@ export const TeamAccessManager: React.FC = () => {
                         value={formData.sellerCode}
                         onChange={e => setFormData({ ...formData, sellerCode: e.target.value.toUpperCase() })}
                         placeholder="CARLOS10"
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-mono font-bold uppercase text-indigo-700"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-mono font-bold uppercase text-indigo-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                     <div>
@@ -418,7 +418,7 @@ export const TeamAccessManager: React.FC = () => {
                         step="0.5"
                         value={formData.commissionRate}
                         onChange={e => setFormData({ ...formData, commissionRate: Number(e.target.value) })}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-bold"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                   </div>

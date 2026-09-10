@@ -21,34 +21,65 @@ import { ProductManager } from './ProductManager';
 import { OrderManager } from './OrderManager';
 import { TeamAccessManager } from './TeamAccessManager';
 import { StoreSettings } from './StoreSettings';
-import { fetchAdminProducts } from '../../services/adminCatalogService';
+import { WholesaleCustomerManager } from './WholesaleCustomerManager';
+import { fetchAdminProducts, isValidUuid } from '../../services/adminCatalogService';
+import { fetchTenantPublicSettings } from '../../services/catalogService';
 import { Product } from '../../types';
 
 export const TenantDashboard: React.FC = () => {
   const { currentTenant, currentTenantOrders, setViewMode, showToast } = useApp();
   const { authTenant, authTenantId, isPlatformAdmin } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'team' | 'settings'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'wholesale_customers' | 'team' | 'settings'>('products');
   const [copiedLink, setCopiedLink] = useState(false);
-
-  // Resolução segura do Tenant Administrativo autenticado
-  const effectiveTenantId = authTenant?.id || authTenantId || (isPlatformAdmin ? currentTenant.id : '6f43b8f6-261c-407c-8b7d-24aa087b50ab');
 
   // Estado dos produtos administrativos carregados do Supabase
   const [adminProducts, setAdminProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productsError, setProductsError] = useState<string | null>(null);
 
-  const loadAdminProducts = useCallback(async () => {
-    if (!effectiveTenantId) {
-      setAdminProducts([]);
-      setProductsLoading(false);
-      return;
+  /**
+   * Resolução segura de Tenant UUID Administrativo:
+   * 1. tenant_admin: exclusivamente authTenantId (ou authTenant.id) de tenant_users.
+   *    Se ausente: FAIL CLOSED com erro explícito de contexto.
+   * 2. platform_admin: autorização global. Se não possuir tenant_users, resolve contexto
+   *    administrativo de navegação via PUBLIC_TENANT_SLUG -> tenant_public_settings -> tenant_id UUID.
+   *    RLS em public.products continua sendo a autoridade de autorização.
+   * NUNCA utiliza currentTenant.id, "tenant-mc-distribuicao", localStorage ou UUID hardcoded.
+   */
+  const resolveTargetTenantId = useCallback(async (): Promise<string> => {
+    if (!isPlatformAdmin) {
+      if (authTenantId && isValidUuid(authTenantId)) {
+        return authTenantId;
+      }
+      if (authTenant?.id && isValidUuid(authTenant.id)) {
+        return authTenant.id;
+      }
+      throw new Error('Contexto administrativo inválido: tenant_id real do Supabase não foi resolvido para este administrador.');
     }
+
+    // Platform admin: verifica se possui vínculo explícito ou resolve contexto temporário via slug canônico
+    if (authTenantId && isValidUuid(authTenantId)) {
+      return authTenantId;
+    }
+    if (authTenant?.id && isValidUuid(authTenant.id)) {
+      return authTenant.id;
+    }
+
+    const publicSlug = (import.meta as any).env?.VITE_PUBLIC_TENANT_SLUG || 'corsys-catalogo-demo';
+    const settings = await fetchTenantPublicSettings(publicSlug);
+    if (!settings?.tenantId || !isValidUuid(settings.tenantId)) {
+      throw new Error('Contexto administrativo inválido: tenant_id real do Supabase não foi resolvido pelo slug público.');
+    }
+    return settings.tenantId;
+  }, [authTenantId, authTenant, isPlatformAdmin]);
+
+  const loadAdminProducts = useCallback(async () => {
     setProductsLoading(true);
     setProductsError(null);
     try {
-      const data = await fetchAdminProducts(effectiveTenantId);
+      const resolvedTenantId = await resolveTargetTenantId();
+      const data = await fetchAdminProducts(resolvedTenantId);
       setAdminProducts(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo administrativo do Supabase.';
@@ -58,7 +89,7 @@ export const TenantDashboard: React.FC = () => {
     } finally {
       setProductsLoading(false);
     }
-  }, [effectiveTenantId]);
+  }, [resolveTargetTenantId]);
 
   useEffect(() => {
     loadAdminProducts();
@@ -242,6 +273,19 @@ export const TenantDashboard: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('wholesale_customers')}
+          className={`pb-3 transition-colors border-b-2 flex items-center gap-2 shrink-0 cursor-pointer ${
+            activeTab === 'wholesale_customers'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+          id="tab-tenant-wholesale-customers"
+        >
+          <Building2 className="w-4 h-4" />
+          Clientes Atacadistas (B2B)
+        </button>
+
+        <button
           onClick={() => setActiveTab('team')}
           className={`pb-3 transition-colors border-b-2 flex items-center gap-2 shrink-0 cursor-pointer ${
             activeTab === 'team'
@@ -280,6 +324,7 @@ export const TenantDashboard: React.FC = () => {
           />
         )}
         {activeTab === 'orders' && <OrderManager />}
+        {activeTab === 'wholesale_customers' && <WholesaleCustomerManager />}
         {activeTab === 'team' && <TeamAccessManager />}
         {activeTab === 'settings' && <StoreSettings />}
       </div>
