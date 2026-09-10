@@ -83,7 +83,10 @@ END $$;
 -- -------------------------------------------------------------------------
 -- 4. ATUALIZAÇÃO DA VIEW PÚBLICA DE CATÁLOGO (CATALOG_PRODUCTS)
 -- -------------------------------------------------------------------------
-CREATE OR REPLACE VIEW public.catalog_products
+-- Recriação explícita para evitar o erro 42P16 ao remover a coluna wholesale_price da view
+DROP VIEW IF EXISTS public.catalog_products;
+
+CREATE VIEW public.catalog_products
 WITH (security_invoker = true)
 AS
 SELECT 

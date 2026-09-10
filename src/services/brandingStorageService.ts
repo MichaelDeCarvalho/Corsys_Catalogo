@@ -322,26 +322,15 @@ export function extractOwnedBrandingPath(
 /**
  * Remove um arquivo recém-enviado do Storage para compensação/rollback caso
  * a gravação subsequente no banco falhe (consistência por compensação).
+ * Exige obrigatoriamente tenantUuid e validação estrita via extractOwnedBrandingPath (Fail-Closed).
  */
 export async function rollbackUploadedFile(
   filePathOrUrl: string | null,
-  tenantUuid?: string | null
+  tenantUuid: string
 ): Promise<void> {
-  if (!filePathOrUrl || !isSupabaseConfigured()) return;
+  if (!filePathOrUrl || !tenantUuid || !isSupabaseConfigured()) return;
   try {
-    let targetPath: string | null = null;
-    if (tenantUuid) {
-      targetPath = extractOwnedBrandingPath(filePathOrUrl, tenantUuid);
-    } else {
-      const bucketMarker = `/${BRANDING_STORAGE_BUCKET}/`;
-      if (filePathOrUrl.includes(bucketMarker)) {
-        targetPath = filePathOrUrl.split(bucketMarker)[1]?.split('?')[0] || '';
-      } else {
-        targetPath = filePathOrUrl;
-      }
-      targetPath = decodeURIComponent(targetPath);
-    }
-
+    const targetPath = extractOwnedBrandingPath(filePathOrUrl, tenantUuid);
     if (targetPath) {
       await supabase.storage
         .from(BRANDING_STORAGE_BUCKET)

@@ -22,9 +22,10 @@
 - `supabase/migrations/20260902_000001_initial_schema.sql`: **CONGELADA E APLICADA**.
 - `supabase/migrations/20260903_000002_import_official_catalog.sql`: **CONGELADA E APLICADA**.
 - `supabase/migrations/20260904_000003_public_catalog_settings.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260905_000004_wholesale_item_rules.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260909_000006_branding_storage.sql`: **CONGELADA NO REPOSITÓRIO** (Aguardando deployment via GitHub integration no Supabase Hosted).
+- `supabase/migrations/20260905_000004_wholesale_item_rules.sql`: **CORRIGIDA NO WORKSPACE** (Recriação determinística com DROP VIEW IF EXISTS para resolução do erro 42P16; aguardando próximo deploy via GitHub integration no Supabase Hosted).
+- `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **CORRIGIDA NO WORKSPACE** (Recriação determinística com DROP VIEW IF EXISTS, policies replay-safe e Fail-Closed B2B COALESCE(s.allow_b2b_mode, false); aguardando próximo deploy via GitHub integration no Supabase Hosted).
+- `supabase/migrations/20260909_000006_branding_storage.sql`: **PREPARADA NO WORKSPACE** (Policies de storage.objects com menor privilégio; aguardando próximo deploy via GitHub integration no Supabase Hosted).
+- `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **CRIADA NO WORKSPACE** (Forward-fix oficial para produção: reconciliação determinística de catalog_products, get_wholesale_catalog fail-closed e grants estritos de anon).
 
 ## 3. Estado do Storage de Branding (`tenant-assets`)
 - **Configuração (`supabase/config.toml`):** Bucket `tenant-assets` público (CDN via `getPublicUrl`), 5 MB limite, MIME restrito a `image/png`, `image/jpeg`, `image/webp` (SVG expressamente bloqueado).

@@ -70,6 +70,10 @@ REVOKE ALL ON public.wholesale_customers FROM PUBLIC, anon, authenticated;
 
 -- ANON: NENHUM ACESSO DIRETO (Submissão é exclusivamente via Edge Function pública sanitizada)
 
+-- Limpeza defensiva para replay seguro
+DROP POLICY IF EXISTS "wholesale_customers_select_self" ON public.wholesale_customers;
+DROP POLICY IF EXISTS "wholesale_customers_select_tenant_admin" ON public.wholesale_customers;
+
 -- AUTHENTICATED - CLIENTE: pode consultar estritamente seu próprio cadastro B2B
 CREATE POLICY "wholesale_customers_select_self"
 ON public.wholesale_customers FOR SELECT
@@ -100,7 +104,10 @@ GRANT SELECT ON public.wholesale_customers TO authenticated;
 -- -------------------------------------------------------------------------
 -- O catálogo público de varejo NÃO expõe preços ou quantidades de atacado.
 -- Nem cost_price, nem wholesale_price, nem wholesale_min_quantity.
-CREATE OR REPLACE VIEW public.catalog_products
+-- Recriação determinística da view pública
+DROP VIEW IF EXISTS public.catalog_products;
+
+CREATE VIEW public.catalog_products
 WITH (security_invoker = true)
 AS
 SELECT 
@@ -182,8 +189,8 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
-    -- 2. Resolve tenant pelo slug e verifica se está ativo
-    SELECT t.id, COALESCE(s.allow_b2b_mode, true)
+    -- 2. Resolve tenant pelo slug e verifica se está ativo (Fail-Closed: allow_b2b_mode = false se ausente)
+    SELECT t.id, COALESCE(s.allow_b2b_mode, false)
     INTO v_tenant_id, v_allow_b2b
     FROM public.tenants t
     LEFT JOIN public.tenant_public_settings s ON s.tenant_id = t.id
