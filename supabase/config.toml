@@ -122,6 +122,12 @@ public = true
 file_size_limit = "5MiB"
 allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
 
+# Local storage bucket configuration for product media assets
+[storage.buckets.product-media]
+public = true
+file_size_limit = "1MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

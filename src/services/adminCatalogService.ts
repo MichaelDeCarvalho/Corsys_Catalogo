@@ -59,6 +59,7 @@ export interface AdminProductUpdatePayload {
   stock?: number;
   active?: boolean;
   unit?: string;
+  images?: string[];
   deletedAt?: string | null;
 }
 
@@ -264,6 +265,32 @@ export async function updateAdminProduct(
   if (updates.active !== undefined) dbPayload.active = Boolean(updates.active);
   if (updates.unit !== undefined) dbPayload.unit = updates.unit;
   if (updates.deletedAt !== undefined) dbPayload.deleted_at = updates.deletedAt;
+
+  // Sanitização estrita de imagens: aceita apenas URLs https:// (rejeita http://, blob:, data:, javascript:, file: e qualquer não HTTPS; trim, sem duplicatas, mantém ordem)
+  if (updates.images !== undefined) {
+    if (Array.isArray(updates.images)) {
+      const sanitizedImages: string[] = [];
+      const seenUrls = new Set<string>();
+
+      for (const item of updates.images) {
+        if (typeof item !== 'string') continue;
+        const trimmed = item.trim();
+        if (!trimmed) continue;
+
+        const lower = trimmed.toLowerCase();
+        if (!lower.startsWith('https://')) {
+          continue;
+        }
+
+        if (!seenUrls.has(trimmed)) {
+          seenUrls.add(trimmed);
+          sanitizedImages.push(trimmed);
+        }
+      }
+
+      dbPayload.images = sanitizedImages;
+    }
+  }
 
   // Regras estritas de atacado no banco
   if (updates.wholesaleEnabled !== undefined) {

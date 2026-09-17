@@ -120,7 +120,7 @@
   - O bucket `tenant-assets` é destinado **exclusivamente ao branding da loja** (logo e banner do tenant).
   - Não armazena mídias de produto. O upload de imagens de produtos NÃO está implementado nesta etapa e fará parte de infraestrutura dedicada futura.
 
-## 9. Governança de Migrations e Próxima Etapa Oficial
+## 9. Governança de Migrations e Histórico
 - **Migrations 000001 a 000007 Congeladas em Produção:**
   - `000001_initial_schema.sql`: APLICADA / CONGELADA
   - `000002_import_official_catalog.sql`: APLICADA / CONGELADA
@@ -129,10 +129,42 @@
   - `000005_b2b_wholesale_access.sql`: APLICADA / CONGELADA
   - `000006_branding_storage.sql`: APLICADA / CONGELADA
   - `000007_reconcile_b2b_catalog_security.sql`: APLICADA / CONGELADA
-  - *Nenhuma alteração é permitida nas migrations 000001–000007. Qualquer futura necessidade de schema exigirá `000008+`.*
-- **Próxima Etapa Oficial:**
-  - **PRODUCT MEDIA STORAGE**:
-    - Armazenamento e gerenciamento de imagens reais de produtos.
-    - Etapa inicial: upload individual no modal de edição de produto (`ProductEditModal`).
-    - Etapa subsequente: importação em massa de produtos e mídias reutilizando a infraestrutura criada.
+  - *Nenhuma alteração é permitida nas migrations 000001–000007.*
+- **Migration 000008 (Nova):**
+  - `20260916_000008_product_media_storage.sql`: CRIADA NO WORKSPACE / AGUARDANDO DEPLOY
+
+## 10. Arquitetura de Storage para Mídias de Produtos (Product Media Storage V1)
+- **Status da Etapa:** **PRODUCT MEDIA STORAGE IMPLEMENTADO NO WORKSPACE AGUARDANDO DEPLOY**
+- **Bucket `product-media`:**
+  - Configuração em `supabase/config.toml`: `public = true`, `file_size_limit = "1MiB"`, `allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]`.
+  - SVG estritamente proibido (mitigação de XSS); GIF desabilitado nesta etapa.
+- **Políticas RLS em `storage.objects` (Migration 000008):**
+  - *Status:* **Políticas definidas na migration 000008 / aguardando deploy**.
+  - Validação server-side estrita de posse do produto via cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(name))[3] AND p.tenant_id::text = (storage.foldername(name))[1])`.
+  - `product_media_select_authenticated`: Restrito a `tenant_admin` no escopo do seu próprio tenant sob `/products/<product_id>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` gravando sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` removendo sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - Nenhuma policy de UPDATE (uploads versionados com `upsert: false`).
+  - Nenhuma policy de SELECT público amplo em `storage.objects` (leitura pública consome CDN pública do bucket).
+  - Sem DML direto em `storage.buckets` e sem `ALTER TABLE storage.objects`.
+- **Estrutura de Paths (Isolamento Multi-tenant & Multi-produto):**
+  - `<tenant_uuid>/products/<product_uuid>/media_<timestamp>_<random>.<ext>`
+  - Validação canônica estrita de UUID v4 para `tenant_id` e `product_id` (Fail-Closed).
+- **Serviço Especializado (`src/services/productMediaStorageService.ts`):**
+  - Inspeção binária de magic bytes para detecção real de PNG, JPEG e WebP.
+  - Função `extractOwnedProductMediaPath` com fail-closed, rejeição de path traversal (`..`, `\`), esquemas perigosos (`blob:`, `data:`, `javascript:`) e URLs de outros tenants/produtos.
+  - Rotinas compensatórias de rollback em caso de falha (`rollbackProductMediaUploads`, `removeProductMediaImage`).
+- **Camada de Aplicação e Edição de Produtos (`src/components/tenantadmin/ProductEditModal.tsx`):**
+  - Seção "Fotos do Produto" com upload múltiplo, preview local temporário (`URL.createObjectURL` com revogação garantida).
+  - Zero uploads remotos ao selecionar arquivos ou ao cancelar o modal. Upload ocorre estritamente ao clicar em "Salvar Alterações".
+  - Trava visual contra requisições concorrentes (`saving`).
+  - Ordem determinística com a imagem do índice 0 atuando como destaque principal no catálogo.
+  - Fluxo compensatório client-side: Validação -> Uploads -> Gravação em `public.products` -> Confirmação do Banco -> Remoção segura das mídias antigas desvinculadas.
+- **Integração no Catálogo (`src/services/adminCatalogService.ts`):**
+  - `AdminProductUpdatePayload` com campo `images?: string[]`.
+  - Sanitização estrita HTTPS-Only: array de strings com `trim()`, sem vazios, sem duplicatas, aceitando exclusivamente URLs `https://` (legadas ou novas) e rejeitando qualquer esquema não-HTTPS (`http://`, `blob:`, `data:`, `javascript:`, `file:`, etc.).
+- **Validação Automatizada:**
+  - `scripts/test-product-media-storage-points.ts`: 61/61 testes aprovados.
+  - `scripts/test-branding-storage-points.ts`: 35/35 testes aprovados (regressão zero).
+
 

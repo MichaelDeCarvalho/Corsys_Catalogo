@@ -305,7 +305,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
             activeTab === 'bulk_images' ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700'
           }`}>
-            Indisponível (Pendente Storage V2)
+            Importação em massa pendente
           </span>
         </button>
       </div>
@@ -338,17 +338,16 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       )}
 
       {activeTab === 'bulk_images' ? (
-        /* Painel Arquitetural: Importação de Imagens em Massa (Indisponível na Etapa 5C) */
+        /* Painel Arquitetural: Importação de Imagens em Massa */
         <div className="space-y-6">
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-bold">Módulo Indisponível na Etapa 5C</h3>
+                <h3 className="text-sm font-bold">Importação em Massa Pendente</h3>
                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  O upload em lote será habilitado após a configuração do Supabase Storage V2 (em etapa futura dedicada a Storage, Upload e Policies).
-                  Conforme a diretriz de integridade do projeto, o upload remoto em lote será ativado somente após
-                  a criação do bucket seguro e das políticas RLS. O catálogo oficial atual possui images = []. Nenhum upload falso ou simulado é executado nesta etapa.
+                  O envio individual de fotos por produto já está totalmente funcional no modal de edição de cada produto.
+                  A importação em lote e associação automática por SKU será liberada na próxima etapa dedicada de processamento em massa.
                 </p>
               </div>
             </div>

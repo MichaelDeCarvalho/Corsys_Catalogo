@@ -43,3 +43,31 @@
 - **Congelamento Estrito das Migrations 000001 a 000007:**
   - Todas as 7 migrations encontram-se aplicadas e congeladas no Supabase Hosted. Nenhuma alteração retroativa é permitida; evoluções futuras exigirão `000008+`.
 
+## 5. Segurança no Supabase Storage de Mídias de Produto (`product-media` - V1)
+- **Status:** **PRODUCT MEDIA STORAGE IMPLEMENTADO NO WORKSPACE AGUARDANDO DEPLOY**
+- **Prevenção contra XSS e Arquivos Maliciosos:**
+  - Formato SVG (`image/svg+xml`) estritamente proibido tanto na camada de frontend (`validateProductMediaFile`, `validateProductMediaFileDeep`) quanto no bucket (`allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]`).
+  - Inspeção binária de magic bytes para PNG (`0x89 50 4E 47`), JPEG (`0xFF D8 FF`) e WebP (`RIFF...WEBP`). Impede spoofing de extensão em executáveis ou scripts renomeados.
+  - GIF animado bloqueado nesta etapa.
+- **Isolamento de Namespace Multi-Tenant & Multi-Produto:**
+  - Diretório canônico no bucket: `<tenant_uuid>/products/<product_uuid>/media_<timestamp>_<random>.<ext>`.
+  - Fail-Closed: Validação obrigatória de UUID v4 (`isValidUuid`) tanto para o `tenant_id` quanto para o `product_id`. Rejeição total de slugs, strings vazias, sequências de path traversal (`..`, `\`) e caracteres especiais.
+  - Função `extractOwnedProductMediaPath` impede deleções cruzadas entre tenants (cross-tenant) e entre produtos do mesmo tenant (cross-product).
+- **Políticas RLS em `storage.objects` (Migration 000008):**
+  - *Status:* **Políticas definidas na migration 000008 / aguardando deploy**.
+  - Validação server-side estrita de vínculo do produto: cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(name))[3] AND p.tenant_id::text = (storage.foldername(name))[1])`.
+  - `product_media_select_authenticated`: Restrito a `tenant_admin` autenticado sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant. Impede enumeração e listagem pública de objetos no banco.
+  - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` autenticado sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - **Zero UPDATE policies:** Arquivos são versionados deterministicamente com `upsert: false`.
+  - **Sem SELECT público em `storage.objects`:** A leitura pública no catálogo ocorre diretamente pela URL de CDN do bucket público.
+  - **Sem DML direto** em `storage.buckets` e sem alteração estrutural em `storage.objects`.
+- **Sanitização de Payloads e Prevenção de Blobs (HTTPS-Only):**
+  - `AdminCatalogService.updateAdminProduct` sanitiza o array `images`: aceita exclusivamente URLs `https://` (novas ou legadas), rejeitando categoricamente esquemas não-HTTPS (`http://`, `blob:`, `data:`, `javascript:`, `file:`, etc.), elimina duplicatas preservando a ordem original e filtra strings vazias.
+  - Gestão rigorosa de `URL.revokeObjectURL` no ciclo de vida do componente React para evitar vazamento de memória e URLs transitórias órfãs.
+- **Consistência por Compensação (Client-Side):**
+  - Fluxo: Validação profunda -> Uploads novos -> Atualização no PostgreSQL -> Confirmação do banco -> Remoção de mídias antigas desvinculadas.
+  - Se qualquer upload intermediário ou a atualização do banco falhar, todos os novos arquivos recém-enviados são imediatamente deletados do Storage (`rollbackProductMediaUploads`).
+  - Mídias legadas do Supabase V1 (`LEGACY_SUPABASE_V1_HOST`) ou URLs externas são desvinculadas do banco com segurança sem tentativas de deleção física no Storage.
+
+
