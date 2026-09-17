@@ -367,6 +367,49 @@ async function runTests() {
   assert(!migration000008.includes('INSERT INTO storage.buckets'), '000008 NÃO faz DML direto em storage.buckets');
   assert(!migration000008.includes('ALTER TABLE storage.objects'), '000008 NÃO executa ALTER TABLE storage.objects');
 
+  // -------------------------------------------------------------------------
+  // 7. AUDITORIA DA MIGRATION 000009 & PREVENÇÃO DE SHADOWING DE COLUNA
+  // -------------------------------------------------------------------------
+  console.log('\n7. Auditoria da Migration 000009 (Escopo storage.objects.name)');
+
+  const migration000009 = fs.readFileSync('supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql', 'utf-8');
+  assert(migration000009.includes("bucket_id = 'product-media'"), '000009 filtra bucket_id = product-media');
+  assert(
+    migration000009.includes('storage.foldername(storage.objects.name)'),
+    '000009 utiliza explicitamente storage.foldername(storage.objects.name) qualificando o outer row'
+  );
+  assert(
+    migration000009.includes('p.id::text = (storage.foldername(storage.objects.name))[3]'),
+    '000009 valida terceiro segmento com storage.foldername(storage.objects.name)[3]'
+  );
+  assert(
+    migration000009.includes('p.tenant_id::text = (storage.foldername(storage.objects.name))[1]'),
+    '000009 valida primeiro segmento com storage.foldername(storage.objects.name)[1]'
+  );
+
+  // Verificação de preservação da migration 000008 anterior
+  const untouched000008 = fs.readFileSync('supabase/migrations/20260916_000008_product_media_storage.sql', 'utf-8');
+  assert(untouched000008.length > 0, '000008 permanece preservada e intacta');
+
+  // Verificação estática contra shadowing: se houver 'FROM public.products p', NÃO pode haver 'storage.foldername(name)'
+  const hasAmbiguousFoldernameIn000009 = migration000009.includes('storage.foldername(name)');
+  assert(
+    !hasAmbiguousFoldernameIn000009,
+    '000009 rejeita como implementação incorreta storage.foldername(name) dentro ou fora de subqueries com p'
+  );
+
+  assert(migration000009.includes('DROP POLICY IF EXISTS "product_media_select_authenticated" ON storage.objects;'), '000009 dropa policy SELECT anterior');
+  assert(migration000009.includes('DROP POLICY IF EXISTS "product_media_insert_tenant_admin" ON storage.objects;'), '000009 dropa policy INSERT anterior');
+  assert(migration000009.includes('DROP POLICY IF EXISTS "product_media_delete_tenant_admin" ON storage.objects;'), '000009 dropa policy DELETE anterior');
+  assert(migration000009.includes('EXISTS ('), '000009 contém cláusula EXISTS');
+  assert(migration000009.includes('CREATE POLICY "product_media_select_authenticated"'), '000009 recria policy SELECT');
+  assert(migration000009.includes('CREATE POLICY "product_media_insert_tenant_admin"'), '000009 recria policy INSERT');
+  assert(migration000009.includes('CREATE POLICY "product_media_delete_tenant_admin"'), '000009 recria policy DELETE');
+  assert(!migration000009.includes('CREATE POLICY "product_media_update_tenant_admin"'), '000009 NÃO cria policy de UPDATE');
+  assert(!migration000009.includes('CREATE POLICY "product_media_select_public"'), '000009 NÃO cria policy SELECT pública');
+  assert(!migration000009.includes('INSERT INTO storage.buckets'), '000009 NÃO faz DML em storage.buckets');
+  assert(!migration000009.includes('ALTER TABLE storage.objects'), '000009 NÃO executa ALTER TABLE storage.objects');
+
   console.log('\n======================================================');
   console.log(`RESULTADO: ${passed} PASSOU / ${failed} FALHOU`);
   console.log('======================================================\n');

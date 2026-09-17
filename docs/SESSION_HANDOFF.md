@@ -11,8 +11,13 @@
   - Configurado: `public = true`, `file_size_limit = "1MiB"`, `allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]`.
   - SVG expressamente bloqueado (mitigação de XSS); GIF animado desabilitado nesta etapa.
 - **Migration 000008 (`supabase/migrations/20260916_000008_product_media_storage.sql`):**
-  - *Status:* **Políticas definidas na migration 000008 / aguardando deploy**.
-  - Validação server-side estrita de posse de produto via cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(name))[3] AND p.tenant_id::text = (storage.foldername(name))[1])`.
+  - *Status:* **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`).
+  - No banco real, foi identificado que `storage.foldername(name)` dentro de `EXISTS (SELECT 1 FROM public.products p ...)` sofreu shadowing para `p.name` (coluna da tabela `products`).
+- **Migration 000009 (`supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`):**
+  - *Status:* **CRIADA NO WORKSPACE COMO FORWARD-FIX / AGUARDANDO DEPLOY** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`).
+  - Dropa as 3 policies de 000008 e as recria com qualificação explícita do outer row: `storage.foldername(storage.objects.name)`.
+  - Preserva integralmente as permissões e lógica de menor privilégio da 000008, sem qualquer ampliação de privilégios.
+  - *Runtime de Product Media:* **Ainda aguarda validação em ambiente real após o deploy da migration 000009** (não declarar runtime PASS ainda).
   - Policies em `storage.objects` com Menor Privilégio:
     - `product_media_select_authenticated`: SELECT autenticado restrito ao namespace do próprio tenant sob `/products/<product_id>` ou platform_admin, com produto existente e pertencente ao tenant.
     - `product_media_insert_tenant_admin`: INSERT restrito a tenant_admin no diretório `<tenant_uuid>/products/<product_uuid>` ou platform_admin, com produto existente e pertencente ao tenant.
@@ -38,7 +43,7 @@
   - Badge em `ProductManager.tsx` atualizado para "Importação em massa pendente".
 - **ADR 003 (`docs/adr/ADR_003_PRODUCT_MEDIA_STORAGE.md`):** Criado com especificações completas de arquitetura, isolamento e segurança.
 - **Suítes de Testes Automatizados:**
-  - `scripts/test-product-media-storage-points.ts`: **61/61 PASSOU (0 FALHOU)**.
+  - `scripts/test-product-media-storage-points.ts`: **78/78 PASSOU (0 FALHOU)**.
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU - Regressão Zero)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.
   - `npm run build` (`vite build`): **PASSOU**.
@@ -53,11 +58,13 @@
 - `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260909_000006_branding_storage.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA**
-- `supabase/migrations/20260916_000008_product_media_storage.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
+- `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
+- `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **CRIADA NO WORKSPACE COMO FORWARD-FIX / AGUARDANDO DEPLOY** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
 
 ---
 
 ## 3. Próximos Passos (Sob Autorização Explícita do Usuário)
-1. Realizar deploy/sync da migration `000008` e configuração do bucket `product-media` no Supabase Hosted.
-2. Implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
+1. Realizar deploy/sync da migration `000009` (forward-fix de escopo) no Supabase Hosted.
+2. Validar runtime de upload e remoção de mídias de produto no ambiente hospedado.
+3. Implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
 

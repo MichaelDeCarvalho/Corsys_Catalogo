@@ -138,15 +138,21 @@
 - **Bucket `product-media`:**
   - Configuração em `supabase/config.toml`: `public = true`, `file_size_limit = "1MiB"`, `allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]`.
   - SVG estritamente proibido (mitigação de XSS); GIF desabilitado nesta etapa.
-- **Políticas RLS em `storage.objects` (Migration 000008):**
-  - *Status:* **Políticas definidas na migration 000008 / aguardando deploy**.
-  - Validação server-side estrita de posse do produto via cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(name))[3] AND p.tenant_id::text = (storage.foldername(name))[1])`.
-  - `product_media_select_authenticated`: Restrito a `tenant_admin` no escopo do seu próprio tenant sob `/products/<product_id>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-  - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` gravando sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-  - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` removendo sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-  - Nenhuma policy de UPDATE (uploads versionados com `upsert: false`).
-  - Nenhuma policy de SELECT público amplo em `storage.objects` (leitura pública consome CDN pública do bucket).
-  - Sem DML direto em `storage.buckets` e sem `ALTER TABLE storage.objects`.
+- **Políticas RLS em `storage.objects` (Migration 000008 e Forward-Fix 000009):**
+  - *Status:* **000008 aplicada no Supabase hosted; Forward-fix 000009 criado no workspace / aguardando deploy**.
+  - **Bug identificado na 000008:** No banco real, dentro do subquery `EXISTS (SELECT 1 FROM public.products p ...)`, a chamada `storage.foldername(name)` sofreu shadowing pelo parser PostgreSQL, sendo resolvida como `storage.foldername(p.name)` (coluna `name` da tabela `products`).
+  - **Correção Forward na 000009 (`20260917_000009_fix_product_media_policy_scope.sql`):**
+    - Executa `DROP POLICY IF EXISTS` para as 3 policies de `product-media`.
+    - Recria as policies qualificando explicitamente a referência da linha externa como `storage.foldername(storage.objects.name)`:
+      `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(storage.objects.name))[3] AND p.tenant_id::text = (storage.foldername(storage.objects.name))[1])`.
+    - Preserva rigorosamente as permissões de menor privilégio da 000008 sem nenhuma ampliação de privilégios.
+    - `product_media_select_authenticated`: Restrito a `tenant_admin` no escopo do seu próprio tenant sob `/products/<product_id>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+    - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` gravando sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+    - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` removendo sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+    - Nenhuma policy de UPDATE (uploads versionados com `upsert: false`).
+    - Nenhuma policy de SELECT público amplo em `storage.objects` (leitura pública consome CDN pública do bucket).
+    - Sem DML direto em `storage.buckets` e sem `ALTER TABLE storage.objects`.
+  - *Runtime de Product Media:* **Ainda aguarda validação em ambiente real após o deploy da migration 000009** (não declarar runtime PASS até confirmação do deploy da 000009).
 - **Estrutura de Paths (Isolamento Multi-tenant & Multi-produto):**
   - `<tenant_uuid>/products/<product_uuid>/media_<timestamp>_<random>.<ext>`
   - Validação canônica estrita de UUID v4 para `tenant_id` e `product_id` (Fail-Closed).
@@ -164,7 +170,7 @@
   - `AdminProductUpdatePayload` com campo `images?: string[]`.
   - Sanitização estrita HTTPS-Only: array de strings com `trim()`, sem vazios, sem duplicatas, aceitando exclusivamente URLs `https://` (legadas ou novas) e rejeitando qualquer esquema não-HTTPS (`http://`, `blob:`, `data:`, `javascript:`, `file:`, etc.).
 - **Validação Automatizada:**
-  - `scripts/test-product-media-storage-points.ts`: 61/61 testes aprovados.
+  - `scripts/test-product-media-storage-points.ts`: 78/78 testes aprovados.
   - `scripts/test-branding-storage-points.ts`: 35/35 testes aprovados (regressão zero).
 
 

@@ -53,15 +53,18 @@
   - Diretório canônico no bucket: `<tenant_uuid>/products/<product_uuid>/media_<timestamp>_<random>.<ext>`.
   - Fail-Closed: Validação obrigatória de UUID v4 (`isValidUuid`) tanto para o `tenant_id` quanto para o `product_id`. Rejeição total de slugs, strings vazias, sequências de path traversal (`..`, `\`) e caracteres especiais.
   - Função `extractOwnedProductMediaPath` impede deleções cruzadas entre tenants (cross-tenant) e entre produtos do mesmo tenant (cross-product).
-- **Políticas RLS em `storage.objects` (Migration 000008):**
-  - *Status:* **Políticas definidas na migration 000008 / aguardando deploy**.
-  - Validação server-side estrita de vínculo do produto: cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(name))[3] AND p.tenant_id::text = (storage.foldername(name))[1])`.
+- **Políticas RLS em `storage.objects` (Migration 000008 e Forward-Fix 000009):**
+  - *Status:* **000008 aplicada no Supabase hosted; Forward-fix 000009 criado / aguardando deploy**.
+  - **Incidente de Escopo / Shadowing em 000008:** No Postgres real, dentro da subquery `EXISTS (SELECT 1 FROM public.products p ...)`, a chamada `storage.foldername(name)` sofreu shadowing por `p.name` (coluna da tabela `products`).
+  - **Correção Forward na 000009:** Recria as policies qualificando explicitamente o outer row com `storage.foldername(storage.objects.name)`. Preserva rigorosamente as permissões de 000008 sem qualquer ampliação de privilégios.
+  - Validação server-side estrita de vínculo do produto: cláusula `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(storage.objects.name))[3] AND p.tenant_id::text = (storage.foldername(storage.objects.name))[1])`.
   - `product_media_select_authenticated`: Restrito a `tenant_admin` autenticado sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant. Impede enumeração e listagem pública de objetos no banco.
   - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` autenticado sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
   - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
   - **Zero UPDATE policies:** Arquivos são versionados deterministicamente com `upsert: false`.
   - **Sem SELECT público em `storage.objects`:** A leitura pública no catálogo ocorre diretamente pela URL de CDN do bucket público.
   - **Sem DML direto** em `storage.buckets` e sem alteração estrutural em `storage.objects`.
+  - *Runtime de Product Media:* **Ainda aguarda validação em ambiente real após o deploy da migration 000009** (não declarar runtime PASS).
 - **Sanitização de Payloads e Prevenção de Blobs (HTTPS-Only):**
   - `AdminCatalogService.updateAdminProduct` sanitiza o array `images`: aceita exclusivamente URLs `https://` (novas ou legadas), rejeitando categoricamente esquemas não-HTTPS (`http://`, `blob:`, `data:`, `javascript:`, `file:`, etc.), elimina duplicatas preservando a ordem original e filtra strings vazias.
   - Gestão rigorosa de `URL.revokeObjectURL` no ciclo de vida do componente React para evitar vazamento de memória e URLs transitórias órfãs.
