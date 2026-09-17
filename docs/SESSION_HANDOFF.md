@@ -1,34 +1,33 @@
-# SESSION HANDOFF - ETAPA B2B MIGRATIONS 000004 & 000005 CONCLUÍDA
+# SESSION HANDOFF - ETAPA BRANDING STORAGE & MIGRATIONS 000001–000007 CONCLUÍDA
 
-## 1. O Que Foi Realizado na Etapa B2B
-- **Migration 000004 (`wholesale_item_rules.sql`):**
-  - Campos `wholesale_enabled` e `wholesale_min_quantity` adicionados a `public.products`.
-  - Constraint atômica `chk_products_wholesale_enabled_rules`.
-  - View pública `public.catalog_products` sanitizada (sem colunas de atacado ou custo para anon).
-  - Regra de incremento unitário (0 -> mín -> mín+1 -> mín+2) sem múltiplos forçados.
-- **Migration 000005 (`b2b_wholesale_access.sql`):**
-  - Tabela `public.wholesale_customers` com RLS estrito (deny-by-default).
-  - Concessões colunares restritivas para `service_role` (Least Privilege Auditado).
-  - Nenhuma concessão de `DELETE` no sistema.
-  - RPCs `public.get_wholesale_catalog` e `public.get_my_wholesale_status` com `SECURITY DEFINER` e `SET search_path = ''`.
-- **Frontend & UX de Troca de Modo:**
-  - `B2BSwitchModeConfirmModal` com proteção explícita contra expurgo de carrinho.
-  - Contextos `AppContext` e `WholesaleAccessContext` integrados.
-- **Auditoria de Segurança:**
-  - Zero exposição de chaves privadas ou service_role no client.
-  - Zero bypass de RLS.
+## 1. O Que Foi Realizado e Validado nesta Etapa
+- **Migrations 000001 a 000007 Congeladas e Aplicadas com Sucesso:**
+  - Branch `main` sincronizada com GitHub.
+  - Integração Supabase Hosted com deploy em produção confirmado (`SUCCESS / VERDE`).
+  - Resolução do erro 42P16 via recriação determinística com `DROP VIEW IF EXISTS` em `catalog_products`.
+  - Reconciliação oficial em produção pela migration `20260910_000007_reconcile_b2b_catalog_security.sql`.
+  - Fail-closed estrito na RPC `get_wholesale_catalog`: `COALESCE(s.allow_b2b_mode, false)`.
+  - Reafirmação de grants anônimos sanitizados em `public.products` (sem colunas de atacado/custo).
+- **Branding Storage (`tenant-assets`) Implantado e Validado:**
+  - Bucket `tenant-assets` criado e ativo no Supabase Hosted.
+  - Policies RLS de `storage.objects` ativas (SELECT restrito, INSERT e DELETE apenas para `tenant_admin` do próprio tenant, sem UPDATE).
+  - Runtime no AI Studio Preview: logo upload/reload/persistência/substituição/remoção = PASS; banner upload/reload/persistência/substituição/remoção = PASS.
+  - Suíte de testes: 35/35 PASS (`scripts/test-branding-storage-points.ts`), lint PASS, build PASS.
+  - Validação de Cross-tenant: `NOT TESTABLE IN CURRENT DATASET` (não declarar risco zero).
 
 ## 2. Status das Migrations
-- `supabase/migrations/20260902_000001_initial_schema.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260903_000002_import_official_catalog.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260904_000003_public_catalog_settings.sql`: **CONGELADA E APLICADA**.
-- `supabase/migrations/20260905_000004_wholesale_item_rules.sql`: **CORRIGIDA NO WORKSPACE** (Recriação determinística com DROP VIEW IF EXISTS para resolução do erro 42P16; aguardando próximo deploy via GitHub integration no Supabase Hosted).
-- `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **CORRIGIDA NO WORKSPACE** (Recriação determinística com DROP VIEW IF EXISTS, policies replay-safe e Fail-Closed B2B COALESCE(s.allow_b2b_mode, false); aguardando próximo deploy via GitHub integration no Supabase Hosted).
-- `supabase/migrations/20260909_000006_branding_storage.sql`: **PREPARADA NO WORKSPACE** (Policies de storage.objects com menor privilégio; aguardando próximo deploy via GitHub integration no Supabase Hosted).
-- `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **CRIADA NO WORKSPACE** (Forward-fix oficial para produção: reconciliação determinística de catalog_products, get_wholesale_catalog fail-closed e grants estritos de anon).
+- `supabase/migrations/20260902_000001_initial_schema.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260903_000002_import_official_catalog.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260904_000003_public_catalog_settings.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260905_000004_wholesale_item_rules.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260909_000006_branding_storage.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA**.
+
+*Regra Operacional: As migrations 000001 a 000007 estão estritamente congeladas e não devem ser modificadas sob nenhuma hipótese. Qualquer alteração de banco deve ser feita via migration 000008+.*
 
 ## 3. Estado do Storage de Branding (`tenant-assets`)
-- **Configuração (`supabase/config.toml`):** Bucket `tenant-assets` público (CDN via `getPublicUrl`), 5 MB limite, MIME restrito a `image/png`, `image/jpeg`, `image/webp` (SVG expressamente bloqueado).
+- **Bucket Hosted:** `tenant-assets` (public = true, limite 5 MiB, MIME: PNG, JPEG, WebP; SVG expressamente bloqueado).
 - **Policies (`20260909_000006_branding_storage.sql`):**
   - RLS em `storage.objects` com Menor Privilégio.
   - SELECT autenticado restrito ao diretório `<tenant_uuid>` ou platform_admin (exigido por `storage.remove()`). Sem SELECT público em banco.
@@ -39,13 +38,17 @@
   - Validação de UUID canônico v4 Fail-Closed em todas as rotas e remoções (`extractOwnedBrandingPath`).
   - Consistência por compensação (rollback de logo/banner se banco ou upload falhar).
   - Trava de concorrência (`isBusy`) e ciclo de vida de Object URLs (`URL.revokeObjectURL`).
-- **Suíte de Testes:** 35/35 testes aprovados (`scripts/test-branding-storage-points.ts`).
+- **Diferenciação Estrita de Domínio:**
+  - `tenant-assets` gerencia exclusivamente o branding da loja (logo e banner do tenant).
+  - Imagens de produtos pertencem a uma infraestrutura dedicada futura e NÃO estão implementadas neste momento.
 
-## 4. Estado das Edge Functions
+## 4. Estado das Edge Functions B2B
 - `supabase/functions/submit-wholesale-application/index.ts`: Configurada (`verify_jwt = false`), auditada e testada no fluxo E2E B2B.
 - `supabase/functions/manage-wholesale-customer/index.ts`: Configurada (`verify_jwt = true`), auditada e testada no fluxo E2E B2B.
 
-## 4. Próximos Passos
-- Monitoramento contínuo das solicitações B2B no painel administrativo.
-- Sincronização e publicação conforme pipelines do projeto.
+## 5. Próxima Etapa Oficial
+- **PRODUCT MEDIA STORAGE**:
+  - Infraestrutura dedicada para armazenamento de imagens reais de produtos.
+  - Primeiro passo: upload e gestão individual de fotos no modal de edição de produto (`ProductEditModal`).
+  - Segundo passo: importação em massa de produtos com associação de imagens reutilizando a mesma infraestrutura.
 

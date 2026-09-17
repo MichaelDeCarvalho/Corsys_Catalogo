@@ -28,4 +28,18 @@
 - **Deleção Segura e Compatibilidade com Registros Legados:**
   - Validação estrita via `extractOwnedBrandingPath`: Apenas URLs/paths comprovadamente originados do bucket `tenant-assets` e dentro do diretório `<tenant_uuid>/branding/` são passíveis de exclusão física.
   - Registros antigos ou URLs externas (ex: `https://site-externo.com/logo.png`) são substituídos no banco de dados sem tentativa de remoção no Storage, evitando erros e tentativas de acesso fora do boundary do tenant.
+- **Validação de Runtime e Risco Residual Cross-Tenant:**
+  - Runtime validado no AI Studio Preview: logo upload/reload/persistência/substituição/remoção = PASS; banner upload/reload/persistência/substituição/remoção = PASS.
+  - Teste em runtime de acesso Cross-tenant: **NOT TESTABLE IN CURRENT DATASET** (o dataset atual de homologação contém apenas o tenant canônico demo; não declarar risco zero. A proteção é mantida estruturalmente por RLS na migration 000006 e validação Fail-Closed no client).
+- **Segregação de Escopo de Storage:**
+  - O bucket `tenant-assets` atende estritamente o branding institucional da loja (logo e banner).
+  - Imagens de produtos pertencem à etapa futura `PRODUCT MEDIA STORAGE` e não utilizam nem compartilham o fluxo de branding atual.
+
+## 4. Reconciliação B2B e Governança de Migrations (000001–000007)
+- **Defesa em Profundidade na Reconciliação (Migration 000007):**
+  - Reafirmação explícita de grants: o papel `anon` possui SELECT apenas nas 23 colunas públicas de `public.products`, sem acesso a `cost_price`, `wholesale_price`, `wholesale_enabled` e `wholesale_min_quantity`.
+  - Recriação determinística de `public.catalog_products` (`security_invoker = true`) sem qualquer coluna de atacado ou custo.
+  - RPC `public.get_wholesale_catalog` com fail-closed estrito (`COALESCE(s.allow_b2b_mode, false)`), exigindo aprovação de credenciamento B2B e privilégios revogados de `PUBLIC` e `anon`.
+- **Congelamento Estrito das Migrations 000001 a 000007:**
+  - Todas as 7 migrations encontram-se aplicadas e congeladas no Supabase Hosted. Nenhuma alteração retroativa é permitida; evoluções futuras exigirão `000008+`.
 

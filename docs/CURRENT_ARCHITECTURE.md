@@ -29,24 +29,29 @@
   3. Migration `supabase/migrations/20260903_000002_import_official_catalog.sql` autocontida com 520 tuplas literais em staging table.
   4. Validações fail-closed e INSERT direto em `public.products` (sem UPSERT).
 
-## 4. Regras de Itens e Mínimos de Atacado (Migration 000004)
+## 4. Regras de Itens e Mínimos de Atacado (Migration 000004 & Reconciliação 000007)
 - **Campos Estruturados em `public.products`:**
   - `wholesale_enabled BOOLEAN NOT NULL DEFAULT false`
   - `wholesale_min_quantity INTEGER`
 - **Constraints de Integridade:**
   - `chk_products_wholesale_enabled_rules`: `wholesale_enabled = true` exige `wholesale_price IS NOT NULL` e `wholesale_min_quantity >= 1`; `wholesale_enabled = false` força `wholesale_min_quantity IS NULL`.
 - **View Pública (`public.catalog_products`):**
-  - Oculta `wholesale_price`, `wholesale_min_quantity`, `wholesale_enabled` e `cost_price` de consultas anônimas.
+  - Recriação determinística via `DROP VIEW IF EXISTS` + `CREATE VIEW WITH (security_invoker = true)`.
+  - Oculta estritamente `wholesale_price`, `wholesale_min_quantity`, `wholesale_enabled` e `cost_price` de consultas anônimas e públicas.
 
-## 5. Arquitetura de Acesso B2B e Credenciamento (Migration 000005)
+## 5. Arquitetura de Acesso B2B e Credenciamento (Migrations 000005 & 000007)
 - **Tabela `public.wholesale_customers`:**
   - Segregação de compradores B2B com `UNIQUE(tenant_id, cnpj)` e status (`pending`, `approved`, `rejected`, `suspended`).
-  - Zero privilégios de escrita para `PUBLIC`, `anon` e `authenticated`.
+  - RLS deny-by-default: zero privilégios de escrita para `PUBLIC`, `anon` e `authenticated`.
+  - Policies replay-safe contra duplicação em rebuilds.
   - `service_role` com privilégios colunares restritivos (Least Privilege).
   - Sem privilégio de `DELETE` no sistema.
 - **RPCs Sanitizadas (`SECURITY DEFINER` com `SET search_path = ''`):**
-  - `public.get_wholesale_catalog(p_tenant_slug)`: Acesso estritamente autenticado e aprovado.
+  - `public.get_wholesale_catalog(p_tenant_slug)`: Acesso estritamente autenticado e aprovado. Fail-closed total com `COALESCE(s.allow_b2b_mode, false)` (loja sem settings ou com allow_b2b_mode desabilitado bloqueia B2B).
   - `public.get_my_wholesale_status(p_tenant_slug)`: Consulta de estado de credenciamento.
+  - `public.get_wholesale_catalog` com privilégios restritos a `authenticated` (`REVOKE ALL FROM PUBLIC, anon`).
+- **Migration 000007 (Forward-Fix Oficial):**
+  - Reconciliação determinística em produção de `catalog_products`, RPC `get_wholesale_catalog` fail-closed e grants de anon em `public.products`.
 
 ## 6. Estado das Edge Functions B2B
 - `supabase/functions/submit-wholesale-application/index.ts`:
@@ -100,4 +105,34 @@
 - **Exclusão Segura e Compatibilidade com URLs Legadas:**
   - Função `extractOwnedBrandingPath`: Antes de qualquer chamada a `storage.remove()`, valida que a URL antiga pertence estritamente ao bucket `tenant-assets` e começa exatamente com `<tenant_uuid>/branding/`.
   - Registros com URLs externas legadas (ex: `https://site-externo.com/logo.png`) ou de outros buckets são preservados sem tentativa de exclusão física, atualizando apenas o ponteiro no banco de dados (Fail-Closed).
+- **Estado Real e Validação em Runtime (Supabase Hosted & Preview):**
+  - Bucket `tenant-assets`: **EXISTE** e provisionado no Supabase Hosted (`public = true`, limite 5 MiB, MIME restrito a PNG, JPEG e WebP, SVG bloqueado).
+  - Runtime via AI Studio Preview:
+    - Logo upload: **PASS**
+    - Logo reload e persistência: **PASS**
+    - Banner upload: **PASS**
+    - Banner reload e persistência: **PASS**
+    - Substituição de assets: **PASS**
+    - Remoção de assets: **PASS**
+  - Validação de testes locais: 35/35 testes aprovados (`scripts/test-branding-storage-points.ts`), lint PASS, build PASS.
+  - Teste Cross-tenant em runtime: **NOT TESTABLE IN CURRENT DATASET** (não declarar risco zero de forma cega; mitigado formalmente por RLS e validação de UUID no client).
+- **Diferenciação Estrita de Domínio de Mídia:**
+  - O bucket `tenant-assets` é destinado **exclusivamente ao branding da loja** (logo e banner do tenant).
+  - Não armazena mídias de produto. O upload de imagens de produtos NÃO está implementado nesta etapa e fará parte de infraestrutura dedicada futura.
+
+## 9. Governança de Migrations e Próxima Etapa Oficial
+- **Migrations 000001 a 000007 Congeladas em Produção:**
+  - `000001_initial_schema.sql`: APLICADA / CONGELADA
+  - `000002_import_official_catalog.sql`: APLICADA / CONGELADA
+  - `000003_public_catalog_settings.sql`: APLICADA / CONGELADA
+  - `000004_wholesale_item_rules.sql`: APLICADA / CONGELADA
+  - `000005_b2b_wholesale_access.sql`: APLICADA / CONGELADA
+  - `000006_branding_storage.sql`: APLICADA / CONGELADA
+  - `000007_reconcile_b2b_catalog_security.sql`: APLICADA / CONGELADA
+  - *Nenhuma alteração é permitida nas migrations 000001–000007. Qualquer futura necessidade de schema exigirá `000008+`.*
+- **Próxima Etapa Oficial:**
+  - **PRODUCT MEDIA STORAGE**:
+    - Armazenamento e gerenciamento de imagens reais de produtos.
+    - Etapa inicial: upload individual no modal de edição de produto (`ProductEditModal`).
+    - Etapa subsequente: importação em massa de produtos e mídias reutilizando a infraestrutura criada.
 

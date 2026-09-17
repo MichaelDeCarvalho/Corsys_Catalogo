@@ -26,12 +26,13 @@ Para proteger políticas comerciais, margens de lucro dos distribuidores e a int
 - Integridade: Chave única composta `UNIQUE(tenant_id, cnpj)` impedindo duplicação de cadastros corporativos dentro do mesmo tenant.
 
 ### 3. RPC Sanitizada de Catálogo Atacadista (`public.get_wholesale_catalog`)
-- Criação da função `public.get_wholesale_catalog(p_tenant_slug TEXT)` com `SECURITY DEFINER` e `SET search_path = ''`.
+- Criação da função `public.get_wholesale_catalog(p_tenant_slug TEXT)` com `SECURITY DEFINER` e `SET search_path = ''` (reconciliada e reafirmada na Migration 000007).
 - Execução com validação estrita *fail-closed*:
-  - Verifica se o tenant está ativo via `private.is_tenant_active()`.
-  - Verifica se `auth.uid()` possui registro aprovado (`status = 'approved'`) no tenant.
+  - Verifica se o tenant está ativo via status = 'active'.
+  - Valida se o tenant possui `allow_b2b_mode = true` de forma fail-closed (`COALESCE(s.allow_b2b_mode, false)`).
+  - Exige `auth.uid()` não nulo e com registro aprovado (`status = 'approved'`) em `public.wholesale_customers`.
   - Retorna apenas produtos ativos com `wholesale_enabled = true` e `wholesale_price IS NOT NULL`.
-  - Emite exceção explícita (`P0001: Acesso negado`) caso o solicitante não possua credenciamento ativo.
+  - Privilégios de execução estritamente restritos a `authenticated` (`REVOKE ALL FROM PUBLIC, anon`).
 
 ### 4. RPC de Consulta de Status B2B (`public.get_my_wholesale_status`)
 - Função `public.get_my_wholesale_status(p_tenant_slug TEXT)` com `SECURITY DEFINER` para permitir que o storefront autenticado consulte seu estado de credenciamento e dados da empresa sem expor queries diretas na tabela.

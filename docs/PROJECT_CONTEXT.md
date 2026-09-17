@@ -46,15 +46,19 @@
   - `featured = false`, `is_new = false`, `active = true`, `sort_order = 0`
 - **Wholesale Tiers:** Nenhuma tier fictícia gerada (respeito estrito ao escopo)
 
-## 4. Estado das Migrations
-- `supabase/migrations/20260902_000001_initial_schema.sql`: **CONGELADA E INTOCADA** (760 linhas).
-- `supabase/migrations/20260903_000002_import_official_catalog.sql`: **CONCLUÍDA E APLICADA**, bootstrap autocontido de 520 produtos em `public.products`.
-- `supabase/migrations/20260904_000003_public_catalog_settings.sql`: **NOVA**, adiciona `wholesale_min_order_value NUMERIC(10,2)` com constraint e efetua carga fail-closed de `public.tenant_public_settings` sem UPSERT.
+## 4. Estado das Migrations (Congeladas em Produção)
+- `supabase/migrations/20260902_000001_initial_schema.sql`: **APLICADA / CONGELADA**.
+- `supabase/migrations/20260903_000002_import_official_catalog.sql`: **APLICADA / CONGELADA** (bootstrap de 520 produtos).
+- `supabase/migrations/20260904_000003_public_catalog_settings.sql`: **APLICADA / CONGELADA** (configurações públicas e pedido mínimo atacado).
+- `supabase/migrations/20260905_000004_wholesale_item_rules.sql`: **APLICADA / CONGELADA** (regras de atacado por item e view pública sanitizada via DROP/CREATE).
+- `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **APLICADA / CONGELADA** (credenciamento B2B, tabela wholesale_customers, RPCs com fail-closed).
+- `supabase/migrations/20260909_000006_branding_storage.sql`: **APLICADA / CONGELADA** (policies de autorização e menor privilégio para bucket tenant-assets).
+- `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA** (forward-fix de reconciliação determinística de catalog_products e fail-closed B2B).
 
-## 5. Próximos Passos
-- Etapa 5B: Leitura real do Supabase e sincronização no frontend aplicando a paleta visual aprovada.
-- Painel Administrativo:
-  - Edição individual de produto (incluindo upload/gestão de fotos).
-  - Edição em massa com checkbox de seleção.
-  - Download de modelo de planilha padronizada para importação/atualização em massa.
-  - Cadastro e upload de imagens em massa.
+*Regra de Ouro: Migrations 000001 a 000007 estão estritamente congeladas. Qualquer evolução posterior de schema exigirá 000008+.*
+
+## 5. Próxima Etapa Oficial
+- **PRODUCT MEDIA STORAGE**:
+  - Infraestrutura dedicada para armazenamento de imagens reais de produtos (diferenciada do bucket `tenant-assets` de branding da loja).
+  - Primeiro passo: upload e gestão individual de fotos no `ProductEditModal`.
+  - Segundo passo: importação e associação de imagens em massa reutilizando a mesma infraestrutura.
