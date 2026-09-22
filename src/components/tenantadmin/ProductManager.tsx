@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Search, 
   Eye, 
@@ -40,6 +40,8 @@ export interface ProductManagerProps {
   error?: string | null;
   onReload?: () => void;
 }
+
+export const ITEMS_PER_PAGE = 40;
 
 export const ProductManager: React.FC<ProductManagerProps> = ({
   products: propProducts,
@@ -115,6 +117,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   // Estados locais de UI
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<'list' | 'bulk_images'>('list');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -124,23 +127,59 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [isBulkEditOpen, setIsBulkEditOpen] = useState<boolean>(false);
   const [isBulkProcessing, setIsBulkProcessing] = useState<boolean>(false);
 
-  // Categorias únicas derivadas dinamicamente dos produtos reais do Supabase
-  const categories = Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort();
+  // Categorias únicas derivadas dinamicamente dos produtos reais do Supabase (memoizadas)
+  const categories = useMemo(() => {
+    return Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort();
+  }, [products]);
 
-  // Filtragem estrita dos produtos
-  const filteredProducts = products.filter(p => {
+  // Contagem por categoria calculada em passagem única (evita products.filter por opção)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of products) {
+      if (p.category) {
+        counts[p.category] = (counts[p.category] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [products]);
+
+  // Filtragem estrita dos produtos (memoizada)
+  const filteredProducts = useMemo(() => {
     const searchLower = searchTerm.toLowerCase().trim();
-    const matchesSearch = 
-      !searchLower ||
-      p.name.toLowerCase().includes(searchLower) ||
-      p.sku.toLowerCase().includes(searchLower) ||
-      (p.brand && p.brand.toLowerCase().includes(searchLower)) ||
-      p.category.toLowerCase().includes(searchLower);
-    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+    return products.filter(p => {
+      const matchesSearch = 
+        !searchLower ||
+        p.name.toLowerCase().includes(searchLower) ||
+        p.sku.toLowerCase().includes(searchLower) ||
+        (p.brand && p.brand.toLowerCase().includes(searchLower)) ||
+        p.category.toLowerCase().includes(searchLower);
+      const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchTerm, categoryFilter]);
 
-  // Funções de Seleção de Produtos
+  // Total de páginas derivado dos produtos filtrados
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+
+  // Reset da página atual ao alterar busca ou categoria
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter]);
+
+  // Ajuste defensivo se totalPages diminuir
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  // Produtos paginados da página ativa (máximo 40 linhas)
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
+  // Funções de Seleção de Produtos (operam sobre paginatedProducts para visíveis)
   const toggleSelect = (id: string) => {
     setSelectedProductIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
@@ -148,18 +187,18 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   };
 
   const isAllVisibleSelected = 
-    filteredProducts.length > 0 && 
-    filteredProducts.every(p => selectedProductIds.includes(p.id));
+    paginatedProducts.length > 0 && 
+    paginatedProducts.every(p => selectedProductIds.includes(p.id));
 
   const isSomeVisibleSelected = 
-    filteredProducts.some(p => selectedProductIds.includes(p.id)) && !isAllVisibleSelected;
+    paginatedProducts.some(p => selectedProductIds.includes(p.id)) && !isAllVisibleSelected;
 
   const toggleSelectAllVisible = () => {
     if (isAllVisibleSelected) {
-      const visibleIds = new Set(filteredProducts.map(p => p.id));
+      const visibleIds = new Set(paginatedProducts.map(p => p.id));
       setSelectedProductIds(prev => prev.filter(id => !visibleIds.has(id)));
     } else {
-      const newIds = new Set([...selectedProductIds, ...filteredProducts.map(p => p.id)]);
+      const newIds = new Set([...selectedProductIds, ...paginatedProducts.map(p => p.id)]);
       setSelectedProductIds(Array.from(newIds));
     }
   };
@@ -455,7 +494,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 >
                   <option value="all">Todas as categorias ({products.length})</option>
                   {categories.map(cat => {
-                    const catCount = products.filter(p => p.category === cat).length;
+                    const catCount = categoryCounts[cat] || 0;
                     return (
                       <option key={cat} value={cat}>{cat} ({catCount})</option>
                     );
@@ -478,12 +517,13 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           </div>
 
           {/* Counter info */}
-          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 px-1">
             <span>
-              Exibindo <strong className="text-slate-900 font-bold">{filteredProducts.length}</strong> de <strong className="text-slate-900 font-bold">{products.length}</strong> produtos registrados no banco
+              Exibindo <strong className="text-slate-900 font-bold">{filteredProducts.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)}</strong> de <strong className="text-slate-900 font-bold">{filteredProducts.length}</strong> produtos
+              {filteredProducts.length !== products.length && ` (${products.length} no total)`}
             </span>
             {categoryFilter !== 'all' && (
-              <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-medium">
+              <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-medium self-start sm:self-auto">
                 Filtrado por: {categoryFilter}
               </span>
             )}
@@ -569,9 +609,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                           if (el) el.indeterminate = isSomeVisibleSelected;
                         }}
                         onChange={toggleSelectAllVisible}
-                        disabled={loading || filteredProducts.length === 0}
+                        disabled={loading || paginatedProducts.length === 0}
                         className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                        title="Selecionar todos os produtos visíveis"
+                        title="Selecionar todos os produtos visíveis nesta página"
                       />
                     </th>
                     <th className="py-3.5 px-4 sm:px-6">Produto</th>
@@ -606,7 +646,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredProducts.map((prod) => (
+                    paginatedProducts.map((prod) => (
                       <tr 
                         key={prod.id} 
                         className={`hover:bg-slate-50/80 transition-colors ${!prod.active ? 'opacity-60 bg-slate-50/40' : ''}`}
@@ -625,6 +665,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                             <img
                               src={getSafeProductImage(prod.images?.[0], prod.category)}
                               alt={prod.name}
+                              loading="lazy"
+                              decoding="async"
                               className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0 bg-slate-50"
                               referrerPolicy="no-referrer"
                               onError={(e) => handleProductImageError(e, prod.category)}
@@ -752,6 +794,39 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Controles de Paginação */}
+            {filteredProducts.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+                <div>
+                  Exibindo <strong className="text-slate-900 font-bold">{(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)}</strong> de <strong className="text-slate-900 font-bold">{filteredProducts.length}</strong> produtos
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1 || loading}
+                    className="px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    Anterior
+                  </button>
+                  
+                  <span className="text-xs font-semibold text-slate-700 px-2">
+                    Página {currentPage} de {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage >= totalPages || loading}
+                    className="px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

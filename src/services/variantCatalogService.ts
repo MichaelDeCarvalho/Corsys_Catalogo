@@ -195,29 +195,8 @@ export function buildCatalogDisplayItems(products: Product[]): {
     catalogSkuMap.set(p.sku.trim(), p);
   }
 
-  // Validação em desenvolvimento: detecção de inconsistências no mapa
-  if (process.env.NODE_ENV !== 'production') {
-    const seenGroupIds = new Set<string>();
-    const seenSkus = new Map<string, string>();
-
-    for (const group of PRODUCT_VARIANT_GROUPS) {
-      if (seenGroupIds.has(group.groupId)) {
-        console.warn(`[Variações] groupId duplicado na configuração: ${group.groupId}`);
-      }
-      seenGroupIds.add(group.groupId);
-
-      for (const sku of group.skus) {
-        if (seenSkus.has(sku)) {
-          console.warn(`[Variações] SKU ${sku} aparece em mais de um grupo: ${seenSkus.get(sku)} e ${group.groupId}`);
-        }
-        seenSkus.set(sku, group.groupId);
-
-        if (!catalogSkuMap.has(sku)) {
-          console.warn(`[Variações] SKU ${sku} configurado no grupo ${group.groupId} não existe no catálogo atual.`);
-        }
-      }
-    }
-  }
+  // Função pura durante render: nenhum efeito colateral ou console.warn por SKU.
+  // SKUs ausentes permanecem ignorados de forma fail-safe no loop abaixo.
 
   const groupedSkusSet = new Set<string>();
   const displayItems: CatalogDisplayItem[] = [];

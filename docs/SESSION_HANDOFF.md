@@ -42,7 +42,17 @@
   - Mensagem do SVG placeholder atualizada de "Aguardando ativação Storage V2" para "Sem foto cadastrada".
   - Badge em `ProductManager.tsx` atualizado para "Importação em massa pendente".
 - **ADR 003 (`docs/adr/ADR_003_PRODUCT_MEDIA_STORAGE.md`):** Criado com especificações completas de arquitetura, isolamento e segurança.
+- **Hotfix Consolidado de Performance do Catálogo (Admin & Serviços):**
+  - `ProductManager.tsx`: Paginação client-side simples com `ITEMS_PER_PAGE = 40`.
+  - Tabela principal renderiza estritamente `paginatedProducts.map` (redução drástica do DOM de ~520 nós de produto para 40 simultâneos).
+  - Memoização com `useMemo` em `categories`, `categoryCounts` (contagem em passagem única O(N)), `filteredProducts` e `paginatedProducts`.
+  - Reset automático de `currentPage` para 1 ao modificar filtros ou busca.
+  - Seleção em massa na página visível opera sobre `paginatedProducts`, preservando IDs de produtos selecionados em outras páginas.
+  - Atributos `loading="lazy"` e `decoding="async"` nos thumbnails da listagem administrativa.
+  - `variantCatalogService.ts`: `buildCatalogDisplayItems` purificada, removendo o loop de `console.warn` por SKU não mapeado/ausente durante o ciclo de render/memoização.
+  - `ProductEditModal.tsx`: Trava de compensação idempotente (`performRollbackOnce`) garantindo que `rollbackProductMediaUploads` execute no máximo uma vez em caso de falha de persistência no banco.
 - **Suítes de Testes Automatizados:**
+  - `scripts/test-catalog-performance-points.ts`: **23/23 PASSOU (0 FALHOU)**.
   - `scripts/test-product-media-storage-points.ts`: **78/78 PASSOU (0 FALHOU)**.
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU - Regressão Zero)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.

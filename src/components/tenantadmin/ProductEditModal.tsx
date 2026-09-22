@@ -241,6 +241,13 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
 
     setSaving(true);
     const uploadedPathsForRollback: string[] = [];
+    let hasRolledBack = false;
+
+    const performRollbackOnce = async () => {
+      if (hasRolledBack || uploadedPathsForRollback.length === 0) return;
+      hasRolledBack = true;
+      await rollbackProductMediaUploads([...uploadedPathsForRollback], tenantId, product.id);
+    };
 
     try {
       // 1. Validação profunda dos arquivos novos antes de iniciar qualquer envio
@@ -301,7 +308,7 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
       } catch (dbErr) {
         // Se o banco falhou, executa rollback de todos os uploads novos anteriores
         console.warn('[ProductEditModal] Falha ao persistir no DB. Executando rollback compensatório de mídias:', dbErr);
-        await rollbackProductMediaUploads(uploadedPathsForRollback, tenantId, product.id);
+        await performRollbackOnce();
         throw dbErr;
       }
 
@@ -323,9 +330,7 @@ export const ProductEditModal: React.FC<ProductEditModalProps> = ({
 
       onSuccess(updated);
     } catch (err: unknown) {
-      if (uploadedPathsForRollback.length > 0) {
-        await rollbackProductMediaUploads(uploadedPathsForRollback, tenantId, product.id);
-      }
+      await performRollbackOnce();
       const msg = err instanceof Error ? err.message : 'Falha ao salvar produto no Supabase.';
       console.error('[ProductEditModal] Erro ao salvar:', err);
       setErrorMessage(msg);
