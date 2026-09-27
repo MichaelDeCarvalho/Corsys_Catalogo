@@ -269,7 +269,10 @@ export function buildCatalogDisplayItems(products: Product[]): {
     const firstProduct = sortedVariants[0].product;
     const category = firstProduct.category;
     const brand = firstProduct.brand;
-    const images = firstProduct.images && firstProduct.images.length > 0 ? firstProduct.images : [];
+    const representativeVariant = sortedVariants.find(
+      variant => Array.isArray(variant.product.images) && variant.product.images.length > 0
+    );
+    const images = representativeVariant ? representativeVariant.product.images : [];
     const primaryUnit = firstProduct.unit || 'un';
 
     displayItems.push({

@@ -1,8 +1,8 @@
-# SESSION HANDOFF - PRODUCT MEDIA STORAGE V1 + HOTFIX PERFORMANCE VALIDADO
+# SESSION HANDOFF - PRODUCT MEDIA STORAGE V1 — RUNTIME PASS
 
 ## Status Atual
-**PRODUCT MEDIA STORAGE V1 DEPLOYADO NO SUPABASE HOSTED; RUNTIME DE UPLOAD/REMOÇÃO AINDA PENDENTE DE VALIDAÇÃO FUNCIONAL**  
-*(Migration 000009 aplicada e congelada. Hotfix de performance sincronizado no GitHub e validado em runtime.)*
+**PRODUCT MEDIA STORAGE V1 — RUNTIME PASS (SUPABASE HOSTED + WORKSPACE VALIDADO)**  
+*(Migration 000009 aplicada e congelada. Fluxo completo de upload, persistência, reordenação de principal e remoção física validado em runtime no SKU BR022.)*
 
 ---
 
@@ -17,7 +17,7 @@
   - *Status:* **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`).
   - Dropa as 3 policies de 000008 e as recria com qualificação explícita do outer row: `storage.foldername(storage.objects.name)`.
   - Preserva integralmente as permissões e lógica de menor privilégio da 000008, sem qualquer ampliação de privilégios.
-  - *Runtime de Product Media:* **Ainda aguarda validação funcional de upload, persistência, exibição, troca de principal e remoção**. A migration 000009 já está aplicada; não declarar runtime PASS até a execução completa desses testes.
+  - *Runtime de Product Media:* **VALIDADO COM SUCESSO (PASS)** em ambiente real.
   - Policies em `storage.objects` com Menor Privilégio:
     - `product_media_select_authenticated`: SELECT autenticado restrito ao namespace do próprio tenant sob `/products/<product_id>` ou platform_admin, com produto existente e pertencente ao tenant.
     - `product_media_insert_tenant_admin`: INSERT restrito a tenant_admin no diretório `<tenant_uuid>/products/<product_uuid>` ou platform_admin, com produto existente e pertencente ao tenant.
@@ -68,9 +68,28 @@
   - Edição em massa valida que todos os `selectedProductIds` existem e pertencem ao mesmo `effectiveTenantId` antes de abrir o modal.
   - `productMediaStorageService` e sua validação UUID permaneceram inalterados.
   - O erro runtime anterior confirmou que o fail-closed bloqueou corretamente um tenant ID legado antes do upload.
-  - O teste funcional de Product Media precisa ser repetido antes de declarar runtime PASS.
+- **Validação Funcional Runtime de Product Media (SKU BR022) — RUNTIME PASS:**
+  - **Upload real no bucket `product-media`:** PASS.
+  - **Path canônico isolado `<tenant_uuid>/products/<product_uuid>/...`:** PASS.
+  - **Persistência em `public.products.images[]`:** PASS.
+  - **Reload administrativo:** Imagens persistem integralmente: PASS.
+  - **Exposição via `catalog_products`:** PASS.
+  - **Exibição na Storefront / Vitrine:** PASS.
+  - **Adição de segunda imagem:** PASS.
+  - **Troca de imagem principal (promoção para `images[0]`):** PASS.
+  - **Nova imagem principal refletida na vitrine:** PASS.
+  - **Remoção lógica da imagem antiga:** `public.products.images[]` atualizado: PASS.
+  - **Remoção física no Storage:** Objeto físico deletado do bucket `product-media`: PASS.
+  - **Objeto principal preservado no Storage:** PASS.
+  - **Estado final do BR022 no Supabase:** Exatamente 1 imagem em `images[]` e exatamente 1 objeto no namespace do produto (zero imagens órfãs): PASS.
+  - *(Nota: Rollback forçado por erro de persistência no banco não foi testado em runtime no teste produtivo; a cobertura de consistência compensatória permanece assegurada pelas suítes de testes automatizados e unitários).*
+- **Hotfix Imagem de Família / Variante na Storefront:**
+  - Gap de apresentação identificado durante validação runtime: famílias selecionavam cegamente o primeiro item ordenado (que podia não ter imagem).
+  - Corrigido em `variantCatalogService.ts`: a família agora seleciona como representativa a primeira variante real da lista que possua imagem cadastrada (sem inventar fotos e sem mutar produtos).
+  - Em `VariantGroupCard.tsx`: quando houver busca por SKU (`highlightedSkus`), o card prioriza visualmente a foto do SKU pesquisado e passa `highlightedInitialSku` ao abrir o modal de detalhes (`ProductDetailModal`).
+  - Sem `highlightedSku`, mantém comportamento normal da família sem seleção artificial de variante.
 - **Suítes de Testes Automatizados:**
-  - `scripts/test-catalog-performance-points.ts`: **23/23 PASSOU (0 FALHOU)**.
+  - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)** (inclui seção 5 com validação de imagens de família e prioridade de SKU).
   - `scripts/test-product-media-storage-points.ts`: **107/107 PASSOU (0 FALHOU)** (inclui seção 8 com validações de Tenant UUID e Bulk Ownership Guard).
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU - Regressão Zero)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.
@@ -92,9 +111,8 @@
 ---
 
 ## 3. Próximos Passos
-1. Repetir o teste funcional de upload no SKU BR022.
-2. Validar persistência após reload, imagem principal, storefront e remoção.
-3. Só então declarar Product Media runtime PASS.
-4. Importação em massa depois.
+1. Implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
+2. Monitorar a integridade dos uploads e storage no bucket `product-media`.
+
 
 

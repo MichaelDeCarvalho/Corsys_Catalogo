@@ -39,6 +39,25 @@ export const VariantGroupCard: React.FC<VariantGroupCardProps> = ({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedVariants, setAddedVariants] = useState<Record<string, boolean>>({});
 
+  // Quando houver highlightedSkus decorrentes de busca específica por SKU,
+  // prioriza visualmente a foto do produto encontrado (se houver)
+  const highlightedProduct = highlightedSkus
+    .map(sku => groupItem.variants.find(v => v.product.sku === sku)?.product)
+    .find(product => product?.images && product.images.length > 0);
+
+  const cardImages = highlightedProduct?.images && highlightedProduct.images.length > 0
+    ? highlightedProduct.images
+    : groupItem.images;
+
+  // Quando a busca tiver encontrado um SKU específico, passa esse SKU como initialSku ao abrir o detalhe
+  const highlightedInitialSku = highlightedSkus.find(sku =>
+    groupItem.variants.some(v => v.product.sku === sku)
+  );
+
+  const handleOpenDetail = () => {
+    onOpenGroupDetail(groupItem, highlightedInitialSku);
+  };
+
   const displayMinPrice = React.useMemo(() => {
     if (isWholesaleMode) {
       const wholesalePrices = groupItem.variants
@@ -121,12 +140,12 @@ export const VariantGroupCard: React.FC<VariantGroupCardProps> = ({
       <div>
         {/* Container da Imagem com Badges Informativos - Clicável para abrir Detalhe da Família */}
         <div 
-          onClick={() => onOpenGroupDetail(groupItem)}
+          onClick={handleOpenDetail}
           className="relative aspect-4/3 bg-slate-100 overflow-hidden cursor-pointer group/img"
           title={`Clique para ver detalhes de ${groupItem.displayName}`}
         >
           <img
-            src={getSafeProductImage(groupItem.images[0], groupItem.category)}
+            src={getSafeProductImage(cardImages[0], groupItem.category)}
             alt={groupItem.displayName}
             className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300"
             referrerPolicy="no-referrer"
@@ -173,7 +192,7 @@ export const VariantGroupCard: React.FC<VariantGroupCardProps> = ({
           </div>
 
           <h3 
-            onClick={() => onOpenGroupDetail(groupItem)}
+            onClick={handleOpenDetail}
             className="font-bold text-slate-900 text-base leading-snug tracking-tight hover:text-[#FF5A00] transition-colors cursor-pointer"
             title={`Ver detalhes de ${groupItem.displayName}`}
           >

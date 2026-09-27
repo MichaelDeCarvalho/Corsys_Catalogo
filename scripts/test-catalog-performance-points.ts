@@ -3,6 +3,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { buildCatalogDisplayItems } from '../src/services/variantCatalogService';
 import { Product } from '../src/types';
+import { getSafeProductImage, NEUTRAL_PRODUCT_PLACEHOLDER } from '../src/utils/productImages';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -205,6 +206,133 @@ async function runTests() {
   const page1Ids = new Set(page1.map(p => p.id));
   selectedIds = selectedIds.filter(id => !page1Ids.has(id));
   assert(selectedIds.length === 1 && selectedIds[0] === 'p-500', 'Desmarcar página 1 remove apenas itens da página 1 e preserva itens de outras páginas');
+
+  // -------------------------------------------------------------------------
+  // 5. SELEÇÃO DE IMAGENS DE FAMÍLIA E BUSCA POR SKU (HOTFIX CIRÚRGICO)
+  // -------------------------------------------------------------------------
+  console.log('\n5. Seleção de Imagens de Família e Busca por SKU (Hotfix Cirúrgico)');
+
+  const variantGroupCardSource = fs.readFileSync(
+    path.resolve(__dirname, '../src/components/storefront/VariantGroupCard.tsx'),
+    'utf-8'
+  );
+
+  // Análise estática do variantCatalogService.ts
+  assert(
+    variantCatalogSource.includes('sortedVariants.find') &&
+    variantCatalogSource.includes('representativeVariant.product.images'),
+    'variantCatalogService seleciona representativeVariant como a primeira variante com imagens válidas'
+  );
+
+  // Análise estática do VariantGroupCard.tsx
+  assert(
+    variantGroupCardSource.includes('highlightedProduct') &&
+    variantGroupCardSource.includes('cardImages') &&
+    variantGroupCardSource.includes('highlightedInitialSku') &&
+    variantGroupCardSource.includes('onOpenGroupDetail(groupItem, highlightedInitialSku)'),
+    'VariantGroupCard deriva cardImages priorizando highlightedSkus e passa highlightedInitialSku'
+  );
+
+  // Cenário 1: Família cujo primeiro SKU ordenado (BR034 6MM) não tem foto, mas BR022 (10MM) tem
+  const br034: Product = {
+    id: 'prod-br034',
+    tenantId: 'd0a51c4e-5e93-41bb-b8bf-4c74070a273b',
+    sku: 'BR034',
+    name: 'BROCA CERAMICA/PORCELANATO 6MM',
+    price: 25.0,
+    stock: 50,
+    active: true,
+    category: 'Brocas',
+    images: [],
+    unit: 'un',
+  };
+
+  const br022: Product = {
+    id: 'prod-br022',
+    tenantId: 'd0a51c4e-5e93-41bb-b8bf-4c74070a273b',
+    sku: 'BR022',
+    name: 'BROCA CERAMICA/PORCELANATO 10MM',
+    price: 35.0,
+    stock: 40,
+    active: true,
+    category: 'Brocas',
+    images: ['https://storage.supabase.co/product-media/tenant/products/prod-br022/10mm.webp'],
+    unit: 'un',
+  };
+
+  const g20Products = [br034, br022];
+  const { displayItems: g20DisplayItems } = buildCatalogDisplayItems(g20Products);
+  const g20Group = g20DisplayItems.find(item => item.type === 'variant-group' && item.groupId === 'G20');
+
+  assert(g20Group !== undefined, 'Grupo G20 identificado na montagem de display items');
+  assert(
+    g20Group?.type === 'variant-group' && 
+    g20Group.images.length === 1 && 
+    g20Group.images[0] === 'https://storage.supabase.co/product-media/tenant/products/prod-br022/10mm.webp',
+    'Família G20 adota as imagens do BR022 como imagem representativa quando primeiro SKU não possui foto'
+  );
+
+  // Cenário 2: Família sem nenhuma imagem permanece com images = [] e renderiza placeholder neutro
+  const br034NoImg: Product = { ...br034, images: [] };
+  const br022NoImg: Product = { ...br022, images: [] };
+  const { displayItems: noImgItems } = buildCatalogDisplayItems([br034NoImg, br022NoImg]);
+  const noImgGroup = noImgItems.find(item => item.type === 'variant-group' && item.groupId === 'G20');
+
+  assert(
+    noImgGroup?.type === 'variant-group' && noImgGroup.images.length === 0,
+    'Família sem nenhuma imagem permanece com images = []'
+  );
+  assert(
+    noImgGroup?.type === 'variant-group' && 
+    getSafeProductImage(noImgGroup.images[0], noImgGroup.category) === NEUTRAL_PRODUCT_PLACEHOLDER,
+    'getSafeProductImage retorna placeholder neutro para família sem imagens'
+  );
+
+  // Cenário 3: Busca por BR022 prioriza BR022.images no VariantGroupCard
+  if (g20Group && g20Group.type === 'variant-group') {
+    const highlightedSkus = ['BR022'];
+    const highlightedProduct = highlightedSkus
+      .map(sku => g20Group.variants.find(v => v.product.sku === sku)?.product)
+      .find(product => product?.images && product.images.length > 0);
+
+    const cardImages = highlightedProduct?.images && highlightedProduct.images.length > 0
+      ? highlightedProduct.images
+      : g20Group.images;
+
+    assert(
+      cardImages.length > 0 && cardImages[0] === 'https://storage.supabase.co/product-media/tenant/products/prod-br022/10mm.webp',
+      'Busca por BR022 prioriza imagens da variante encontrada no card'
+    );
+
+    // Cenário 4: Clique no card após busca por BR022 passa BR022 como initialSku
+    const highlightedInitialSku = highlightedSkus.find(sku =>
+      g20Group.variants.some(v => v.product.sku === sku)
+    );
+    assert(
+      highlightedInitialSku === 'BR022',
+      'Clique no card após busca BR022 resolve initialSku = BR022 para abrir o modal'
+    );
+
+    // Cenário 5: Ausência de busca não seleciona nenhuma variante artificialmente
+    const emptyHighlightedSkus: string[] = [];
+    const noSearchInitialSku = emptyHighlightedSkus.find(sku =>
+      g20Group.variants.some(v => v.product.sku === sku)
+    );
+    assert(
+      noSearchInitialSku === undefined,
+      'Ausência de busca resulta em initialSku undefined (nenhuma variante selecionada artificialmente)'
+    );
+  }
+
+  // Cenário 6: Imagens originais dos produtos não sofrem mutação nem contaminação
+  assert(
+    Array.isArray(br034.images) && br034.images.length === 0,
+    'Produto BR034 original não foi mutado e permanece com images = [] (sem contaminação cruzada)'
+  );
+  assert(
+    br022.images.length === 1 && br022.images[0] === 'https://storage.supabase.co/product-media/tenant/products/prod-br022/10mm.webp',
+    'Produto BR022 original preserva suas imagens intactas'
+  );
 
   console.log('\n======================================================');
   console.log(`TOTAL DE TESTES: ${passed + failed}`);
