@@ -1,8 +1,8 @@
-# SESSION HANDOFF - ETAPA PRODUCT MEDIA STORAGE V1 CONCLUÍDA NO WORKSPACE
+# SESSION HANDOFF - PRODUCT MEDIA STORAGE V1 + HOTFIX PERFORMANCE VALIDADO
 
 ## Status Atual
-**PRODUCT MEDIA STORAGE IMPLEMENTADO NO WORKSPACE AGUARDANDO DEPLOY**  
-*(Nota: Não sincronizado com GitHub/Supabase nesta rodada; aguardando autorização explícita para deploy/sync).*
+**PRODUCT MEDIA STORAGE V1 DEPLOYADO NO SUPABASE HOSTED; RUNTIME DE UPLOAD/REMOÇÃO AINDA PENDENTE DE VALIDAÇÃO FUNCIONAL**  
+*(Migration 000009 aplicada e congelada. Hotfix de performance sincronizado no GitHub e validado em runtime.)*
 
 ---
 
@@ -14,10 +14,10 @@
   - *Status:* **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`).
   - No banco real, foi identificado que `storage.foldername(name)` dentro de `EXISTS (SELECT 1 FROM public.products p ...)` sofreu shadowing para `p.name` (coluna da tabela `products`).
 - **Migration 000009 (`supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`):**
-  - *Status:* **CRIADA NO WORKSPACE COMO FORWARD-FIX / AGUARDANDO DEPLOY** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`).
+  - *Status:* **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`).
   - Dropa as 3 policies de 000008 e as recria com qualificação explícita do outer row: `storage.foldername(storage.objects.name)`.
   - Preserva integralmente as permissões e lógica de menor privilégio da 000008, sem qualquer ampliação de privilégios.
-  - *Runtime de Product Media:* **Ainda aguarda validação em ambiente real após o deploy da migration 000009** (não declarar runtime PASS ainda).
+  - *Runtime de Product Media:* **Ainda aguarda validação funcional de upload, persistência, exibição, troca de principal e remoção**. A migration 000009 já está aplicada; não declarar runtime PASS até a execução completa desses testes.
   - Policies em `storage.objects` com Menor Privilégio:
     - `product_media_select_authenticated`: SELECT autenticado restrito ao namespace do próprio tenant sob `/products/<product_id>` ou platform_admin, com produto existente e pertencente ao tenant.
     - `product_media_insert_tenant_admin`: INSERT restrito a tenant_admin no diretório `<tenant_uuid>/products/<product_uuid>` ou platform_admin, com produto existente e pertencente ao tenant.
@@ -51,6 +51,15 @@
   - Atributos `loading="lazy"` e `decoding="async"` nos thumbnails da listagem administrativa.
   - `variantCatalogService.ts`: `buildCatalogDisplayItems` purificada, removendo o loop de `console.warn` por SKU não mapeado/ausente durante o ciclo de render/memoização.
   - `ProductEditModal.tsx`: Trava de compensação idempotente (`performRollbackOnce`) garantindo que `rollbackProductMediaUploads` execute no máximo uma vez em caso de falha de persistência no banco.
+- **Validação Runtime do Hotfix de Performance:**
+  - Performance Profile pós-hotfix capturado no AI Studio Preview com `No throttling`.
+  - Entrada no Painel Loja: **~99 ms** (baseline anterior: ~169 ms).
+  - Abrir `Editar Produto`: **~269 ms** (baseline anterior: ~2,37 s; melhora aproximada de 89%).
+  - Fechar `Editar Produto`: **~329 ms** (baseline anterior: ~5,55 s; melhora aproximada de 94%).
+  - Pico de DOM observado caiu de ~64.304 para ~20.154 nós (redução aproximada de 69%).
+  - Nenhuma ocorrência de mensagens `[Variações]` observada no trace pós-hotfix.
+  - Heap JavaScript observado entre ~19 MB e ~37,7 MB durante o teste; sem evidência de pressão equivalente ao baseline.
+  - Extensões Kaspersky ainda estavam presentes no Preview, porém não explicaram o custo residual das interações do modal.
 - **Suítes de Testes Automatizados:**
   - `scripts/test-catalog-performance-points.ts`: **23/23 PASSOU (0 FALHOU)**.
   - `scripts/test-product-media-storage-points.ts`: **78/78 PASSOU (0 FALHOU)**.
@@ -69,12 +78,12 @@
 - `supabase/migrations/20260909_000006_branding_storage.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
-- `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **CRIADA NO WORKSPACE COMO FORWARD-FIX / AGUARDANDO DEPLOY** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
+- `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
 
 ---
 
-## 3. Próximos Passos (Sob Autorização Explícita do Usuário)
-1. Realizar deploy/sync da migration `000009` (forward-fix de escopo) no Supabase Hosted.
-2. Validar runtime de upload e remoção de mídias de produto no ambiente hospedado.
-3. Implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
+## 3. Próximos Passos
+1. Validar runtime completo de Product Media: upload, persistência após reload, exibição na storefront, definição de imagem principal, remoção e path físico no bucket `product-media`.
+2. Registrar o resultado dessa validação sem declarar PASS antes da conclusão de todos os pontos.
+3. Após a validação individual, implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
 
