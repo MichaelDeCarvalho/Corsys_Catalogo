@@ -88,9 +88,25 @@
   - Corrigido em `variantCatalogService.ts`: a família agora seleciona como representativa a primeira variante real da lista que possua imagem cadastrada (sem inventar fotos e sem mutar produtos).
   - Em `VariantGroupCard.tsx`: quando houver busca por SKU (`highlightedSkus`), o card prioriza visualmente a foto do SKU pesquisado e passa `highlightedInitialSku` ao abrir o modal de detalhes (`ProductDetailModal`).
   - Sem `highlightedSku`, mantém comportamento normal da família sem seleção artificial de variante.
+- **Importador de Imagens em Massa por SKU (V1 Fail-Closed & Persistência Atômica):**
+  - Product Media V1 continua **RUNTIME PASS**.
+  - Lote piloto de 17 imagens (AP001, EP003, SG002, CH001, JG002, VE001, LA001, GZ001, FT004, FT002, DS018, FL004, SR021, SR006, SR007, SR008, SR009) foi validado visualmente pelo usuário (arquivos WebP < 1 MiB).
+  - Bulk image importer implementado no workspace (`src/services/bulkImageImportService.ts` e `src/components/tenantadmin/ProductBulkImageImportModal.tsx`).
+  - Associação estrita por SKU com leitura e validação de `manifest.json`.
+  - Dry-run obrigatório de segurança em memória (zero uploads, zero updates, zero deletes).
+  - Revalidação de tenant ownership e preservação de produtos que já possuem fotos (`SKIPPED_EXISTING_IMAGE`).
+  - **Correção Pré-Sync: Persistência Atômica Condicional (Prevenção TOCTOU):**
+    - Criada função `updateAdminProductImagesIfEmpty` em `src/services/adminCatalogService.ts`.
+    - Executa UPDATE condicional estrito via PostgREST: `tenant_id = tenantId`, `id = productId`, `deleted_at IS NULL` e `images = '{}'` (array vazio).
+    - Elimina completamente a janela de corrida onde outra sessão pudesse adicionar imagem entre o dry-run e a persistência remota.
+    - Se zero linhas forem atualizadas, o upload recém-enviado é imediatamente compensado no Storage e o item é classificado como `SKIPPED_CONCURRENT_IMAGE`, preservando intacta a foto preexistente.
+    - Se ocorrer erro de persistência no banco, o upload daquele item é compensado cirurgicamente e classificado como `FAILED`.
+    - Sucessos anteriores e posteriores permanecem intactos (sem rollback global).
+  - Geração de relatório final com opção de download JSON (sem expor tokens, sessões ou dados sensíveis).
+  - Ainda **NÃO** executar/importar o lote no Supabase nesta etapa.
 - **Suítes de Testes Automatizados:**
-  - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)** (inclui seção 5 com validação de imagens de família e prioridade de SKU).
-  - `scripts/test-product-media-storage-points.ts`: **107/107 PASSOU (0 FALHOU)** (inclui seção 8 com validações de Tenant UUID e Bulk Ownership Guard).
+  - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)** (inclui testes de parsing de manifest, dry-run, upload sequencial, compensação por item, relatório, filtros atômicos de `updateAdminProductImagesIfEmpty`, mitigação TOCTOU e `SKIPPED_CONCURRENT_IMAGE`).
+  - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU - Regressão Zero)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.
   - `npm run build` (`vite build`): **PASSOU**.
@@ -111,8 +127,9 @@
 ---
 
 ## 3. Próximos Passos
-1. Implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
-2. Monitorar a integridade dos uploads e storage no bucket `product-media`.
+1. Executar o dry-run real com os 17 arquivos e manifest.json no painel administrativo e revisar a tabela antes de qualquer confirmação.
+2. Confirmar a importação sequencial do lote piloto no Supabase Hosted.
+3. Validar a exibição das novas imagens no painel administrativo e na vitrine da loja.
 
 
 

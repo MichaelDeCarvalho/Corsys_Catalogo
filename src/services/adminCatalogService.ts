@@ -343,6 +343,80 @@ export async function updateAdminProduct(
 }
 
 /**
+ * Atualiza condicionalmente as imagens de um produto apenas se ele ainda não possuir nenhuma foto cadastrada.
+ * Operação atômica projetada para eliminar janelas TOCTOU durante importações em lote.
+ * 
+ * Regras:
+ * - Valida tenantId e productId como UUIDs válidos.
+ * - Valida uploadedUrl como URL HTTPS válida.
+ * - Atualiza exclusivamente onde:
+ *     tenant_id = tenantId
+ *     id = productId
+ *     deleted_at IS NULL
+ *     images = ARRAY[]::text[] (filtro PostgREST: images = '{}')
+ * - Retorna { updated: true, product } em caso de sucesso.
+ * - Se nenhuma linha for atualizada, assume alteração concorrente / imagem já existente e retorna { updated: false }.
+ */
+export async function updateAdminProductImagesIfEmpty(
+  tenantId: string,
+  productId: string,
+  uploadedUrl: string
+): Promise<{
+  updated: boolean;
+  product?: Product;
+  error?: string;
+}> {
+  if (!isSupabaseConfigured()) {
+    return { updated: false, error: 'Supabase não configurado.' };
+  }
+
+  if (!isValidUuid(tenantId) || !isValidUuid(productId)) {
+    return { updated: false, error: 'Identificadores inválidos (UUID esperado).' };
+  }
+
+  if (
+    !uploadedUrl ||
+    typeof uploadedUrl !== 'string' ||
+    !uploadedUrl.trim().toLowerCase().startsWith('https://')
+  ) {
+    return { updated: false, error: 'URL da imagem deve ser um link HTTPS válido.' };
+  }
+
+  const cleanUrl = uploadedUrl.trim();
+  const dbPayload = {
+    images: [cleanUrl],
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from('products')
+    .update(dbPayload)
+    .eq('tenant_id', tenantId)
+    .eq('id', productId)
+    .is('deleted_at', null)
+    .eq('images', '{}')
+    .select();
+
+  if (error) {
+    return {
+      updated: false,
+      error: `[${error.code || 'ERR'}] ${error.message}`
+    };
+  }
+
+  if (data && data.length > 0) {
+    return {
+      updated: true,
+      product: adaptAdminProduct(data[0] as RawAdminProductRow)
+    };
+  }
+
+  return {
+    updated: false
+  };
+}
+
+/**
  * Atualiza múltiplos produtos em massa no banco de dados via Supabase.
  */
 export async function bulkUpdateAdminProducts(

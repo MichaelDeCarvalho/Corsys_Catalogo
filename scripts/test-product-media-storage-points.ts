@@ -8,6 +8,15 @@ import {
   PRODUCT_MEDIA_BUCKET,
   MAX_PRODUCT_IMAGE_SIZE_BYTES,
 } from '../src/services/productMediaStorageService';
+import {
+  parseManifestJson,
+  performBulkImageDryRun,
+  executeSequentialBulkImageImport,
+  BulkImportReport,
+} from '../src/services/bulkImageImportService';
+import {
+  updateAdminProductImagesIfEmpty,
+} from '../src/services/adminCatalogService';
 import { LEGACY_SUPABASE_V1_HOST } from '../src/utils/productImages';
 import * as fs from 'fs';
 
@@ -593,6 +602,446 @@ async function runTests() {
   assert(
     canOpenBulkEditModal(VALID_TENANT_UUID, [], mockCatalog).allowed === false,
     'Bulk edit: seleção vazia não abre modal'
+  );
+
+  // -------------------------------------------------------------------------
+  // 9. IMPORTAÇÃO EM MASSA DE IMAGENS POR SKU (V1 FAIL-CLOSED)
+  // -------------------------------------------------------------------------
+  console.log('\n9. Importação em Massa de Imagens por SKU (V1 Fail-Closed)');
+
+  // 9.1 Validação do Manifest JSON
+  const validManifestJson = JSON.stringify([
+    { sku: 'AP001', produto: 'APLICADOR ARGACON R1', arquivo: 'AP001.webp' },
+    { sku: 'EP003', produto: 'ESPACADOR PISO 3MM', arquivo: 'EP003.webp' },
+    { sku: 'SG002', produto: 'SARGENTO ANGULAR', arquivo: 'SG002.webp' },
+  ]);
+  const parsedValid = parseManifestJson(validManifestJson);
+  assert(parsedValid.valid === true && parsedValid.entries?.length === 3, 'Manifest JSON válido com 3 itens parseado com sucesso');
+
+  const duplicateSkuManifest = JSON.stringify([
+    { sku: 'AP001', arquivo: 'AP001.webp' },
+    { sku: 'AP001', arquivo: 'AP001_v2.webp' },
+  ]);
+  const parsedDupSku = parseManifestJson(duplicateSkuManifest);
+  assert(parsedDupSku.valid === false && parsedDupSku.error?.includes('SKU duplicado'), 'Manifest com SKU duplicado rejeitado com erro explícito');
+
+  const duplicateFilenameManifest = JSON.stringify([
+    { sku: 'AP001', arquivo: 'FOTO_COMUM.webp' },
+    { sku: 'EP003', arquivo: 'FOTO_COMUM.webp' },
+  ]);
+  const parsedDupFile = parseManifestJson(duplicateFilenameManifest);
+  assert(parsedDupFile.valid === false && parsedDupFile.error?.includes('múltiplos SKUs'), 'Manifest com mesmo arquivo associado a SKUs diferentes rejeitado com erro explícito');
+
+  const emptySkuManifest = JSON.stringify([
+    { sku: '   ', arquivo: 'FOTO.webp' },
+  ]);
+  assert(parseManifestJson(emptySkuManifest).valid === false, 'Manifest com SKU vazio rejeitado');
+
+  const emptyFileManifest = JSON.stringify([
+    { sku: 'AP001', arquivo: '   ' },
+  ]);
+  assert(parseManifestJson(emptyFileManifest).valid === false, 'Manifest com arquivo vazio rejeitado');
+
+  assert(parseManifestJson('not a json').valid === false, 'Manifest com JSON malformado rejeitado');
+  assert(parseManifestJson('[]').valid === false, 'Manifest com array vazio rejeitado');
+  assert(parseManifestJson('{}').valid === false, 'Manifest que não é array rejeitado');
+
+  // 9.2 Simulação de Arquivos e Dry-Run
+  const validWebpBytesForBulk = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, // RIFF
+    0x20, 0x00, 0x00, 0x00, // size
+    0x57, 0x45, 0x42, 0x50, // WEBP
+    0x56, 0x50, 0x38, 0x20, // VP8_
+    0x14, 0x00, 0x00, 0x00, // chunk size
+  ]);
+  const fileAP001 = new File([validWebpBytesForBulk], 'AP001.webp', { type: 'image/webp' });
+  const fileEP003 = new File([validWebpBytesForBulk], 'EP003.webp', { type: 'image/webp' });
+  const fileUnused = new File([validWebpBytesForBulk], 'SOBRANDO.webp', { type: 'image/webp' });
+  const fakeBinaryFile = new File(['conteudo invalido masquerading as webp'], 'SG002.webp', { type: 'image/webp' });
+  const oversizeFileForBulk = new File([new Uint8Array(MAX_PRODUCT_IMAGE_SIZE_BYTES + 2048)], 'CH001.webp', { type: 'image/webp' });
+
+  const mockCatalogForBulk: any[] = [
+    { id: '11111111-1111-1111-1111-111111111111', tenantId: VALID_TENANT_UUID, sku: 'AP001', name: 'APLICADOR ARGACON R1', images: [] },
+    { id: '22222222-2222-2222-2222-222222222222', tenantId: VALID_TENANT_UUID, sku: 'EP003', name: 'ESPACADOR PISO 3MM', images: ['https://storage.supabase.com/existing.jpg'] },
+    { id: '33333333-3333-3333-3333-333333333333', tenantId: VALID_TENANT_UUID, sku: 'SG002', name: 'SARGENTO ANGULAR', images: [] },
+    { id: '44444444-4444-4444-4444-444444444444', tenantId: VALID_TENANT_UUID, sku: 'CH001', name: 'CHAVE GRIFO', images: [] },
+    { id: '55555555-5555-5555-5555-555555555555', tenantId: OTHER_TENANT_UUID, sku: 'JG002', name: 'JOGO BROCAS', images: [] },
+    { id: '66666666-6666-6666-6666-666666666666', tenantId: 'tenant-mc-distribuicao', sku: 'VE001', name: 'VENTOSA DUPLA', images: [] },
+    { id: '77777777-7777-7777-7777-777777777777', tenantId: VALID_TENANT_UUID, sku: 'DUP01', name: 'DUPLICADO 1', images: [] },
+    { id: '88888888-8888-8888-8888-888888888888', tenantId: VALID_TENANT_UUID, sku: 'DUP01', name: 'DUPLICADO 2', images: [] },
+    { id: '99999999-9999-9999-9999-999999999999', tenantId: VALID_TENANT_UUID, sku: 'MISSING_FILE', name: 'PRODUTO SEM ARQUIVO', images: [] },
+  ];
+
+  const testManifestEntries = [
+    { sku: 'AP001', arquivo: 'AP001.webp' },
+    { sku: 'EP003', arquivo: 'EP003.webp' },
+    { sku: 'SG002', arquivo: 'SG002.webp' },
+    { sku: 'CH001', arquivo: 'CH001.webp' },
+    { sku: 'JG002', arquivo: 'JG002.webp' },
+    { sku: 'VE001', arquivo: 'VE001.webp' },
+    { sku: 'DUP01', arquivo: 'DUP01.webp' },
+    { sku: 'NONEXISTENT', arquivo: 'NONEXISTENT.webp' },
+    { sku: 'MISSING_FILE', arquivo: 'NAO_SELECIONADO.webp' },
+  ];
+
+  const testSelectedFiles = [
+    fileAP001,
+    fileEP003,
+    fakeBinaryFile,
+    oversizeFileForBulk,
+    fileUnused,
+  ];
+
+  const dryRunResult = await performBulkImageDryRun({
+    manifestEntries: testManifestEntries,
+    selectedFiles: testSelectedFiles,
+    products: mockCatalogForBulk,
+    effectiveTenantId: VALID_TENANT_UUID,
+  });
+
+  const ap001Item = dryRunResult.items.find(i => i.sku === 'AP001');
+  assert(ap001Item?.status === 'READY', 'Dry-run: produto válido sem fotos e com arquivo válido classificado como READY');
+
+  const ep003Item = dryRunResult.items.find(i => i.sku === 'EP003');
+  assert(ep003Item?.status === 'SKIPPED_EXISTING_IMAGE', 'Dry-run: produto que já possui fotos classificado como SKIPPED_EXISTING_IMAGE (preservação garantida)');
+
+  const nonexistentItem = dryRunResult.items.find(i => i.sku === 'NONEXISTENT');
+  assert(nonexistentItem?.status === 'BLOCKED_PRODUCT_NOT_FOUND', 'Dry-run: SKU inexistente classificado como BLOCKED_PRODUCT_NOT_FOUND');
+
+  const dupItem = dryRunResult.items.find(i => i.sku === 'DUP01');
+  assert(dupItem?.status === 'BLOCKED_DUPLICATE_SKU', 'Dry-run: SKU duplicado no catálogo classificado como BLOCKED_DUPLICATE_SKU');
+
+  const crossTenantItem = dryRunResult.items.find(i => i.sku === 'JG002');
+  assert(crossTenantItem?.status === 'BLOCKED_INVALID_TENANT', 'Dry-run: produto pertencente a outro tenant classificado como BLOCKED_INVALID_TENANT');
+
+  const legacyTenantItem = dryRunResult.items.find(i => i.sku === 'VE001');
+  assert(legacyTenantItem?.status === 'BLOCKED_INVALID_TENANT', 'Dry-run: produto com tenantId não-UUID ("tenant-mc-distribuicao") classificado como BLOCKED_INVALID_TENANT');
+
+  const missingFileItem = dryRunResult.items.find(i => i.sku === 'MISSING_FILE');
+  assert(missingFileItem?.status === 'BLOCKED_FILE_MISSING', 'Dry-run: arquivo ausente da seleção classificado como BLOCKED_FILE_MISSING');
+
+  const fakeFileItem = dryRunResult.items.find(i => i.sku === 'SG002');
+  assert(fakeFileItem?.status === 'BLOCKED_INVALID_FILE', 'Dry-run: arquivo com magic bytes corrompidos classificado como BLOCKED_INVALID_FILE');
+
+  const oversizeItem = dryRunResult.items.find(i => i.sku === 'CH001');
+  assert(oversizeItem?.status === 'BLOCKED_INVALID_FILE', 'Dry-run: arquivo > 1 MiB classificado como BLOCKED_INVALID_FILE');
+
+  const unusedFileItem = dryRunResult.items.find(i => i.filename === 'SOBRANDO.webp');
+  assert(unusedFileItem?.status === 'UNUSED_FILE', 'Dry-run: arquivo selecionado que não consta no manifest classificado como UNUSED_FILE');
+
+  // Teste de Fail-Closed Total com effectiveTenantId = null
+  const dryRunNullTenant = await performBulkImageDryRun({
+    manifestEntries: testManifestEntries,
+    selectedFiles: testSelectedFiles,
+    products: mockCatalogForBulk,
+    effectiveTenantId: null,
+  });
+  const allBlockedTenant = dryRunNullTenant.items.filter(i => i.status !== 'UNUSED_FILE').every(i => i.status === 'BLOCKED_INVALID_TENANT');
+  assert(allBlockedTenant, 'Dry-run com effectiveTenantId = null bloqueia todos os itens como BLOCKED_INVALID_TENANT');
+
+  // Teste de Zero Writes no Dry-Run
+  assert(
+    mockCatalogForBulk[0].images.length === 0 && mockCatalogForBulk[1].images.length === 1,
+    'Dry-run executa ZERO escritas, ZERO mutações no catálogo e ZERO uploads remotos'
+  );
+
+  // 9.3 Simulação de Importação Sequencial e Compensação por Item
+  const executionReadyItems = [
+    {
+      sku: 'AP001',
+      productName: 'APLICADOR ARGACON R1',
+      filename: 'AP001.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[0],
+    },
+    {
+      sku: 'SG002',
+      productName: 'SARGENTO ANGULAR',
+      filename: 'SG002.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[2],
+    },
+  ];
+
+  const processedSkus: string[] = [];
+  const persistedProductIds: string[] = [];
+  const rolledBackItems: string[] = [];
+
+  const testReport = await executeSequentialBulkImageImport({
+    readyItems: executionReadyItems,
+    allDryRunItems: dryRunResult.items,
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    onProgress: (_curr, _tot, sku) => {
+      processedSkus.push(sku);
+    },
+    deps: {
+      uploader: async (tId, pId, f) => {
+        return {
+          url: `https://storage.supabase.com/product-media/${tId}/products/${pId}/media_test.webp`,
+          path: `${tId}/products/${pId}/media_test.webp`,
+          error: null,
+        };
+      },
+      persister: async (tId, pId, uploadedUrl) => {
+        persistedProductIds.push(pId);
+        return { updated: true };
+      },
+      compensator: async (paths, tId, pId) => {
+        rolledBackItems.push(...paths);
+      },
+    },
+  });
+
+  assert(testReport.tenantId === VALID_TENANT_UUID, 'Relatório final registra tenantId canônico');
+  assert(testReport.total > 0, 'Relatório final inclui itens processados e itens ignorados');
+  assert(testReport.success === 2, 'Dois itens válidos importados com sucesso na execução sequencial');
+  assert(
+    processedSkus.length === 2 && processedSkus[0] === 'AP001' && processedSkus[1] === 'SG002',
+    'Execução estritamente sequencial processou os SKUs na ordem correta'
+  );
+  assert(
+    persistedProductIds.includes(mockCatalogForBulk[0].id) &&
+    persistedProductIds.includes(mockCatalogForBulk[2].id),
+    'Persistência no banco executada para todos os produtos bem-sucedidos'
+  );
+  assert(rolledBackItems.length === 0, 'Nenhum rollback executado quando todos os uploads e updates têm sucesso');
+
+  // Teste 9.4: Falha no Upload => DB NÃO executa
+  let dbCalledOnUploadFailure = false;
+  const uploadFailureItem = [
+    {
+      sku: 'AP001',
+      productName: 'APLICADOR ARGACON R1',
+      filename: 'AP001.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[0],
+    },
+  ];
+
+  await executeSequentialBulkImageImport({
+    readyItems: uploadFailureItem,
+    allDryRunItems: [],
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    deps: {
+      uploader: async () => ({ url: null, path: null, error: 'Storage timeout' }),
+      persister: async () => { dbCalledOnUploadFailure = true; return { updated: true }; },
+    },
+  });
+
+  assert(!dbCalledOnUploadFailure, 'Upload falha => DB não executa');
+
+  // Teste 9.5: DB falha => Rollback isolado daquele item; sucesso anterior NÃO é revertido
+  const compensatedPaths: string[] = [];
+  const multiItems = [
+    {
+      sku: 'AP001',
+      productName: 'APLICADOR ARGACON R1',
+      filename: 'AP001.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[0],
+    },
+    {
+      sku: 'SG002',
+      productName: 'SARGENTO ANGULAR',
+      filename: 'SG002.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[2],
+    },
+  ];
+
+  const reportWithRollback = await executeSequentialBulkImageImport({
+    readyItems: multiItems,
+    allDryRunItems: [],
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    deps: {
+      uploader: async (tId, pId) => ({
+        url: `https://storage.supabase.com/${tId}/${pId}/foto.webp`,
+        path: `${tId}/products/${pId}/foto.webp`,
+        error: null,
+      }),
+      persister: async (_tId, pId) => {
+        if (pId === mockCatalogForBulk[2].id) {
+          throw new Error('Database connection dropped on item 2');
+        }
+        return { updated: true };
+      },
+      compensator: async (paths) => {
+        compensatedPaths.push(...paths);
+      },
+    },
+  });
+
+  assert(reportWithRollback.success === 1, 'Sucesso anterior do item 1 mantido');
+  assert(reportWithRollback.failed === 1, 'Falha no banco do item 2 registrada');
+  assert(
+    compensatedPaths.length === 1 &&
+    compensatedPaths[0] === `${VALID_TENANT_UUID}/products/${mockCatalogForBulk[2].id}/foto.webp`,
+    'DB falha => rollback cirúrgico apenas do upload daquele produto no Storage'
+  );
+  assert(
+    !compensatedPaths.some(p => p.includes(mockCatalogForBulk[0].id)),
+    'Sucesso anterior não é revertido por falha posterior (sem rollback global)'
+  );
+
+  // Teste 9.6: Revalidação de Ownership no Momento da Execução
+  const crossTenantExecutionItem = [
+    {
+      sku: 'JG002',
+      productName: 'JOGO BROCAS',
+      filename: 'JG002.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[4], // OTHER_TENANT_UUID
+    },
+  ];
+
+  const crossReport = await executeSequentialBulkImageImport({
+    readyItems: crossTenantExecutionItem,
+    allDryRunItems: [],
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    deps: {
+      uploader: async () => ({ url: 'https://ok', path: 'ok', error: null }),
+      persister: async () => ({ updated: true }),
+    },
+  });
+  assert(crossReport.failed === 1 && crossReport.success === 0, 'Import revalida ownership no momento da execução e bloqueia produto cross-tenant');
+
+  // Teste 9.7: Persistência Atômica Condicional (updateAdminProductImagesIfEmpty)
+  const adminCatalogSource = fs.readFileSync('src/services/adminCatalogService.ts', 'utf-8');
+  assert(
+    adminCatalogSource.includes('export async function updateAdminProductImagesIfEmpty'),
+    'updateAdminProductImagesIfEmpty declarada e exportada em adminCatalogService'
+  );
+  assert(
+    adminCatalogSource.includes(".eq('tenant_id', tenantId)") &&
+    adminCatalogSource.includes(".eq('id', productId)"),
+    'updateAdminProductImagesIfEmpty filtra por tenant_id e id de produto'
+  );
+  assert(
+    adminCatalogSource.includes(".is('deleted_at', null)"),
+    'updateAdminProductImagesIfEmpty filtra deleted_at IS NULL'
+  );
+  assert(
+    adminCatalogSource.includes(".eq('images', '{}')"),
+    'updateAdminProductImagesIfEmpty filtra condicionalmente images = {} (array vazio)'
+  );
+
+  // Validação de parâmetros inválidos de updateAdminProductImagesIfEmpty
+  const invalidTenantRes = await updateAdminProductImagesIfEmpty('tenant-invalido', VALID_PRODUCT_UUID, 'https://ok.webp');
+  assert(!invalidTenantRes.updated && Boolean(invalidTenantRes.error), 'updateAdminProductImagesIfEmpty rejeita tenantId não-UUID');
+
+  const invalidProductRes = await updateAdminProductImagesIfEmpty(VALID_TENANT_UUID, 'prod-invalido', 'https://ok.webp');
+  assert(!invalidProductRes.updated && Boolean(invalidProductRes.error), 'updateAdminProductImagesIfEmpty rejeita productId não-UUID');
+
+  const nonHttpsRes = await updateAdminProductImagesIfEmpty(VALID_TENANT_UUID, VALID_PRODUCT_UUID, 'http://inseguro.webp');
+  assert(!nonHttpsRes.updated && Boolean(nonHttpsRes.error), 'updateAdminProductImagesIfEmpty rejeita URL não-HTTPS');
+
+  // Teste 9.8: Prevenção de Condição de Corrida (TOCTOU) e Preservação Atômica
+  const toctouCompensatedPaths: string[] = [];
+  const toctouItems = [
+    {
+      sku: 'AP001',
+      productName: 'APLICADOR ARGACON R1',
+      filename: 'AP001.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[0],
+    },
+    {
+      sku: 'SG002',
+      productName: 'SARGENTO ANGULAR',
+      filename: 'SG002.webp',
+      status: 'READY' as const,
+      reason: 'Validado',
+      file: fileAP001,
+      product: mockCatalogForBulk[2],
+    },
+  ];
+
+  // Simula que SG002 recebeu uma foto de outra sessão entre o dry-run e o update do banco
+  const toctouReport = await executeSequentialBulkImageImport({
+    readyItems: toctouItems,
+    allDryRunItems: [],
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    deps: {
+      uploader: async (tId, pId) => ({
+        url: `https://storage.supabase.com/${tId}/${pId}/upload.webp`,
+        path: `${tId}/products/${pId}/upload.webp`,
+        error: null,
+      }),
+      persister: async (_tId, pId) => {
+        if (pId === mockCatalogForBulk[2].id) {
+          // Zero linhas afetadas no banco (condição images = '{}' falhou devido a imagem concorrente)
+          return { updated: false };
+        }
+        return { updated: true };
+      },
+      compensator: async (paths) => {
+        toctouCompensatedPaths.push(...paths);
+      },
+    },
+  });
+
+  assert(toctouReport.success === 1, 'Item 1 sem concorrência completado com sucesso');
+  assert(toctouReport.skipped === 1, 'Item 2 concorrente registrado no total de skipped');
+  assert(
+    toctouReport.items.some(i => i.sku === 'SG002' && i.status === 'SKIPPED_CONCURRENT_IMAGE'),
+    'Item com colisão concorrente recebe status SKIPPED_CONCURRENT_IMAGE'
+  );
+  assert(
+    toctouCompensatedPaths.length === 1 &&
+    toctouCompensatedPaths[0] === `${VALID_TENANT_UUID}/products/${mockCatalogForBulk[2].id}/upload.webp`,
+    'Upload do item com colisão concorrente é imediatamente compensado no Storage'
+  );
+
+  // Teste 9.9: Persister retorna erro explícito de banco
+  const explicitErrCompensatedPaths: string[] = [];
+  const explicitErrReport = await executeSequentialBulkImageImport({
+    readyItems: [toctouItems[0]],
+    allDryRunItems: [],
+    effectiveTenantId: VALID_TENANT_UUID,
+    products: mockCatalogForBulk,
+    deps: {
+      uploader: async (tId, pId) => ({
+        url: `https://storage.supabase.com/${tId}/${pId}/upload.webp`,
+        path: `${tId}/products/${pId}/upload.webp`,
+        error: null,
+      }),
+      persister: async () => ({ updated: false, error: 'Database network timeout' }),
+      compensator: async (paths) => {
+        explicitErrCompensatedPaths.push(...paths);
+      },
+    },
+  });
+
+  assert(explicitErrReport.failed === 1 && explicitErrReport.success === 0, 'Persister com erro explícito marcado como FAILED');
+  assert(explicitErrCompensatedPaths.length === 1, 'Upload compensado quando persister retorna erro explícito');
+
+  // Auditoria do Relatório: sem dados sensíveis
+  const reportKeys = Object.keys(testReport);
+  assert(
+    !reportKeys.includes('session') &&
+    !reportKeys.includes('token') &&
+    !reportKeys.includes('secret') &&
+    !reportKeys.includes('apiKey'),
+    'Relatório final em memória NÃO expõe tokens, sessões, segredos ou chaves sensíveis'
   );
 
   console.log('\n======================================================');

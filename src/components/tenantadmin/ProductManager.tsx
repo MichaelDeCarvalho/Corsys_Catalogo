@@ -33,6 +33,7 @@ import { fetchTenantPublicSettings } from '../../services/catalogService';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import { ProductEditModal } from './ProductEditModal';
 import { ProductBulkEditModal } from './ProductBulkEditModal';
+import { ProductBulkImageImportModal } from './ProductBulkImageImportModal';
 
 export interface ProductManagerProps {
   products?: Product[];
@@ -142,6 +143,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState<boolean>(false);
+  const [isBulkImageImportOpen, setIsBulkImageImportOpen] = useState<boolean>(false);
   const [isBulkProcessing, setIsBulkProcessing] = useState<boolean>(false);
 
   // Categorias únicas derivadas dinamicamente dos produtos reais do Supabase (memoizadas)
@@ -267,6 +269,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     setIsBulkEditOpen(true);
   };
 
+  // Abertura Segura de Importação em Massa de Imagens (Fail-Closed)
+  const handleOpenBulkImageImport = () => {
+    if (!effectiveTenantId || !isValidUuid(effectiveTenantId)) {
+      showToast('Contexto de tenant inválido. A importação em massa foi bloqueada por segurança.');
+      return;
+    }
+    setIsBulkImageImportOpen(true);
+  };
+
   // Funções de Ações em Massa
   const handleBulkStatusChange = async (active: boolean) => {
     if (selectedProductIds.length === 0) return;
@@ -368,6 +379,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={handleOpenBulkImageImport}
+            disabled={loading || products.length === 0}
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Importar fotos em lote por SKU com manifest.json"
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            Importar Fotos em Massa
+          </button>
+
+          <button
             onClick={handleExportCSV}
             disabled={loading || products.length === 0}
             className="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
@@ -416,9 +438,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           <UploadCloud className="w-4 h-4" />
           Importar Imagens
           <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-            activeTab === 'bulk_images' ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-700'
+            activeTab === 'bulk_images' ? 'bg-blue-500 text-white' : 'bg-emerald-100 text-emerald-800'
           }`}>
-            Importação em massa pendente
+            V1 Ativa
           </span>
         </button>
       </div>
@@ -453,17 +475,24 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       {activeTab === 'bulk_images' ? (
         /* Painel Arquitetural: Importação de Imagens em Massa */
         <div className="space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900">
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <UploadCloud className="w-6 h-6 text-blue-600 shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-bold">Importação em Massa Pendente</h3>
-                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  O envio individual de fotos por produto já está totalmente funcional no modal de edição de cada produto.
-                  A importação em lote e associação automática por SKU será liberada na próxima etapa dedicada de processamento em massa.
+                <h3 className="text-sm font-bold">Importação em Massa por SKU (V1)</h3>
+                <p className="text-xs text-blue-800 mt-1 leading-relaxed">
+                  Selecione o arquivo <code className="font-mono bg-blue-100 px-1 py-0.5 rounded text-[11px]">manifest.json</code> e os arquivos de imagem para executar o dry-run com validação estrita antes do envio para o bucket <code className="font-mono bg-blue-100 px-1 py-0.5 rounded text-[11px]">product-media</code>.
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleOpenBulkImageImport}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-2 shrink-0 shadow-sm shadow-blue-600/20 transition-all cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              Abrir Importador em Massa
+            </button>
           </div>
 
           {/* Guidelines and SKU association specs */}
@@ -1047,6 +1076,17 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
           categories={categories}
           onClose={() => setIsBulkEditOpen(false)}
           onSuccess={handleBulkEditSuccess}
+        />
+      )}
+
+      {/* Modal de Importação em Massa de Imagens por SKU */}
+      {isBulkImageImportOpen && effectiveTenantId && (
+        <ProductBulkImageImportModal
+          products={products}
+          effectiveTenantId={effectiveTenantId}
+          onClose={() => setIsBulkImageImportOpen(false)}
+          onReload={handleReload}
+          showToast={showToast}
         />
       )}
 
