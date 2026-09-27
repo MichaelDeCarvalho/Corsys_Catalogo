@@ -60,9 +60,18 @@
   - Nenhuma ocorrência de mensagens `[Variações]` observada no trace pós-hotfix.
   - Heap JavaScript observado entre ~19 MB e ~37,7 MB durante o teste; sem evidência de pressão equivalente ao baseline.
   - Extensões Kaspersky ainda estavam presentes no Preview, porém não explicaram o custo residual das interações do modal.
+- **Hotfix Tenant UUID / Product Media:**
+  - `TenantDashboard` passa explicitamente o tenant UUID administrativo real ao `ProductManager`.
+  - `ProductManager` deriva `effectiveTenantId` apenas de UUIDs válidos.
+  - Removido fallback de escrita para `currentTenant.id` / IDs legados.
+  - Edição individual bloqueia fail-closed se `product.tenantId` não corresponder ao `effectiveTenantId`.
+  - Edição em massa valida que todos os `selectedProductIds` existem e pertencem ao mesmo `effectiveTenantId` antes de abrir o modal.
+  - `productMediaStorageService` e sua validação UUID permaneceram inalterados.
+  - O erro runtime anterior confirmou que o fail-closed bloqueou corretamente um tenant ID legado antes do upload.
+  - O teste funcional de Product Media precisa ser repetido antes de declarar runtime PASS.
 - **Suítes de Testes Automatizados:**
   - `scripts/test-catalog-performance-points.ts`: **23/23 PASSOU (0 FALHOU)**.
-  - `scripts/test-product-media-storage-points.ts`: **78/78 PASSOU (0 FALHOU)**.
+  - `scripts/test-product-media-storage-points.ts`: **107/107 PASSOU (0 FALHOU)** (inclui seção 8 com validações de Tenant UUID e Bulk Ownership Guard).
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU - Regressão Zero)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.
   - `npm run build` (`vite build`): **PASSOU**.
@@ -83,7 +92,9 @@
 ---
 
 ## 3. Próximos Passos
-1. Validar runtime completo de Product Media: upload, persistência após reload, exibição na storefront, definição de imagem principal, remoção e path físico no bucket `product-media`.
-2. Registrar o resultado dessa validação sem declarar PASS antes da conclusão de todos os pontos.
-3. Após a validação individual, implementar a etapa de importação de imagens em massa (associação automática por SKU em lote/ZIP).
+1. Repetir o teste funcional de upload no SKU BR022.
+2. Validar persistência após reload, imagem principal, storefront e remoção.
+3. Só então declarar Product Media runtime PASS.
+4. Importação em massa depois.
+
 

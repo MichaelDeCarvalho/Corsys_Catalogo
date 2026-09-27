@@ -36,6 +36,7 @@ import { ProductBulkEditModal } from './ProductBulkEditModal';
 
 export interface ProductManagerProps {
   products?: Product[];
+  tenantId?: string | null;
   loading?: boolean;
   error?: string | null;
   onReload?: () => void;
@@ -45,6 +46,7 @@ export const ITEMS_PER_PAGE = 40;
 
 export const ProductManager: React.FC<ProductManagerProps> = ({
   products: propProducts,
+  tenantId: propTenantId,
   loading: propLoading,
   error: propError,
   onReload: propOnReload,
@@ -57,6 +59,21 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [internalLoading, setInternalLoading] = useState<boolean>(true);
   const [internalError, setInternalError] = useState<string | null>(null);
   const [activeTenantId, setActiveTenantId] = useState<string>('');
+
+  // Resolução fail-closed do Tenant UUID administrativo real para escritas no Supabase:
+  // 1. propTenantId (se for UUID válido)
+  // 2. activeTenantId (se for UUID válido, caso os produtos sejam carregados internamente)
+  // 3. null (FAIL CLOSED: bloqueia edições caso o UUID não seja resolvido)
+  // NUNCA aceita currentTenant.id, "tenant-mc-distribuicao", slug, localStorage ou IDs mock.
+  const effectiveTenantId = useMemo<string | null>(() => {
+    if (propTenantId && isValidUuid(propTenantId)) {
+      return propTenantId;
+    }
+    if (activeTenantId && isValidUuid(activeTenantId)) {
+      return activeTenantId;
+    }
+    return null;
+  }, [propTenantId, activeTenantId]);
 
   const resolveTargetTenantId = useCallback(async (): Promise<string> => {
     if (!isPlatformAdmin) {
@@ -203,12 +220,64 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
     }
   };
 
+  // Abertura Segura de Edição Individual (Fail-Closed)
+  const handleOpenEdit = (prod: Product) => {
+    if (!effectiveTenantId || !isValidUuid(effectiveTenantId)) {
+      showToast('Contexto de tenant inválido. A edição foi bloqueada por segurança.');
+      return;
+    }
+    if (!prod.tenantId || !isValidUuid(prod.tenantId)) {
+      showToast('Contexto de tenant inválido. A edição foi bloqueada por segurança.');
+      return;
+    }
+    if (prod.tenantId !== effectiveTenantId) {
+      showToast('Contexto de tenant inválido. A edição foi bloqueada por segurança.');
+      return;
+    }
+    setEditingProduct(prod);
+  };
+
+  // Abertura Segura de Edição em Massa (Fail-Closed)
+  const handleOpenBulkEdit = () => {
+    if (!effectiveTenantId || !isValidUuid(effectiveTenantId)) {
+      showToast('Contexto de tenant inválido. A edição em massa foi bloqueada por segurança.');
+      return;
+    }
+
+    if (selectedProductIds.length === 0) {
+      return;
+    }
+
+    const productMap = new Map<string, Product>(products.map(p => [p.id, p]));
+    const hasInvalidSelection = selectedProductIds.some(id => {
+      const product = productMap.get(id);
+      return (
+        !product ||
+        !product.tenantId ||
+        !isValidUuid(product.tenantId) ||
+        product.tenantId !== effectiveTenantId
+      );
+    });
+
+    if (hasInvalidSelection) {
+      showToast('Seleção inválida ou contendo produtos de outro tenant. A edição em massa foi bloqueada por segurança.');
+      return;
+    }
+
+    setIsBulkEditOpen(true);
+  };
+
   // Funções de Ações em Massa
   const handleBulkStatusChange = async (active: boolean) => {
     if (selectedProductIds.length === 0) return;
     setIsBulkProcessing(true);
     try {
-      const resolvedTenantId = activeTenantId || await resolveTargetTenantId();
+      const resolvedTenantId = (effectiveTenantId && isValidUuid(effectiveTenantId))
+        ? effectiveTenantId
+        : await resolveTargetTenantId();
+      if (!isValidUuid(resolvedTenantId)) {
+        throw new Error('Identificador de tenant inválido para atualização em massa.');
+      }
       await bulkUpdateAdminProducts(resolvedTenantId, selectedProductIds, { active });
       showToast(`${selectedProductIds.length} produtos ${active ? 'ativados' : 'pausados'} com sucesso no Supabase!`);
       setSelectedProductIds([]);
@@ -228,7 +297,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
     setIsBulkProcessing(true);
     try {
-      const resolvedTenantId = activeTenantId || await resolveTargetTenantId();
+      const resolvedTenantId = (effectiveTenantId && isValidUuid(effectiveTenantId))
+        ? effectiveTenantId
+        : await resolveTargetTenantId();
+      if (!isValidUuid(resolvedTenantId)) {
+        throw new Error('Identificador de tenant inválido para exclusão em massa.');
+      }
       await bulkSoftDeleteAdminProducts(resolvedTenantId, selectedProductIds);
       showToast(`${selectedProductIds.length} produtos desativados/excluídos com sucesso!`);
       setSelectedProductIds([]);
@@ -564,7 +638,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsBulkEditOpen(true)}
+                  onClick={handleOpenBulkEdit}
                   disabled={isBulkProcessing}
                   className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
                   title="Editar categoria, status ou atacado em massa"
@@ -770,7 +844,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => setEditingProduct(prod)}
+                              onClick={() => handleOpenEdit(prod)}
                               className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors inline-flex items-center gap-1 text-xs font-bold cursor-pointer"
                               title="Editar Produto e Atacado"
                             >
@@ -955,10 +1029,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       )}
 
       {/* Modal de Edição Individual Real */}
-      {editingProduct && (
+      {editingProduct && effectiveTenantId && (
         <ProductEditModal
           product={editingProduct}
-          tenantId={activeTenantId || currentTenant.id}
+          tenantId={effectiveTenantId}
           categories={categories}
           onClose={() => setEditingProduct(null)}
           onSuccess={handleIndividualEditSuccess}
@@ -966,10 +1040,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
       )}
 
       {/* Modal de Edição em Massa Real */}
-      {isBulkEditOpen && (
+      {isBulkEditOpen && effectiveTenantId && (
         <ProductBulkEditModal
           selectedProductIds={selectedProductIds}
-          tenantId={activeTenantId || currentTenant.id}
+          tenantId={effectiveTenantId}
           categories={categories}
           onClose={() => setIsBulkEditOpen(false)}
           onSuccess={handleBulkEditSuccess}

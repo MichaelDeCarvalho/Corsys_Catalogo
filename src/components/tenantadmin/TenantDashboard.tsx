@@ -37,6 +37,7 @@ export const TenantDashboard: React.FC = () => {
   const [adminProducts, setAdminProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const [adminTenantId, setAdminTenantId] = useState<string | null>(null);
 
   /**
    * Resolução segura de Tenant UUID Administrativo:
@@ -79,9 +80,14 @@ export const TenantDashboard: React.FC = () => {
     setProductsError(null);
     try {
       const resolvedTenantId = await resolveTargetTenantId();
+      if (!isValidUuid(resolvedTenantId)) {
+        throw new Error('Identificador de tenant resolvido não é um UUID v4 válido.');
+      }
+      setAdminTenantId(resolvedTenantId);
       const data = await fetchAdminProducts(resolvedTenantId);
       setAdminProducts(data);
     } catch (err: unknown) {
+      setAdminTenantId(null);
       const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo administrativo do Supabase.';
       console.error('[TenantDashboard] Erro ao carregar produtos:', err);
       setProductsError(msg);
@@ -318,6 +324,7 @@ export const TenantDashboard: React.FC = () => {
         {activeTab === 'products' && (
           <ProductManager 
             products={adminProducts}
+            tenantId={adminTenantId}
             loading={productsLoading}
             error={productsError}
             onReload={loadAdminProducts}

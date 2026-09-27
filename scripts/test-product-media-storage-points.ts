@@ -410,6 +410,191 @@ async function runTests() {
   assert(!migration000009.includes('INSERT INTO storage.buckets'), '000009 NÃO faz DML em storage.buckets');
   assert(!migration000009.includes('ALTER TABLE storage.objects'), '000009 NÃO executa ALTER TABLE storage.objects');
 
+  // -------------------------------------------------------------------------
+  // 8. PROPAGAÇÃO ESTRITA DE TENANT UUID ADMINISTRATIVO (HOTFIX CIRÚRGICO)
+  // -------------------------------------------------------------------------
+  console.log('\n8. Propagação Estrita de Tenant UUID Administrativo (Hotfix Cirúrgico)');
+
+  const tenantDashboardSource = fs.readFileSync('src/components/tenantadmin/TenantDashboard.tsx', 'utf-8');
+  assert(
+    tenantDashboardSource.includes('const [adminTenantId, setAdminTenantId] = useState<string | null>(null);'),
+    'TenantDashboard declara estado explícito adminTenantId tipado string | null'
+  );
+  assert(
+    tenantDashboardSource.includes('isValidUuid(resolvedTenantId)'),
+    'TenantDashboard valida resolvedTenantId com isValidUuid antes de propagar'
+  );
+  assert(
+    tenantDashboardSource.includes('setAdminTenantId(resolvedTenantId);'),
+    'TenantDashboard atualiza adminTenantId com o UUID validado'
+  );
+  assert(
+    tenantDashboardSource.includes('setAdminTenantId(null);'),
+    'TenantDashboard reseta adminTenantId para null em caso de erro (fail-closed)'
+  );
+  assert(
+    tenantDashboardSource.includes('tenantId={adminTenantId}'),
+    'TenantDashboard propaga tenantId={adminTenantId} explicitamente para o ProductManager'
+  );
+
+  const productManagerSource = fs.readFileSync('src/components/tenantadmin/ProductManager.tsx', 'utf-8');
+  assert(
+    productManagerSource.includes('tenantId?: string | null;'),
+    'ProductManagerProps declara prop opcional tenantId?: string | null'
+  );
+  assert(
+    productManagerSource.includes('const effectiveTenantId = useMemo<string | null>'),
+    'ProductManager deriva effectiveTenantId com useMemo e resolução estrita'
+  );
+  assert(
+    !productManagerSource.includes('tenantId={activeTenantId || currentTenant.id}'),
+    'ProductManager NUNCA passa currentTenant.id como tenantId para modais de escrita'
+  );
+  assert(
+    productManagerSource.includes('tenantId={effectiveTenantId}'),
+    'ProductManager passa effectiveTenantId validado para ProductEditModal e ProductBulkEditModal'
+  );
+  assert(
+    productManagerSource.includes('handleOpenEdit'),
+    'ProductManager possui handler de abertura com guarda de segurança fail-closed'
+  );
+  assert(
+    productManagerSource.includes('prod.tenantId !== effectiveTenantId'),
+    'ProductManager valida correspondência estrita entre prod.tenantId e effectiveTenantId'
+  );
+
+  // Validação Lógica de Resolução Fail-Closed
+  function resolveEffectiveTenant(propId?: string | null, activeId?: string | null): string | null {
+    if (propId && isValidUuid(propId)) return propId;
+    if (activeId && isValidUuid(activeId)) return activeId;
+    return null;
+  }
+
+  assert(
+    resolveEffectiveTenant(VALID_TENANT_UUID, null) === VALID_TENANT_UUID,
+    'Prop com UUID válido v4 resolvido com sucesso'
+  );
+  assert(
+    resolveEffectiveTenant(null, VALID_TENANT_UUID) === VALID_TENANT_UUID,
+    'Active com UUID válido v4 resolvido quando prop ausente'
+  );
+  assert(
+    resolveEffectiveTenant('tenant-mc-distribuicao', null) === null,
+    'Slug textual "tenant-mc-distribuicao" rejeitado e retorna null'
+  );
+  assert(
+    resolveEffectiveTenant(null, 'tenant-mc-distribuicao') === null,
+    'Active com slug textual "tenant-mc-distribuicao" rejeitado e retorna null'
+  );
+  assert(
+    resolveEffectiveTenant('', '') === null,
+    'Strings vazias retornam null'
+  );
+  assert(
+    resolveEffectiveTenant(undefined, undefined) === null,
+    'Valores indefinidos retornam null'
+  );
+
+  // Validação Lógica da Guarda de Abertura de Edição
+  function canOpenEditModal(effTenantId: string | null, prod: { tenantId?: string }): { allowed: boolean; reason?: string } {
+    if (!effTenantId || !isValidUuid(effTenantId)) {
+      return { allowed: false, reason: 'Contexto de tenant inválido.' };
+    }
+    if (!prod.tenantId || !isValidUuid(prod.tenantId)) {
+      return { allowed: false, reason: 'Contexto de produto inválido.' };
+    }
+    if (prod.tenantId !== effTenantId) {
+      return { allowed: false, reason: 'Inconsistência de tenant.' };
+    }
+    return { allowed: true };
+  }
+
+  assert(
+    canOpenEditModal(VALID_TENANT_UUID, { tenantId: VALID_TENANT_UUID }).allowed === true,
+    'Edição permitida quando tenant e produto possuem o mesmo UUID válido'
+  );
+  assert(
+    canOpenEditModal(null, { tenantId: VALID_TENANT_UUID }).allowed === false,
+    'Edição bloqueada quando tenant é null (unresolved)'
+  );
+  assert(
+    canOpenEditModal(VALID_TENANT_UUID, { tenantId: 'tenant-mc-distribuicao' }).allowed === false,
+    'Edição bloqueada quando product.tenantId não é UUID'
+  );
+  assert(
+    canOpenEditModal(VALID_TENANT_UUID, { tenantId: OTHER_TENANT_UUID }).allowed === false,
+    'Edição bloqueada quando product.tenantId pertence a outro tenant (cross-tenant mitigado)'
+  );
+
+  // Validação Lógica da Guarda de Abertura de Edição em Massa (Bulk Edit)
+  function canOpenBulkEditModal(
+    effTenantId: string | null,
+    selectedIds: string[],
+    productList: Array<{ id: string; tenantId?: string }>
+  ): { allowed: boolean; reason?: string } {
+    if (!effTenantId || !isValidUuid(effTenantId)) {
+      return { allowed: false, reason: 'Contexto de tenant inválido.' };
+    }
+    if (selectedIds.length === 0) {
+      return { allowed: false, reason: 'Nenhum produto selecionado.' };
+    }
+    const map = new Map(productList.map(p => [p.id, p]));
+    for (const id of selectedIds) {
+      const p = map.get(id);
+      if (!p) {
+        return { allowed: false, reason: 'Produto selecionado inexistente na coleção.' };
+      }
+      if (!p.tenantId || !isValidUuid(p.tenantId)) {
+        return { allowed: false, reason: 'Tenant ID do produto inválido (não-UUID).' };
+      }
+      if (p.tenantId !== effTenantId) {
+        return { allowed: false, reason: 'Produto pertence a outro tenant.' };
+      }
+    }
+    return { allowed: true };
+  }
+
+  const mockCatalog = [
+    { id: 'prod-1', tenantId: VALID_TENANT_UUID },
+    { id: 'prod-2', tenantId: VALID_TENANT_UUID },
+    { id: 'prod-3', tenantId: OTHER_TENANT_UUID },
+    { id: 'prod-4', tenantId: 'tenant-mc-distribuicao' },
+    { id: 'prod-5', tenantId: '' },
+  ];
+
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, ['prod-1', 'prod-2'], mockCatalog).allowed === true,
+    'Bulk edit: seleção válida do mesmo tenant permite abrir'
+  );
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, ['prod-1', 'prod-nonexistent'], mockCatalog).allowed === false,
+    'Bulk edit: selected ID inexistente bloqueia bulk edit'
+  );
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, ['prod-1', 'prod-4'], mockCatalog).allowed === false,
+    'Bulk edit: produto com tenantId não-UUID ("tenant-mc-distribuicao") bloqueia'
+  );
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, ['prod-1', 'prod-5'], mockCatalog).allowed === false,
+    'Bulk edit: produto com tenantId vazio bloqueia'
+  );
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, ['prod-1', 'prod-3'], mockCatalog).allowed === false,
+    'Bulk edit: produto de outro tenant bloqueia'
+  );
+  assert(
+    canOpenBulkEditModal(null, ['prod-1', 'prod-2'], mockCatalog).allowed === false,
+    'Bulk edit: tenant unresolved (null) bloqueia'
+  );
+  assert(
+    canOpenBulkEditModal('tenant-mc-distribuicao', ['prod-1', 'prod-2'], mockCatalog).allowed === false,
+    'Bulk edit: legacy currentTenant.id como effectiveTenantId bloqueia'
+  );
+  assert(
+    canOpenBulkEditModal(VALID_TENANT_UUID, [], mockCatalog).allowed === false,
+    'Bulk edit: seleção vazia não abre modal'
+  );
+
   console.log('\n======================================================');
   console.log(`RESULTADO: ${passed} PASSOU / ${failed} FALHOU`);
   console.log('======================================================\n');
