@@ -1,8 +1,8 @@
 # ADR 004: Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1)
 
 ## Status
-**Aceito** (Data: 2026-09-28)  
-*Status de Implantação:* **CORE BACKEND IMPLEMENTADO NO WORKSPACE (MIGRATION 000010 CRIADA / AGUARDANDO DEPLOY HOSTED)**
+**Aceito / Hardened** (Data: 2026-09-28)  
+*Status de Implantação:* **CORE BACKEND HOSTED (000010 APLICADA E CONGELADA) + HARDENING CRIADO NO WORKSPACE (MIGRATION 000011) + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**
 
 ---
 
@@ -30,16 +30,21 @@ Adota-se uma arquitetura em duas camadas (**Edge Gateway + RPC Transacional Inte
        │
        ▼ (HTTP POST / JSON - Payload sem valores financeiros)
 [Supabase Edge Function: submit-order-checkout]
-  - Validação de formato, headers e tamanho de payload (máx. 200 itens, máx. 32 KB)
+  - Feature Gate Fail-Closed: CHECKOUT_ENABLED !== "true" retorna HTTP 503
+  - Validação de formato, headers e tamanho de payload (máx. 200 itens, máx. 64 KB por bytes UTF-8)
   - Honeypot anti-bot
+  - Rejeição de campos financeiros e buyerUserId no body
   - Autenticação obrigatória para atacado via Bearer JWT -> extração do user.id real
   - Varejo público sem obrigatoriedade de login
        │
-       ▼ (Invocação com SUPABASE_SERVICE_ROLE_KEY)
-[PostgreSQL RPC: public.create_order_checkout_internal]
+       ▼ (Invocação com SUPABASE_SECRET_KEYS default)
+[PostgreSQL RPC: public.create_order_checkout_internal (Migrations 000010 e 000011)]
   - LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
   - REVOKE ALL de PUBLIC, anon e authenticated
   - GRANT EXECUTE restrito estritamente a service_role
+  - Validação estrita de UUID v4 para idempotency_key
+  - Snapshots canônicos estritos para cliente e endereço de entrega
+  - Limites de tamanho de strings (slug <= 120, seller_code <= 64, delivery_method <= 64, notes <= 1000, name <= 160, street <= 200, selectedVariant <= 160)
   - Resolução do tenant ativo por slug e configurações
   - Idempotência atômica via (tenant_id, idempotency_key)
   - Validação de produtos ativos e pertencentes ao tenant

@@ -73,34 +73,35 @@
   - Se qualquer upload intermediário ou a atualização do banco falhar, todos os novos arquivos recém-enviados são imediatamente deletados do Storage (`rollbackProductMediaUploads`).
   - Mídias legadas do Supabase V1 (`LEGACY_SUPABASE_V1_HOST`) ou URLs externas são desvinculadas do banco com segurança sem tentativas de deleção física no Storage.
 
-## 6. Segurança em Pedidos e Checkout V1 (Backend Transactional Core)
-- **Status:** **BACKEND CORE IMPLEMENTADO NO WORKSPACE (MIGRATION 000010 / AGUARDANDO DEPLOY)**
+## 6. Segurança em Pedidos e Checkout V1 (Hardening & Feature Gate)
+- **Status:** **MIGRATION 000010 APLICADA/CONGELADA NO HOSTED + FORWARD HARDENING 000011 CRIADA NO WORKSPACE + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**
 - **Eliminação de Autoridade Financeira do Cliente:**
-  - O contrato de backend (`submit-order-checkout` e `create_order_checkout_internal`) não aceita valores financeiros (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`).
+  - O contrato de backend (`submit-order-checkout` e `create_order_checkout_internal`) rejeita rigorosamente qualquer parâmetro financeiro no body (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`) e rejeita `buyerUserId` com HTTP 400.
   - O recálculo é estritamente server-side a partir de `public.products` (`price`, `promotional_price`, `wholesale_price`).
 - **Ciclo de Vida de Estoque sem Vulnerabilidade de DoS:**
   - Pedidos recebidos pelo storefront entram exclusivamente com `status = 'pending'`.
-  - A criação em `pending` valida a existência do estoque, mas **NÃO decremente estoque**.
+  - A criação em `pending` valida a existência do estoque, mas **NÃO decrementa estoque**.
   - Impede ataques de esgotamento malicioso de inventário (*stock exhaustion DoS*) por atores anônimos.
-  - O decremento de estoque ocorre exclusivamente na aprovação (`pending -> approved`) via RPC administrativa com locks pessimistas determinísticos (`FOR UPDATE` ordenado por UUID dos produtos).
-  - Em cancelamento de pedido aprovado/em separação, o estoque é restaurado atômica e exatamente uma vez. Cancelamento de pedido `pending` não altera estoque.
+  - O decremento de estoque ocorre exclusivamente na aprovação (`pending -> approved`) via RPC administrativa com locks pessimistas determinísticos (`FOR UPDATE` ordenado por UUID dos produtos) e validação de `GET DIAGNOSTICS v_affected_rows = 1`.
+  - Em cancelamento de pedido aprovado/em separação, o estoque é restaurado atômica e exatamente uma vez com diagnóstico de linha única (`v_affected_rows = 1`). Cancelamento de pedido `pending` não altera estoque.
 - **Isolamento de Privilégios (Least Privilege):**
   - A RPC `public.create_order_checkout_internal` tem `REVOKE ALL` para `PUBLIC`, `anon` e `authenticated`.
   - Acesso concedido estritamente para `service_role`, invocado exclusivamente pelo gateway da Edge Function.
   - A RPC `public.manage_order_status` é restrita a `authenticated`, com verificação interna de papel `tenant_admin` ou `stock_manager` do mesmo tenant (ou `platform_admin`).
-- **Idempotência Composta:**
-  - A tabela `public.orders` possui constraint `UNIQUE (tenant_id, idempotency_key)`.
+- **Idempotência Composta & UUID v4 Estrito:**
+  - A tabela `public.orders` possui constraint `UNIQUE (tenant_id, idempotency_key)` reafirmada com verificação scoped em `public.orders`::regclass.
+  - Apenas UUIDs na versão 4 (`/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/`) são aceitos; UUID v1/v5 são rejeitados fail-closed.
   - Tentativas repetidas de submissão retornam o pedido preexistente sem duplicação de registros ou inconsistência.
-- **Risco Residual Registrado:**
-  - Como o endpoint de checkout no varejo é acessível publicamente (sem exigência de login para compradores B2C), persiste o risco residual de submissão de pedidos automatizados (spam de pedidos pendentes).
-- **Mitigações Ativas no V1:**
-  - Honeypot anti-bot na Edge Function (`website`, `_honeypot`, `fax`).
-  - Limite rígido de tamanho de payload (64 KB) e máximo de 200 itens por pedido.
-  - Validação estrita de tipos e quantidades inteiras positivas.
-  - Chave de idempotência UUID obrigatória.
-  - Estoque protegido contra decremento indevido.
-- **Recomendação para Produção de Alto Volume:**
-  - Não assumir honeypot como substituto de rate limit; antes da abertura para tráfego em larga escala, implementar Cloudflare Turnstile / CAPTCHA e rate limiting por IP/fingerprint no gateway de borda.
+- **Snapshots Canônicos e Limites de Strings (Defense-in-Depth):**
+  - A RPC constrói snapshots canônicos estritos para `customer` e `shippingAddress`, impedindo a persistência de JSONs arbitrários ou adulterados.
+  - Limites rígidos de caracteres aplicados tanto na Edge Function quanto no PostgreSQL (slug <= 120, seller_code <= 64, delivery_method <= 64, notes <= 1000, name <= 160, street <= 200, selectedVariant <= 160).
+- **Feature Gate Fail-Closed & Chaves Modernas na Edge Function:**
+  - `CHECKOUT_ENABLED !== "true"` bloqueia imediatamente qualquer checkout com HTTP 503 (`Checkout temporariamente indisponível.`).
+  - Uso exclusivo de `SUPABASE_SECRET_KEYS` com extração segura da chave default (`SUPABASE_SERVICE_ROLE_KEY` legada removida).
+  - Limite de 64 KB aferido por bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
+  - Honeypot anti-bot e sanitização/minimização de erros e PII na resposta HTTP.
+- **Governança de Deployment:**
+  - Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.
 
 
 

@@ -121,7 +121,7 @@
   - Não armazena mídias de produto. O upload de imagens de produtos NÃO está implementado nesta etapa e fará parte de infraestrutura dedicada futura.
 
 ## 9. Governança de Migrations e Histórico
-- **Migrations 000001 a 000009 Aplicadas e Congeladas:**
+- **Migrations 000001 a 000010 Aplicadas e Congeladas:**
   - `000001_initial_schema.sql`: APLICADA / CONGELADA
   - `000002_import_official_catalog.sql`: APLICADA / CONGELADA
   - `000003_public_catalog_settings.sql`: APLICADA / CONGELADA
@@ -131,9 +131,12 @@
   - `000007_reconcile_b2b_catalog_security.sql`: APLICADA / CONGELADA
   - `000008_product_media_storage.sql`: APLICADA NO SUPABASE HOSTED / CONGELADA (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
   - `000009_fix_product_media_policy_scope.sql`: APLICADA NO SUPABASE HOSTED / CONGELADA (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
-  - `000010_orders_checkout_v1.sql`: CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED
-  - *Nenhuma alteração é permitida nas migrations 000001–000009. Futuras evoluções de schema exigirão 000011+.*
+  - `000010_orders_checkout_v1.sql`: APLICADA NO SUPABASE HOSTED / CONGELADA
+- **Migration 000011 (Forward-Fix Hardening):**
+  - `000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED**
+- *Regra de Ouro:* Migrations 000001 a 000010 estão estritamente congeladas e aplicadas no Supabase Hosted. A migration 000011 foi criada de forma transacional e defensiva no workspace e aguarda homologação/deploy. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.
 
+---
 
 ## 10. Arquitetura de Storage para Mídias de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status da Etapa:** **PRODUCT MEDIA STORAGE V1 = RUNTIME PASS (SUPABASE HOSTED + WORKSPACE VALIDADO)**
@@ -182,30 +185,46 @@
   - `scripts/test-branding-storage-points.ts`: 35/35 testes aprovados.
   - `npm run lint` / `npm run build`: PASS.
 
-## 11. Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1 Core)
-- **Status da Etapa:** **CORE BACKEND IMPLEMENTADO NO WORKSPACE (MIGRATION 000010 CRIADA / AGUARDANDO DEPLOY HOSTED)**
+---
+
+## 11. Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1 Hardening)
+- **Status da Etapa:** **CORE BACKEND HOSTED (000010) + HARDENING CRIADO NO WORKSPACE (000011) + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**
 - **Decisão Arquitetural (ADR 004):** Duas camadas complementares (Edge Function pública como gateway + RPC PostgreSQL interna transacional).
 - **Contrato de Ingestão de Pedidos (Zero Autoridade Financeira no Cliente):**
   - O storefront submete requisição à Edge Function `submit-order-checkout` (`verify_jwt = false`).
-  - O payload contém apenas `productId`, `quantity`, `selectedVariant`, `customer`, `shippingAddress`, `deliveryMethod`, `paymentMethod` e `idempotencyKey` UUID.
-  - Valores financeiros (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`) são estritamente rejeitados do contrato client-side e recalculados no banco.
-- **RPC Interna `public.create_order_checkout_internal`:**
+  - O payload contém apenas `productId`, `quantity`, `selectedVariant`, `customer`, `shippingAddress`, `deliveryMethod`, `paymentMethod` e `idempotencyKey` UUID v4 estrito.
+  - Valores financeiros (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`) e `buyerUserId` são estritamente rejeitados do contrato client-side (HTTP 400).
+- **Edge Function `submit-order-checkout` (Hospedada & Ativa):**
+  - Modernizada com `Deno.serve` e `npm:@supabase/supabase-js@2`.
+  - Autenticação via `SUPABASE_SECRET_KEYS` (extração segura da chave default; `SUPABASE_SERVICE_ROLE_KEY` legada removida).
+  - **Feature Gate Fail-Closed:** `CHECKOUT_ENABLED !== "true"` retorna HTTP 503 (`Checkout temporariamente indisponível.`).
+  - Limite de 64 KB aferido por contagem de bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
+  - Honeypot anti-spam.
+  - Autenticação Bearer obrigatória para `wholesale` (extração do `user.id` real do JWT; nunca do body).
+  - Whitelist de campos para RPC interna.
+  - Mapeamento e sanitização de erros SQLSTATE e minimização de resposta PII (sem `idempotency_key`, `tenant_id` ou endereços brutos na resposta).
+- **RPC Interna `public.create_order_checkout_internal` (Migration 000011):**
   - `SECURITY DEFINER` com `SET search_path = ''`.
   - Concedida exclusivamente para `service_role` (REVOKE de `PUBLIC`, `anon` e `authenticated`).
-  - Resolve tenant ativo e configurações por slug canônico; fail-closed se inativo ou ausente.
+  - Validação estrita de UUID v4 para `idempotency_key`.
+  - Snapshots canônicos estritos para cliente e endereço de entrega.
+  - Limites de tamanho de strings (slug <= 120, seller_code <= 64, delivery_method <= 64, notes <= 1000, name <= 160, street <= 200, selectedVariant <= 160).
+  - Resolução de tenant ativo por slug canônico; fail-closed se inativo ou ausente.
   - Idempotência transacional por `UNIQUE (tenant_id, idempotency_key)` com captura de corrida de unicidade.
   - Validações B2B para `wholesale`: exige autenticação com credenciamento aprovado em `wholesale_customers`, `allow_b2b_mode = true` e subtotal `>= wholesale_min_order_value`.
   - Validações de varejo: `quantity >= min_order_quantity` e subtotal `>= min_order_value`.
   - Valida estoque atual disponível (`stock >= quantity`), mas **NÃO DECREMENTA ESTOQUE** no status `pending`.
   - Geração server-side de `order_number` via sequence `public.order_number_seq` (`PED-YYYYMMDD-000001`).
-- **RPC Administrativa `public.manage_order_status`:**
-  - `SECURITY DEFINER` com `SET search_path = ''`, restrita a `authenticated` (validação interna de `tenant_admin` ou `stock_manager` do mesmo tenant, ou `platform_admin`).
-  - Lock pessimista da ordem com `SELECT ... FOR UPDATE`.
-  - `pending -> approved`: adquire locks determinísticos por UUID em `public.products`, revalida e decrementa estoque atomicamente. Se faltar estoque em qualquer item, aborta com rollback.
-  - `approved/preparing -> cancelled`: restaura estoque exatamente uma vez.
-  - `pending -> cancelled`: atualiza status sem alterar estoque.
-  - Estados `delivered` e `cancelled` são terminais e imutáveis.
-- **Frontend e Pedidos Reais:** Ainda **NÃO** integrados nesta etapa; pedidos reais ainda não habilitados.
+- **RPC Administrativa `public.manage_order_status` (Migration 000010):**
+  - Executada exclusivamente por `authenticated` (`tenant_admin` ou `stock_manager` do mesmo tenant ou `platform_admin`).
+  - Locks pessimistas ordenados por UUID de produto para evitar deadlocks.
+  - Transição `pending -> approved`: valida produto ativo, não-deleted, estoque disponível e debita atomicamente com diagnóstico `GET DIAGNOSTICS v_affected_rows = 1`.
+  - Transição `approved/preparing -> cancelled`: restaura estoque atomicamente exatamente uma vez com diagnóstico `v_affected_rows = 1`.
+  - Transição `pending -> cancelled`: não altera estoque.
+  - Estados terminais imutáveis: `delivered` e `cancelled`.
+- **Frontend e Storefront:**
+  - `CartDrawer.tsx`, `OrderManager.tsx` e `AppContext.tsx` continuam com a simulação local até a etapa de integração oficial do frontend.
+  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening.
 
 
 

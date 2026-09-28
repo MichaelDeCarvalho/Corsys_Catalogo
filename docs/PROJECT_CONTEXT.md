@@ -56,9 +56,10 @@
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA** (forward-fix de reconciliação determinística de catalog_products e fail-closed B2B).
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (bucket `product-media`, estrutura de paths e policies iniciais).
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
-- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
+- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
+- `supabase/migrations/20260928_000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED** (reafirmação scoped de constraints em public.orders, validação estrita de UUID v4, snapshots canônicos estritos de cliente e endereço, limites de strings e hardening na RPC de checkout).
 
-*Regra de Ouro: Migrations 000001 a 000009 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000010 foi criada de forma defensiva e transacional no workspace e aguarda homologação/deploy.*
+*Regra de Ouro: Migrations 000001 a 000010 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000011 foi criada de forma defensiva no workspace e aguarda homologação/deploy. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
 
 ## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.
@@ -78,10 +79,11 @@
   - Colisão concorrente resulta em status `SKIPPED_CONCURRENT_IMAGE` com rollback compensatório imediato do upload e preservação da imagem preexistente.
   - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo a qualquer momento.
 
-## 6. Estado Atual de Orders / Checkout V1 (Backend Transactional Core)
-- **Status da Etapa:** **CORE BACKEND IMPLEMENTADO NO WORKSPACE (NÃO APLICADO NO HOSTED / AGUARDANDO DEPLOY)**.
-- **Migration 000010:** Criada no workspace com evolução defensiva de `public.orders`, sequence `public.order_number_seq`, RPC `public.create_order_checkout_internal` (service_role-only) e RPC `public.manage_order_status` (authenticated com locks determinísticos).
-- **Edge Function `submit-order-checkout`:** Criada no workspace com gateway público, honeypot anti-spam, autenticação obrigatória para atacado e chamada restrita à RPC interna.
-- **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
-- **Frontend e Pedidos Reais:** Ainda **NÃO** integrados nesta etapa (`CartDrawer`, `OrderManager` e `AppContext` continuam com o fluxo pré-existente de teste local; pedidos reais ainda não habilitados; não declarar runtime PASS).
+## 6. Estado Atual de Orders / Checkout V1 (Backend Hardening & Feature Gate)
+- **Status da Etapa:** **CORE BACKEND HOSTED (000010) + HARDENING CRIADO NO WORKSPACE (000011) + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**.
+- **Migration 000010:** Aplicada e congelada no Supabase Hosted.
+- **Migration 000011:** Criada no workspace com snapshots canônicos, restrição estrita a UUID v4 e limites de tamanho na RPC.
+- **Edge Function `submit-order-checkout`:** Hospedada e ativa no Supabase Hosted, modernizada com runtime `Deno.serve`, imports `npm:@supabase/supabase-js@2`, chaves modernas `SUPABASE_SECRET_KEYS`, sanitização de erros/PII e **Fail-Closed por Feature Gate** (`CHECKOUT_ENABLED !== "true"` retorna HTTP 503).
+- **Base `public.orders`:** 0 pedidos existentes no momento da validação pré-hardening.
+- **Frontend e Pedidos Reais:** Ainda **NÃO** integrados (`CartDrawer`, `OrderManager` e `AppContext` continuam com o fluxo de simulação local; checkout remoto bloqueado até a integração oficial).
 

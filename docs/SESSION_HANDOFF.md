@@ -132,29 +132,41 @@
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
-- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED**
+- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA**
+- `supabase/migrations/20260928_000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED**
 
-*Regra de Ouro: Migrations 000001 a 000009 estão estritamente congeladas e aplicadas no Supabase Hosted. A migration 000010 foi criada no workspace e aguarda deploy no banco hosted. Futuras evoluções exigirão 000011+.*
+*Regra de Ouro: Migrations 000001 a 000010 estão estritamente congeladas e aplicadas no Supabase Hosted. A migration 000011 foi criada no workspace e aguarda homologação/deploy. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
 
 ---
 
-## 3. Estado de Orders / Checkout V1 (Backend Transactional Core)
+## 3. Estado de Orders / Checkout V1 (Hardening & Feature Gate)
 - **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
-- **Migration 000010:**
+- **Migration 000010 (Aplicada / Congelada):**
   - `idempotency_key UUID NOT NULL` com `UNIQUE (tenant_id, idempotency_key)`.
   - `shopping_mode TEXT NOT NULL CHECK IN ('retail', 'wholesale')`.
   - `delivery_method TEXT NOT NULL`.
   - `public.order_number_seq` (sequence server-side).
-  - RPC `public.create_order_checkout_internal` (service_role-only, autoridade financeira server-side, zero autoridade do client, estoque validado sem decremento no status pending).
-  - RPC `public.manage_order_status` (authenticated, tenant_admin / stock_manager / platform_admin, locks pessimistas determinísticos, decremento atômico na aprovação, restauração atômica em cancelamento).
-- **Edge Function `submit-order-checkout`:**
-  - Gateway com `verify_jwt = false` (permite checkout anônimo no varejo).
-  - Honeypot anti-spam.
+  - RPC `public.create_order_checkout_internal` (service_role-only).
+  - RPC `public.manage_order_status` (authenticated, tenant_admin / stock_manager / platform_admin, locks pessimistas determinísticos, decremento atômico na aprovação, restauração atômica em cancelamento com `GET DIAGNOSTICS v_affected_rows = 1`).
+- **Migration 000011 (Criada no Workspace):**
+  - Transação `BEGIN / COMMIT` explícita.
+  - Reafirmação de constraints scoped em `pg_constraint.conrelid = 'public.orders'::regclass`.
+  - Validação estrita de UUID v4 para `p_idempotency_key` via regex.
+  - Snapshots canônicos estritos para `customer` e `shippingAddress` (sem JSON arbitrário).
+  - Limites de tamanho de strings na RPC (slug <= 120, seller_code <= 64, delivery_method <= 64, notes <= 1000, name <= 160, street <= 200, selectedVariant <= 160).
+- **Edge Function `submit-order-checkout` (Hospedada & Ativa):**
+  - Modernizada com `Deno.serve` e `npm:@supabase/supabase-js@2`.
+  - Chave de autorização via `SUPABASE_SECRET_KEYS` (extração segura da chave default; `SUPABASE_SERVICE_ROLE_KEY` legada removida).
+  - **Feature Gate Fail-Closed:** `CHECKOUT_ENABLED !== "true"` bloqueia qualquer requisição pública com HTTP 503 (`Checkout temporariamente indisponível.`).
+  - Limite de 64 KB aferido por bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
+  - Whitelist de campos sanitizados antes da chamada da RPC.
+  - Rejeição de campos de autoridade financeira (`subtotal`, `total`, `discount`, `unitPrice`, etc.) e `buyerUserId` no body com HTTP 400.
   - Autenticação Bearer obrigatória para `wholesale` (extração do `user.id` real do JWT; nunca do body).
-  - Limite de 64 KB e máximo de 200 itens por pedido.
-  - Invocação da RPC interna com `SUPABASE_SERVICE_ROLE_KEY`.
+  - Mapeamento e sanitização de erros SQLSTATE conhecidos e HTTP 500 para desconhecidos.
+  - **Minimização de Resposta:** Não expõe `tenant_id`, `seller_id`, `idempotency_key` ou `customer`/`shipping_address` brutos.
 - **Frontend e Storefront:**
   - `CartDrawer.tsx`, `OrderManager.tsx` e `AppContext.tsx` ainda não integrados nesta etapa (fluxo de pedidos reais ainda não habilitado; não declarar runtime PASS).
+  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening.
 
 
 
