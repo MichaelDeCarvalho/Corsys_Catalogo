@@ -47,7 +47,7 @@ console.log('1. Auditoria de Schema & Governança de Migrations');
 const migration10Path = 'supabase/migrations/20260928_000010_orders_checkout_v1.sql';
 assert(fs.existsSync(migration10Path), 'Migration 000010 existe no workspace');
 
-const migration11Path = 'supabase/migrations/20260928_000011_orders_checkout_hardening.sql';
+const migration11Path = 'supabase/migrations/20260928043000_000011_orders_checkout_hardening.sql';
 assert(fs.existsSync(migration11Path), 'Migration 000011 existe no workspace');
 
 const migration10Sql = fs.readFileSync(migration10Path, 'utf-8');

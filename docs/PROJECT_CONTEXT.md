@@ -57,7 +57,7 @@
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (bucket `product-media`, estrutura de paths e policies iniciais).
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
 - `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
-- `supabase/migrations/20260928_000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED** (reafirmação scoped de constraints em public.orders, validação estrita de UUID v4, snapshots canônicos estritos de cliente e endereço, limites de strings e hardening na RPC de checkout).
+- `supabase/migrations/20260928043000_000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED** (reafirmação scoped de constraints em public.orders, validação estrita de UUID v4, snapshots canônicos estritos de cliente e endereço, limites de strings e hardening na RPC de checkout).
 
 *Regra de Ouro: Migrations 000001 a 000010 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000011 foi criada de forma defensiva no workspace e aguarda homologação/deploy. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
 
