@@ -101,9 +101,18 @@
     - Elimina completamente a janela de corrida onde outra sessão pudesse adicionar imagem entre o dry-run e a persistência remota.
     - Se zero linhas forem atualizadas, o upload recém-enviado é imediatamente compensado no Storage e o item é classificado como `SKIPPED_CONCURRENT_IMAGE`, preservando intacta a foto preexistente.
     - Se ocorrer erro de persistência no banco, o upload daquele item é compensado cirurgicamente e classificado como `FAILED`.
-    - Sucessos anteriores e posteriores permanecem intactos (sem rollback global).
-  - Geração de relatório final com opção de download JSON (sem expor tokens, sessões ou dados sensíveis).
-  - Ainda **NÃO** executar/importar o lote no Supabase nesta etapa.
+  - **Execução e Resultados do Lote Piloto de 17 SKUs:**
+    - Lote executado com arquivos WebP (< 1 MiB) e `manifest.json`.
+    - **17 SUCCESS**
+    - **0 FAILED**
+    - **0 SKIPPED**
+    - **17 URLs** persistidas em `public.products.images[]`
+    - **17 objetos físicos** correspondentes criados no bucket `product-media`
+    - **0 imagens órfãs** observadas no teste realizado.
+  - O importador em massa utiliza persistência condicional atômica via `updateAdminProductImagesIfEmpty` (`images = '{}'`, `deleted_at IS NULL`, `tenant_id` e `id`).
+  - Em condição concorrente (imagem adicionada por outra sessão após o dry-run), a gravação condicional atômica resulta em `SKIPPED_CONCURRENT_IMAGE` com rollback imediato do upload recém-criado e preservação da imagem existente.
+  - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo através do `ProductEditModal`.
+  - *(Nota de governança: o número total de produtos com foto no catálogo reflete estritamente as evidências dos testes executados — SKU BR022 individual + 17 SKUs do lote piloto —, sem assunção de risco zero em cenários não cobertos).*
 - **Suítes de Testes Automatizados:**
   - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)** (inclui testes de parsing de manifest, dry-run, upload sequencial, compensação por item, relatório, filtros atômicos de `updateAdminProductImagesIfEmpty`, mitigação TOCTOU e `SKIPPED_CONCURRENT_IMAGE`).
   - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
@@ -123,13 +132,30 @@
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA**
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
+- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED**
+
+*Regra de Ouro: Migrations 000001 a 000009 estão estritamente congeladas e aplicadas no Supabase Hosted. A migration 000010 foi criada no workspace e aguarda deploy no banco hosted. Futuras evoluções exigirão 000011+.*
 
 ---
 
-## 3. Próximos Passos
-1. Executar o dry-run real com os 17 arquivos e manifest.json no painel administrativo e revisar a tabela antes de qualquer confirmação.
-2. Confirmar a importação sequencial do lote piloto no Supabase Hosted.
-3. Validar a exibição das novas imagens no painel administrativo e na vitrine da loja.
+## 3. Estado de Orders / Checkout V1 (Backend Transactional Core)
+- **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
+- **Migration 000010:**
+  - `idempotency_key UUID NOT NULL` com `UNIQUE (tenant_id, idempotency_key)`.
+  - `shopping_mode TEXT NOT NULL CHECK IN ('retail', 'wholesale')`.
+  - `delivery_method TEXT NOT NULL`.
+  - `public.order_number_seq` (sequence server-side).
+  - RPC `public.create_order_checkout_internal` (service_role-only, autoridade financeira server-side, zero autoridade do client, estoque validado sem decremento no status pending).
+  - RPC `public.manage_order_status` (authenticated, tenant_admin / stock_manager / platform_admin, locks pessimistas determinísticos, decremento atômico na aprovação, restauração atômica em cancelamento).
+- **Edge Function `submit-order-checkout`:**
+  - Gateway com `verify_jwt = false` (permite checkout anônimo no varejo).
+  - Honeypot anti-spam.
+  - Autenticação Bearer obrigatória para `wholesale` (extração do `user.id` real do JWT; nunca do body).
+  - Limite de 64 KB e máximo de 200 itens por pedido.
+  - Invocação da RPC interna com `SUPABASE_SERVICE_ROLE_KEY`.
+- **Frontend e Storefront:**
+  - `CartDrawer.tsx`, `OrderManager.tsx` e `AppContext.tsx` ainda não integrados nesta etapa (fluxo de pedidos reais ainda não habilitado; não declarar runtime PASS).
+
 
 
 

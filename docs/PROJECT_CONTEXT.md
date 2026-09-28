@@ -54,11 +54,34 @@
 - `supabase/migrations/20260907_000005_b2b_wholesale_access.sql`: **APLICADA / CONGELADA** (credenciamento B2B, tabela wholesale_customers, RPCs com fail-closed).
 - `supabase/migrations/20260909_000006_branding_storage.sql`: **APLICADA / CONGELADA** (policies de autorização e menor privilégio para bucket tenant-assets).
 - `supabase/migrations/20260910_000007_reconcile_b2b_catalog_security.sql`: **APLICADA / CONGELADA** (forward-fix de reconciliação determinística de catalog_products e fail-closed B2B).
+- `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (bucket `product-media`, estrutura de paths e policies iniciais).
+- `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
+- `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
 
-*Regra de Ouro: Migrations 000001 a 000007 estão estritamente congeladas. Qualquer evolução posterior de schema exigirá 000008+.*
+*Regra de Ouro: Migrations 000001 a 000009 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000010 foi criada de forma defensiva e transacional no workspace e aguarda homologação/deploy.*
 
-## 5. Próxima Etapa Oficial
-- **PRODUCT MEDIA STORAGE**:
-  - Infraestrutura dedicada para armazenamento de imagens reais de produtos (diferenciada do bucket `tenant-assets` de branding da loja).
-  - Primeiro passo: upload e gestão individual de fotos no `ProductEditModal`.
-  - Segundo passo: importação e associação de imagens em massa reutilizando a mesma infraestrutura.
+## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
+- **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.
+- **Upload Individual:** RUNTIME PASS validado no SKU `BR022`.
+- **Gestão de Imagens:** Upload, persistência em `public.products.images[]`, reordenação determinística (posição 0 como principal) e remoção física do objeto antigo no Storage: RUNTIME PASS.
+- **Variant Family Imagery:** RUNTIME PASS (famílias adotam primeira variante real ordenada com foto, e busca por SKU prioriza variante destacada).
+- **Importador em Massa por SKU (Bulk Image Importer):**
+  - Implementado com parsing estrito de `manifest.json` e dry-run obrigatório em memória (zero writes / zero uploads).
+  - Lote piloto de 17 SKUs executado e validado:
+    - 17 SUCCESS
+    - 0 FAILED
+    - 0 SKIPPED
+    - 17 URLs persistidas em `public.products.images[]`
+    - 17 objetos físicos correspondentes no bucket `product-media`
+    - 0 imagens órfãs observadas no teste.
+  - Persistência atômica condicional implementada via `updateAdminProductImagesIfEmpty` (`images = '{}'`, `deleted_at IS NULL`, `tenant_id` e `id`), prevenindo condições de corrida TOCTOU.
+  - Colisão concorrente resulta em status `SKIPPED_CONCURRENT_IMAGE` com rollback compensatório imediato do upload e preservação da imagem preexistente.
+  - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo a qualquer momento.
+
+## 6. Estado Atual de Orders / Checkout V1 (Backend Transactional Core)
+- **Status da Etapa:** **CORE BACKEND IMPLEMENTADO NO WORKSPACE (NÃO APLICADO NO HOSTED / AGUARDANDO DEPLOY)**.
+- **Migration 000010:** Criada no workspace com evolução defensiva de `public.orders`, sequence `public.order_number_seq`, RPC `public.create_order_checkout_internal` (service_role-only) e RPC `public.manage_order_status` (authenticated com locks determinísticos).
+- **Edge Function `submit-order-checkout`:** Criada no workspace com gateway público, honeypot anti-spam, autenticação obrigatória para atacado e chamada restrita à RPC interna.
+- **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
+- **Frontend e Pedidos Reais:** Ainda **NÃO** integrados nesta etapa (`CartDrawer`, `OrderManager` e `AppContext` continuam com o fluxo pré-existente de teste local; pedidos reais ainda não habilitados; não declarar runtime PASS).
+

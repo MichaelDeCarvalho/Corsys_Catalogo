@@ -73,4 +73,34 @@
   - Se qualquer upload intermediário ou a atualização do banco falhar, todos os novos arquivos recém-enviados são imediatamente deletados do Storage (`rollbackProductMediaUploads`).
   - Mídias legadas do Supabase V1 (`LEGACY_SUPABASE_V1_HOST`) ou URLs externas são desvinculadas do banco com segurança sem tentativas de deleção física no Storage.
 
+## 6. Segurança em Pedidos e Checkout V1 (Backend Transactional Core)
+- **Status:** **BACKEND CORE IMPLEMENTADO NO WORKSPACE (MIGRATION 000010 / AGUARDANDO DEPLOY)**
+- **Eliminação de Autoridade Financeira do Cliente:**
+  - O contrato de backend (`submit-order-checkout` e `create_order_checkout_internal`) não aceita valores financeiros (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`).
+  - O recálculo é estritamente server-side a partir de `public.products` (`price`, `promotional_price`, `wholesale_price`).
+- **Ciclo de Vida de Estoque sem Vulnerabilidade de DoS:**
+  - Pedidos recebidos pelo storefront entram exclusivamente com `status = 'pending'`.
+  - A criação em `pending` valida a existência do estoque, mas **NÃO decremente estoque**.
+  - Impede ataques de esgotamento malicioso de inventário (*stock exhaustion DoS*) por atores anônimos.
+  - O decremento de estoque ocorre exclusivamente na aprovação (`pending -> approved`) via RPC administrativa com locks pessimistas determinísticos (`FOR UPDATE` ordenado por UUID dos produtos).
+  - Em cancelamento de pedido aprovado/em separação, o estoque é restaurado atômica e exatamente uma vez. Cancelamento de pedido `pending` não altera estoque.
+- **Isolamento de Privilégios (Least Privilege):**
+  - A RPC `public.create_order_checkout_internal` tem `REVOKE ALL` para `PUBLIC`, `anon` e `authenticated`.
+  - Acesso concedido estritamente para `service_role`, invocado exclusivamente pelo gateway da Edge Function.
+  - A RPC `public.manage_order_status` é restrita a `authenticated`, com verificação interna de papel `tenant_admin` ou `stock_manager` do mesmo tenant (ou `platform_admin`).
+- **Idempotência Composta:**
+  - A tabela `public.orders` possui constraint `UNIQUE (tenant_id, idempotency_key)`.
+  - Tentativas repetidas de submissão retornam o pedido preexistente sem duplicação de registros ou inconsistência.
+- **Risco Residual Registrado:**
+  - Como o endpoint de checkout no varejo é acessível publicamente (sem exigência de login para compradores B2C), persiste o risco residual de submissão de pedidos automatizados (spam de pedidos pendentes).
+- **Mitigações Ativas no V1:**
+  - Honeypot anti-bot na Edge Function (`website`, `_honeypot`, `fax`).
+  - Limite rígido de tamanho de payload (64 KB) e máximo de 200 itens por pedido.
+  - Validação estrita de tipos e quantidades inteiras positivas.
+  - Chave de idempotência UUID obrigatória.
+  - Estoque protegido contra decremento indevido.
+- **Recomendação para Produção de Alto Volume:**
+  - Não assumir honeypot como substituto de rate limit; antes da abertura para tráfego em larga escala, implementar Cloudflare Turnstile / CAPTCHA e rate limiting por IP/fingerprint no gateway de borda.
+
+
 

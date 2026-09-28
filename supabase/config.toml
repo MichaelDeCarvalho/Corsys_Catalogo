@@ -392,6 +392,9 @@ verify_jwt = false
 [functions.manage-wholesale-customer]
 verify_jwt = true
 
+[functions.submit-order-checkout]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

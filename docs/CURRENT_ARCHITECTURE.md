@@ -121,7 +121,7 @@
   - Não armazena mídias de produto. O upload de imagens de produtos NÃO está implementado nesta etapa e fará parte de infraestrutura dedicada futura.
 
 ## 9. Governança de Migrations e Histórico
-- **Migrations 000001 a 000007 Congeladas em Produção:**
+- **Migrations 000001 a 000009 Aplicadas e Congeladas:**
   - `000001_initial_schema.sql`: APLICADA / CONGELADA
   - `000002_import_official_catalog.sql`: APLICADA / CONGELADA
   - `000003_public_catalog_settings.sql`: APLICADA / CONGELADA
@@ -129,48 +129,83 @@
   - `000005_b2b_wholesale_access.sql`: APLICADA / CONGELADA
   - `000006_branding_storage.sql`: APLICADA / CONGELADA
   - `000007_reconcile_b2b_catalog_security.sql`: APLICADA / CONGELADA
-  - *Nenhuma alteração é permitida nas migrations 000001–000007.*
-- **Migration 000008 (Nova):**
-  - `20260916_000008_product_media_storage.sql`: CRIADA NO WORKSPACE / AGUARDANDO DEPLOY
+  - `000008_product_media_storage.sql`: APLICADA NO SUPABASE HOSTED / CONGELADA (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
+  - `000009_fix_product_media_policy_scope.sql`: APLICADA NO SUPABASE HOSTED / CONGELADA (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
+  - `000010_orders_checkout_v1.sql`: CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED
+  - *Nenhuma alteração é permitida nas migrations 000001–000009. Futuras evoluções de schema exigirão 000011+.*
 
-## 10. Arquitetura de Storage para Mídias de Produtos (Product Media Storage V1)
-- **Status da Etapa:** **PRODUCT MEDIA STORAGE IMPLEMENTADO NO WORKSPACE AGUARDANDO DEPLOY**
+
+## 10. Arquitetura de Storage para Mídias de Produtos (Product Media Storage V1 — RUNTIME PASS)
+- **Status da Etapa:** **PRODUCT MEDIA STORAGE V1 = RUNTIME PASS (SUPABASE HOSTED + WORKSPACE VALIDADO)**
 - **Bucket `product-media`:**
   - Configuração em `supabase/config.toml`: `public = true`, `file_size_limit = "1MiB"`, `allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]`.
   - SVG estritamente proibido (mitigação de XSS); GIF desabilitado nesta etapa.
-- **Políticas RLS em `storage.objects` (Migration 000008 e Forward-Fix 000009):**
-  - *Status:* **000008 aplicada no Supabase hosted; Forward-fix 000009 criado no workspace / aguardando deploy**.
-  - **Bug identificado na 000008:** No banco real, dentro do subquery `EXISTS (SELECT 1 FROM public.products p ...)`, a chamada `storage.foldername(name)` sofreu shadowing pelo parser PostgreSQL, sendo resolvida como `storage.foldername(p.name)` (coluna `name` da tabela `products`).
-  - **Correção Forward na 000009 (`20260917_000009_fix_product_media_policy_scope.sql`):**
-    - Executa `DROP POLICY IF EXISTS` para as 3 policies de `product-media`.
-    - Recria as policies qualificando explicitamente a referência da linha externa como `storage.foldername(storage.objects.name)`:
-      `EXISTS (SELECT 1 FROM public.products p WHERE p.id::text = (storage.foldername(storage.objects.name))[3] AND p.tenant_id::text = (storage.foldername(storage.objects.name))[1])`.
-    - Preserva rigorosamente as permissões de menor privilégio da 000008 sem nenhuma ampliação de privilégios.
-    - `product_media_select_authenticated`: Restrito a `tenant_admin` no escopo do seu próprio tenant sob `/products/<product_id>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-    - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` gravando sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-    - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` removendo sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
-    - Nenhuma policy de UPDATE (uploads versionados com `upsert: false`).
-    - Nenhuma policy de SELECT público amplo em `storage.objects` (leitura pública consome CDN pública do bucket).
-    - Sem DML direto em `storage.buckets` e sem `ALTER TABLE storage.objects`.
-  - *Runtime de Product Media:* **Ainda aguarda validação em ambiente real após o deploy da migration 000009** (não declarar runtime PASS até confirmação do deploy da 000009).
-- **Estrutura de Paths (Isolamento Multi-tenant & Multi-produto):**
-  - `<tenant_uuid>/products/<product_uuid>/media_<timestamp>_<random>.<ext>`
-  - Validação canônica estrita de UUID v4 para `tenant_id` e `product_id` (Fail-Closed).
-- **Serviço Especializado (`src/services/productMediaStorageService.ts`):**
-  - Inspeção binária de magic bytes para detecção real de PNG, JPEG e WebP.
-  - Função `extractOwnedProductMediaPath` com fail-closed, rejeição de path traversal (`..`, `\`), esquemas perigosos (`blob:`, `data:`, `javascript:`) e URLs de outros tenants/produtos.
-  - Rotinas compensatórias de rollback em caso de falha (`rollbackProductMediaUploads`, `removeProductMediaImage`).
-- **Camada de Aplicação e Edição de Produtos (`src/components/tenantadmin/ProductEditModal.tsx`):**
-  - Seção "Fotos do Produto" com upload múltiplo, preview local temporário (`URL.createObjectURL` com revogação garantida).
-  - Zero uploads remotos ao selecionar arquivos ou ao cancelar o modal. Upload ocorre estritamente ao clicar em "Salvar Alterações".
-  - Trava visual contra requisições concorrentes (`saving`).
-  - Ordem determinística com a imagem do índice 0 atuando como destaque principal no catálogo.
-  - Fluxo compensatório client-side: Validação -> Uploads -> Gravação em `public.products` -> Confirmação do Banco -> Remoção segura das mídias antigas desvinculadas.
-- **Integração no Catálogo (`src/services/adminCatalogService.ts`):**
-  - `AdminProductUpdatePayload` com campo `images?: string[]`.
-  - Sanitização estrita HTTPS-Only: array de strings com `trim()`, sem vazios, sem duplicatas, aceitando exclusivamente URLs `https://` (legadas ou novas) e rejeitando qualquer esquema não-HTTPS (`http://`, `blob:`, `data:`, `javascript:`, `file:`, etc.).
+- **Políticas RLS em `storage.objects` (Migrations 000008 e Forward-Fix 000009):**
+  - *Status:* Ambas aplicadas e congeladas no Supabase Hosted.
+  - Correção na 000009 qualifica explicitamente a linha externa como `storage.foldername(storage.objects.name)` contra shadowing em `products.name`.
+  - `product_media_select_authenticated`: Restrito a `tenant_admin` no escopo do seu próprio tenant sob `/products/<product_id>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - `product_media_insert_tenant_admin`: Restrito a `tenant_admin` gravando sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - `product_media_delete_tenant_admin`: Restrito a `tenant_admin` removendo sob `<tenant_uuid>/products/<product_uuid>` ou `platform_admin`, com produto existente e vinculado ao tenant.
+  - Nenhuma policy de UPDATE (uploads versionados com `upsert: false`).
+  - Nenhuma policy de SELECT público amplo em `storage.objects` (leitura pública consome CDN pública do bucket via `getPublicUrl`).
+  - Sem DML direto em `storage.buckets` e sem `ALTER TABLE storage.objects`.
+- **Validação Funcional em Runtime (SKU BR022) — RUNTIME PASS:**
+  - Upload real no bucket `product-media`: PASS.
+  - Path canônico `<tenant_uuid>/products/<product_uuid>/...`: PASS.
+  - Persistência em `public.products.images[]`: PASS.
+  - Reload administrativo preserva imagens: PASS.
+  - Exposição via `catalog_products`: PASS.
+  - Exibição na vitrine da loja: PASS.
+  - Segunda imagem adicionada e promoção para principal (`images[0]`): PASS.
+  - Nova principal refletida na vitrine: PASS.
+  - Remoção lógica e exclusão física no Storage: PASS.
+  - Zero imagens órfãs observadas no teste.
+- **Variant Family Imagery (Storefront):**
+  - Famílias de variações selecionam como imagem representativa a primeira variante real ordenada que possui imagem cadastrada (`images.length > 0`), sem alterar `product.images`.
+  - Na busca por SKU (`highlightedSkus`), o card prioriza a foto do SKU pesquisado e o abre como variante inicial.
+- **Importação em Massa por SKU (Bulk Image Importer):**
+  - Associação via `manifest.json` com dry-run obrigatório em memória (zero writes, zero uploads).
+  - Lote piloto de 17 SKUs executado e validado:
+    - 17 SUCCESS
+    - 0 FAILED
+    - 0 SKIPPED
+    - 17 URLs persistidas em `public.products.images[]`
+    - 17 objetos físicos no Storage
+    - 0 órfãos observados no teste.
+  - Persistência condicional atômica implementada via `updateAdminProductImagesIfEmpty`:
+    - Filtra estritamente `tenant_id`, `id`, `deleted_at IS NULL` e `images = '{}'`.
+    - Se zero linhas forem atualizadas, aborta a gravação, executa rollback cirúrgico do upload no Storage e marca `SKIPPED_CONCURRENT_IMAGE`, eliminando janelas TOCTOU e prevenindo sobrescrita de imagens adicionadas simultaneamente.
+  - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo a qualquer momento.
 - **Validação Automatizada:**
-  - `scripts/test-product-media-storage-points.ts`: 78/78 testes aprovados.
-  - `scripts/test-branding-storage-points.ts`: 35/35 testes aprovados (regressão zero).
+  - `scripts/test-product-media-storage-points.ts`: 153/153 testes aprovados.
+  - `scripts/test-catalog-performance-points.ts`: 34/34 testes aprovados.
+  - `scripts/test-branding-storage-points.ts`: 35/35 testes aprovados.
+  - `npm run lint` / `npm run build`: PASS.
+
+## 11. Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1 Core)
+- **Status da Etapa:** **CORE BACKEND IMPLEMENTADO NO WORKSPACE (MIGRATION 000010 CRIADA / AGUARDANDO DEPLOY HOSTED)**
+- **Decisão Arquitetural (ADR 004):** Duas camadas complementares (Edge Function pública como gateway + RPC PostgreSQL interna transacional).
+- **Contrato de Ingestão de Pedidos (Zero Autoridade Financeira no Cliente):**
+  - O storefront submete requisição à Edge Function `submit-order-checkout` (`verify_jwt = false`).
+  - O payload contém apenas `productId`, `quantity`, `selectedVariant`, `customer`, `shippingAddress`, `deliveryMethod`, `paymentMethod` e `idempotencyKey` UUID.
+  - Valores financeiros (`unitPrice`, `totalPrice`, `subtotal`, `discount`, `shipping_fee`, `total`) são estritamente rejeitados do contrato client-side e recalculados no banco.
+- **RPC Interna `public.create_order_checkout_internal`:**
+  - `SECURITY DEFINER` com `SET search_path = ''`.
+  - Concedida exclusivamente para `service_role` (REVOKE de `PUBLIC`, `anon` e `authenticated`).
+  - Resolve tenant ativo e configurações por slug canônico; fail-closed se inativo ou ausente.
+  - Idempotência transacional por `UNIQUE (tenant_id, idempotency_key)` com captura de corrida de unicidade.
+  - Validações B2B para `wholesale`: exige autenticação com credenciamento aprovado em `wholesale_customers`, `allow_b2b_mode = true` e subtotal `>= wholesale_min_order_value`.
+  - Validações de varejo: `quantity >= min_order_quantity` e subtotal `>= min_order_value`.
+  - Valida estoque atual disponível (`stock >= quantity`), mas **NÃO DECREMENTA ESTOQUE** no status `pending`.
+  - Geração server-side de `order_number` via sequence `public.order_number_seq` (`PED-YYYYMMDD-000001`).
+- **RPC Administrativa `public.manage_order_status`:**
+  - `SECURITY DEFINER` com `SET search_path = ''`, restrita a `authenticated` (validação interna de `tenant_admin` ou `stock_manager` do mesmo tenant, ou `platform_admin`).
+  - Lock pessimista da ordem com `SELECT ... FOR UPDATE`.
+  - `pending -> approved`: adquire locks determinísticos por UUID em `public.products`, revalida e decrementa estoque atomicamente. Se faltar estoque em qualquer item, aborta com rollback.
+  - `approved/preparing -> cancelled`: restaura estoque exatamente uma vez.
+  - `pending -> cancelled`: atualiza status sem alterar estoque.
+  - Estados `delivered` e `cancelled` são terminais e imutáveis.
+- **Frontend e Pedidos Reais:** Ainda **NÃO** integrados nesta etapa; pedidos reais ainda não habilitados.
+
 
 
