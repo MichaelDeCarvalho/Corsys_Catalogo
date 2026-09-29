@@ -240,8 +240,35 @@
   - Transição `pending -> cancelled`: não altera estoque.
   - Estados terminais imutáveis: `delivered` e `cancelled`.
 - **Frontend e Storefront:**
-  - `CartDrawer.tsx`, `OrderManager.tsx` e `AppContext.tsx` continuam com a simulação local até a etapa de integração oficial do frontend.
-  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening.
+  - `CartDrawer.tsx` integrado à Edge Function oficial com validação fail-closed antes da rede e no retorno.
+  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening e permaneceu com 0 pedidos no teste de deploy.
+
+## 12. Arquitetura de Hospedagem Frontend (Cloudflare Workers Static Assets & ADR 005)
+- **Pipeline de Deploy Frontend:**
+  - GitHub `main` → Cloudflare Workers Builds → Vite build (`bun run build`) → Workers Static Assets (`dist/`).
+  - Deploy command: `npx wrangler deploy`.
+  - Cloudflare build variable: `BUN_VERSION=1.4.2`.
+  - Configuração `wrangler.jsonc`:
+    - `workers_dev: true` (endpoint de validação ativo).
+    - `preview_urls: false` (sem preview URLs desnecessárias).
+    - `assets.directory: "./dist"`.
+- **Separação Estrita de Responsabilidades:**
+  - Frontend: Single Page Application (SPA) em React 19 + Vite 6 servida estaticamente pelo Cloudflare Workers Static Assets.
+  - Backend: Supabase Auth, PostgreSQL/RLS, Storage e Edge Functions (Deno).
+  - O Cloudflare não possui Worker backend, bindings, banco de dados ou autoridade financeira.
+- **Variáveis Públicas de Build:**
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_PUBLISHABLE_KEY`
+  - `VITE_PUBLIC_TENANT_SLUG`
+- **Segurança de Ativos e Secrets:**
+  - Zero secrets server-side no bundle client-side.
+  - `CHECKOUT_ENABLED` pertence exclusivamente à Edge Function Supabase e permanece desabilitado/fail-closed (`503`).
+  - Documentações internas e binários expurgados do diretório `public/`.
+- **Status de Validação em Runtime:**
+  - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
+  - Storefront runtime & Supabase connection: **PASS**.
+  - Checkout fail-closed 503: **PASS** (`public.orders` permaneceu em 0).
+  - Domínio customizado: Ainda não configurado.
 
 
 

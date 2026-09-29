@@ -99,4 +99,19 @@
   - `OrderManager` local
   - `TenantDashboard` KPIs locais
 
+## 7. Hospedagem Frontend (Cloudflare Workers Static Assets)
+- **Pipeline de Deploy:** GitHub `main` → Cloudflare Workers Builds → `bun run build` → Workers Static Assets (`dist/`).
+- **Deploy Command:** `npx wrangler deploy`.
+- **Cloudflare Build Variable:** `BUN_VERSION=1.4.2`.
+- **Public Build Variables:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_PUBLIC_TENANT_SLUG`.
+- **Backend:** Permanece 100% no Supabase (Auth, PostgreSQL/RLS, Storage, Edge Functions).
+- **Validações Runtime:**
+  - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
+  - Storefront & Conexão Supabase: **PASS**.
+  - Checkout Feature Gate (503 fail-closed): **PASS** (`public.orders` permaneceu em 0).
+  - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
+  - Pedido real: Ainda NÃO validado.
+  - Domínio customizado: Ainda NÃO configurado.
+
+
 

@@ -34,8 +34,7 @@ Toda a documentação técnica, de banco de dados, catálogo de produtos, manuai
 
 ---
 
-## 🗜️ Download do Pacote Completo de Documentação (.ZIP)
+## 🗜️ Pacote de Documentação (.ZIP)
 
-O arquivo compactado contendo toda a documentação estruturada em Markdown e scripts SQL está disponível em:
+O arquivo compactado contendo a documentação estruturada em Markdown e scripts SQL está disponível como artefato interno do repositório em:
 - **`documentacao-projeto.zip`** (na raiz do repositório)
-- Ou pelo botão de download direto na interface do sistema.

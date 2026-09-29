@@ -170,6 +170,40 @@
   - `npm run build` (`vite build`): **PASSOU**.
 - **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
 
+---
+
+## 4. Hospedagem Frontend (Cloudflare Workers Static Assets & ADR 005)
+- **Frontend Deploy Pipeline:**
+  - Repositório: GitHub `main`.
+  - Esteira: Cloudflare Workers Builds.
+  - Build command: `bun run build` (output em `dist/`).
+  - Deploy command: `npx wrangler deploy`.
+  - Cloudflare build variable: `BUN_VERSION=1.4.2`.
+  - Configuração `wrangler.jsonc`:
+    - `workers_dev: true`.
+    - `preview_urls: false`.
+    - `assets.directory: "./dist"`.
+- **Separação Arquitetural:**
+  - Frontend: Single Page Application (SPA) em React 19 + Vite 6 servida estaticamente pelo Cloudflare Workers Static Assets.
+  - Backend: Supabase Auth, PostgreSQL/RLS, Storage e Edge Functions (Deno).
+  - Cloudflare NÃO possui Worker backend, bindings, banco de dados ou autoridade financeira.
+- **Variáveis Públicas de Build:**
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_PUBLISHABLE_KEY`
+  - `VITE_PUBLIC_TENANT_SLUG`
+- **Hardening de Ativos Públicos:**
+  - `public/documentacao-projeto.zip` expurgado do diretório público para não vazar documentação interna no bundle `dist/`.
+  - Arquivo de documentação mantido apenas como artefato interno na raiz (`documentacao-projeto.zip`).
+- **Validações em Runtime:**
+  - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
+  - Storefront & Conexão Supabase: **PASS**.
+  - Checkout Feature Gate (fail-closed HTTP 503): **PASS** (`public.orders` permaneceu em 0).
+  - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
+  - Pedido real: Ainda NÃO validado.
+  - Domínio customizado: Ainda NÃO configurado.
+- **ADR 005:** Registrado formalmente em `docs/adr/ADR_005_CLOUDFLARE_FRONTEND_DEPLOY.md`.
+
+
 
 
 
