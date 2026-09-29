@@ -113,6 +113,16 @@ export const StorefrontView: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Quick Mode só existe em atacado aprovado; reseta para false ao sair de wholesale/aprovação
+  useEffect(() => {
+    const isB2bAllowed = Boolean(settings?.allowB2bMode);
+    if (purchaseMode !== 'wholesale' || !isApproved || !isB2bAllowed) {
+      if (b2bQuickMode) {
+        setB2bQuickMode(false);
+      }
+    }
+  }, [purchaseMode, isApproved, settings?.allowB2bMode, b2bQuickMode, setB2bQuickMode]);
+
   // Quando em modo atacado aprovado, enriquece a lista com os dados oficiais autorizados retornados pela RPC get_wholesale_catalog
   const effectiveProducts = React.useMemo(() => {
     if (purchaseMode !== 'wholesale' || !isApproved || wholesaleCatalogMap.size === 0) {
@@ -276,6 +286,7 @@ export const StorefrontView: React.FC = () => {
   const whatsappClean = settings.whatsappNumber ? settings.whatsappNumber.replace(/\D/g, '') : '';
   const minVarejo = settings.minOrderValue || 0;
   const minAtacado = settings.wholesaleMinOrderValue;
+  const allowB2bMode = Boolean(settings.allowB2bMode);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-24 font-['Plus_Jakarta_Sans']">
@@ -381,7 +392,7 @@ export const StorefrontView: React.FC = () => {
                   Catálogo Atacadista Exclusivo liberado para <strong className="underline decoration-amber-600">{wholesaleCompany?.tradeName || wholesaleCompany?.legalName}</strong> (CNPJ: {wholesaleCompany?.cnpj})
                 </span>
                 <div className="text-[11px] text-amber-800 font-normal">
-                  Preços de atacado autorizados via Supabase RPC • Pedido mínimo geral R$ 1.000,00
+                  Preços de atacado autorizados via Supabase RPC • Pedido mínimo geral {minAtacado !== null && minAtacado > 0 ? `R$ ${minAtacado.toFixed(2).replace('.', ',')}` : 'a combinar'}
                 </div>
               </div>
             </div>
@@ -415,49 +426,70 @@ export const StorefrontView: React.FC = () => {
                 id="btn-mode-retail"
               >
                 <span>Varejo</span>
-                <span className="text-[10px] font-normal text-slate-500">(Mín. R$ 400)</span>
+                {minVarejo > 0 && (
+                  <span className="text-[10px] font-normal text-slate-500">(Mín. R$ {minVarejo.toFixed(2).replace('.', ',')})</span>
+                )}
               </button>
 
               <button
                 type="button"
-                onClick={() => requestSwitchPurchaseMode('wholesale')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  purchaseMode === 'wholesale'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs ring-2 ring-amber-500/20'
+                disabled={!allowB2bMode}
+                onClick={allowB2bMode ? () => requestSwitchPurchaseMode('wholesale') : undefined}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                  !allowB2bMode
+                    ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                    : purchaseMode === 'wholesale'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs ring-2 ring-amber-500/20 cursor-pointer'
                     : isPending
-                    ? 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    ? 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 cursor-pointer'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 cursor-pointer'
                 }`}
                 id="btn-mode-wholesale"
                 title={
-                  isApproved
+                  !allowB2bMode
+                    ? 'Atacado indisponível nesta loja'
+                    : isApproved
                     ? 'Acesso ao Atacado Liberado'
                     : isPending
                     ? 'Cadastro em análise pelo administrador'
                     : 'Exige empresa cadastrada e aprovada com CNPJ'
                 }
               >
-                {!isApproved && !isPending && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                {isPending && <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-pulse" />}
-                <span>Atacado</span>
-                {isApproved ? (
-                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded-full">
-                    Liberado
-                  </span>
-                ) : isPending ? (
-                  <span className="text-[9px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-full">
-                    Em análise
-                  </span>
+                {!allowB2bMode ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Atacado indisponível</span>
+                  </>
                 ) : (
-                  <span className="text-[9px] font-normal text-slate-400">(CNPJ)</span>
+                  <>
+                    {!isApproved && !isPending && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                    {isPending && <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-pulse" />}
+                    <span>Atacado</span>
+                    {minAtacado !== null && minAtacado > 0 && (
+                      <span className="text-[10px] font-normal text-slate-500">
+                        (Mín. R$ {minAtacado.toFixed(2).replace('.', ',')})
+                      </span>
+                    )}
+                    {isApproved ? (
+                      <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded-full">
+                        Liberado
+                      </span>
+                    ) : isPending ? (
+                      <span className="text-[9px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-full">
+                        Em análise
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-normal text-slate-400">(CNPJ)</span>
+                    )}
+                  </>
                 )}
               </button>
             </div>
           </div>
 
-          {/* Atalhos para B2B e Status Comercial */}
+          {/* Atalhos para B2B e Status Comercial (oculto se allowB2bMode for falso) */}
           <div className="flex items-center gap-2">
-            {!isApproved && (
+            {allowB2bMode && !isApproved && (
               isPending ? (
                 <div className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-3 py-1 rounded-xl text-xs border border-amber-200">
                   <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
@@ -512,8 +544,8 @@ export const StorefrontView: React.FC = () => {
             })}
           </div>
 
-          {/* Mode switch: Grid vs B2B Quick Order Table */}
-          {settings.allowB2bMode && (
+          {/* Mode switch: Grid vs B2B Quick Order Table (somente em atacado aprovado) */}
+          {allowB2bMode && purchaseMode === 'wholesale' && isApproved && (
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-slate-500 font-medium hidden sm:inline">Visualização:</span>
               <div className="bg-white p-1 rounded-xl border border-[#E2E8F0] flex items-center text-xs font-semibold shadow-xs">

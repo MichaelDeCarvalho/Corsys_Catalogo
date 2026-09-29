@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useApp } from './AppContext';
 import { WholesaleItemData, WholesaleCustomerStatus } from '../types';
 import { fetchMyWholesaleStatus, fetchWholesaleCatalog } from '../services/wholesaleService';
+import { PUBLIC_TENANT_SLUG } from '../config/tenant';
 
 export type PurchaseMode = 'retail' | 'wholesale';
 export type WholesaleAccessStatus = 'unauthenticated' | WholesaleCustomerStatus;
@@ -19,7 +20,6 @@ export interface WholesaleCompanyInfo {
 export interface WholesaleAccessContextType {
   // Modalidade de Compra
   purchaseMode: PurchaseMode;
-  setPurchaseMode: (mode: PurchaseMode) => void;
   requestSwitchPurchaseMode: (mode: PurchaseMode) => void;
 
   // Estado de Autorização B2B
@@ -53,15 +53,15 @@ export interface WholesaleAccessContextType {
 
   isSwitchModeDialogOpen: boolean;
   targetPendingMode: PurchaseMode | null;
-  confirmSwitchPurchaseMode: (action: 'recalculate' | 'clear' | 'remove_incompatible') => void;
+  confirmSwitchPurchaseMode: () => void;
   cancelSwitchPurchaseMode: () => void;
 }
 
 const WholesaleAccessContext = createContext<WholesaleAccessContextType | undefined>(undefined);
 
 export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, openLoginModal } = useAuth();
-  const { cart, clearCart, showToast, currentTenant, setShoppingMode, confirmShoppingModeChange } = useApp();
+  const { user } = useAuth();
+  const { cart, clearCart, showToast, setShoppingMode } = useApp();
 
   const [purchaseMode, setPurchaseModeState] = useState<PurchaseMode>('retail');
   const [wholesaleStatus, setWholesaleStatus] = useState<WholesaleAccessStatus>('unauthenticated');
@@ -79,21 +79,39 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   const [isSwitchModeDialogOpen, setIsSwitchModeDialogOpen] = useState(false);
   const [targetPendingMode, setTargetPendingMode] = useState<PurchaseMode | null>(null);
 
-  const activeTenantSlug = useMemo(() => {
-    return currentTenant?.slug || (import.meta as any).env?.VITE_PUBLIC_TENANT_SLUG || 'corsys-catalogo-demo';
-  }, [currentTenant?.slug]);
+  // Tenant canônico oficial para B2B
+  const activeTenantSlug = PUBLIC_TENANT_SLUG;
+
+  // Sincronização estrita entre purchaseMode autoritativo e shoppingMode legado do AppContext
+  const setPurchaseModeSynchronized = useCallback((mode: PurchaseMode) => {
+    setPurchaseModeState(mode);
+    setShoppingMode(mode);
+  }, [setShoppingMode]);
+
+  const cartRef = React.useRef(cart);
+  cartRef.current = cart;
+  const purchaseModeRef = React.useRef(purchaseMode);
+  purchaseModeRef.current = purchaseMode;
+
+  // Fallback seguro para retail com limpeza de carrinho fora de state updater
+  const resetToRetail = useCallback(() => {
+    if (purchaseModeRef.current === 'wholesale' && cartRef.current.length > 0) {
+      clearCart();
+    }
+    setPurchaseModeState('retail');
+    setShoppingMode('retail');
+  }, [clearCart, setShoppingMode]);
 
   // Limpeza de cache e dados autorizados de atacado (ao deslogar ou revogar)
   const clearWholesaleSession = useCallback(() => {
-    setPurchaseModeState('retail');
-    setShoppingMode('retail');
+    resetToRetail();
     setWholesaleStatus('unauthenticated');
     setWholesaleCompany(null);
     setWholesaleCatalogMap(new Map());
     setWholesaleCatalogError(null);
-  }, [setShoppingMode]);
+  }, [resetToRetail]);
 
-  // Carrega status B2B do usuário autenticado no tenant ativo
+  // Carrega status B2B do usuário autenticado no tenant ativo (sem dependência em cart.length)
   const refreshWholesaleStatus = useCallback(async () => {
     if (!user) {
       clearWholesaleSession();
@@ -124,28 +142,33 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
           phone: res.phone || ''
         });
       } else if (res.status === 'suspended') {
+        resetToRetail();
         setWholesaleStatus('suspended');
         setWholesaleCompany(null);
-        setPurchaseModeState('retail');
+        setWholesaleCatalogMap(new Map());
       } else if (res.status === 'rejected') {
+        resetToRetail();
         setWholesaleStatus('rejected');
         setWholesaleCompany(null);
-        setPurchaseModeState('retail');
+        setWholesaleCatalogMap(new Map());
       } else {
+        resetToRetail();
         setWholesaleStatus('unauthenticated');
         setWholesaleCompany(null);
-        setPurchaseModeState('retail');
+        setWholesaleCatalogMap(new Map());
       }
     } catch (err) {
       console.warn('[WholesaleAccessContext] Erro ao carregar status:', err);
+      resetToRetail();
       setWholesaleStatus('unauthenticated');
       setWholesaleCompany(null);
+      setWholesaleCatalogMap(new Map());
     } finally {
       setLoadingStatus(false);
     }
-  }, [user, activeTenantSlug, clearWholesaleSession]);
+  }, [user, activeTenantSlug, clearWholesaleSession, resetToRetail]);
 
-  // Carrega a projeção de preços atacadistas via RPC
+  // Carrega a projeção de preços atacadistas via RPC (sem dependência em cart.length)
   const loadWholesaleCatalog = useCallback(async () => {
     if (wholesaleStatus !== 'approved') {
       return;
@@ -165,12 +188,12 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       console.error('[WholesaleAccessContext] Erro no catálogo atacadista:', err);
       setWholesaleCatalogError(msg);
       showToast(`Acesso ao atacado: ${msg}`);
-      // Fallback para varejo em caso de falha de autorização
-      setPurchaseModeState('retail');
+      setWholesaleCatalogMap(new Map());
+      resetToRetail();
     } finally {
       setIsLoadingWholesaleCatalog(false);
     }
-  }, [wholesaleStatus, activeTenantSlug, showToast]);
+  }, [wholesaleStatus, activeTenantSlug, showToast, resetToRetail]);
 
   // Observa mudanças na autenticação do usuário
   useEffect(() => {
@@ -237,36 +260,24 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
     }
 
     // Troca direta com carrinho vazio
-    setPurchaseModeState(targetMode);
-    setShoppingMode(targetMode);
+    setPurchaseModeSynchronized(targetMode);
     if (targetMode === 'wholesale') {
       loadWholesaleCatalog();
-      showToast('Modalidade ATACADO ativada. Pedido mínimo: R$ 1.000,00.');
+      showToast('Modalidade ATACADO ativada.');
     } else {
-      showToast('Modalidade VAREJO ativada. Pedido mínimo: R$ 400,00.');
+      showToast('Modalidade VAREJO ativada.');
     }
   };
 
-  const confirmSwitchPurchaseMode = (action: 'recalculate' | 'clear' | 'remove_incompatible') => {
+  const confirmSwitchPurchaseMode = () => {
     if (!targetPendingMode) return;
 
-    if (action === 'clear') {
-      clearCart();
-      setPurchaseModeState(targetPendingMode);
-      setShoppingMode(targetPendingMode);
-      if (targetPendingMode === 'wholesale') {
-        loadWholesaleCatalog();
-      }
-      showToast(`Modalidade alterada para ${targetPendingMode === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
-    } else {
-      // Recalcular mantendo produtos ou removendo incompatíveis com autorização explícita
-      setPurchaseModeState(targetPendingMode);
-      setShoppingMode(targetPendingMode);
-      if (targetPendingMode === 'wholesale') {
-        loadWholesaleCatalog();
-      }
-      confirmShoppingModeChange(action);
+    clearCart();
+    setPurchaseModeSynchronized(targetPendingMode);
+    if (targetPendingMode === 'wholesale') {
+      loadWholesaleCatalog();
     }
+    showToast(`Modalidade alterada para ${targetPendingMode === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
 
     setIsSwitchModeDialogOpen(false);
     setTargetPendingMode(null);
@@ -293,7 +304,6 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
     <WholesaleAccessContext.Provider
       value={{
         purchaseMode,
-        setPurchaseMode: setPurchaseModeState,
         requestSwitchPurchaseMode,
         wholesaleStatus,
         isApproved,

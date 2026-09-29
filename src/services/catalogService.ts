@@ -43,9 +43,6 @@ export interface RawCatalogProductRow {
   technical_specs: Record<string, unknown> | null;
   price: number | string;
   promotional_price: number | string | null;
-  wholesale_price: number | string | null;
-  wholesale_enabled?: boolean | null;
-  wholesale_min_quantity?: number | string | null;
   min_order_quantity: number | string;
   stock: number | string;
   unit: string | null;
@@ -91,34 +88,14 @@ export function adaptTenantPublicSettings(row: RawTenantPublicSettingsRow): Tena
 
 /**
  * Adapter: converte registro snake_case da view catalog_products para Product tipado.
+ * Nota de Segurança: A view pública 'public.catalog_products' expõe apenas preços de varejo.
+ * Preços atacadistas NUNCA são inferidos da view pública e entram no Product somente via RPC get_wholesale_catalog.
  */
 export function adaptCatalogProduct(row: RawCatalogProductRow): Product {
   const price = typeof row.price === 'number' ? row.price : Number(row.price) || 0;
   const promotionalPrice = row.promotional_price !== null && row.promotional_price !== undefined
     ? (typeof row.promotional_price === 'number' ? row.promotional_price : Number(row.promotional_price))
     : null;
-  const wholesalePrice = row.wholesale_price !== null && row.wholesale_price !== undefined
-    ? (typeof row.wholesale_price === 'number' ? row.wholesale_price : Number(row.wholesale_price))
-    : null;
-
-  // Bootstrap rule: se wholesale_enabled estiver gravado, usa ele. Caso contrário, se wholesale_price > 0 -> true
-  let wholesaleEnabled = false;
-  if (row.wholesale_enabled !== undefined && row.wholesale_enabled !== null) {
-    wholesaleEnabled = Boolean(row.wholesale_enabled);
-  } else {
-    wholesaleEnabled = Boolean(wholesalePrice !== null && wholesalePrice > 0);
-  }
-
-  let wholesaleMinQuantity: number | null = null;
-  if (wholesaleEnabled) {
-    if (row.wholesale_min_quantity !== undefined && row.wholesale_min_quantity !== null) {
-      wholesaleMinQuantity = typeof row.wholesale_min_quantity === 'number'
-        ? row.wholesale_min_quantity
-        : Number(row.wholesale_min_quantity) || 1;
-    } else {
-      wholesaleMinQuantity = 1;
-    }
-  }
 
   const stock = typeof row.stock === 'number' ? row.stock : Number(row.stock) || 0;
   const minOrderQuantity = typeof row.min_order_quantity === 'number' ? row.min_order_quantity : Number(row.min_order_quantity) || 1;
@@ -138,9 +115,9 @@ export function adaptCatalogProduct(row: RawCatalogProductRow): Product {
     costPrice: null, // Propositalmente nulo: cost_price NUNCA é lido ou exposto pelo storefront
     price,
     promotionalPrice,
-    wholesalePrice: wholesaleEnabled ? wholesalePrice : null,
-    wholesaleEnabled,
-    wholesaleMinQuantity,
+    wholesalePrice: null,
+    wholesaleEnabled: false,
+    wholesaleMinQuantity: null,
     wholesaleTiers: [], // Sem tiers artificiais na fonte oficial
     minOrderQuantity,
     stock,

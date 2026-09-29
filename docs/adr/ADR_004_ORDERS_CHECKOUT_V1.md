@@ -1,8 +1,15 @@
 # ADR 004: Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1)
 
 ## Status
-**Aceito / Hardened** (Data: 2026-09-28)  
-*Status de Implantação:* **CORE BACKEND HOSTED (000010 APLICADA E CONGELADA) + HARDENING CRIADO NO WORKSPACE (MIGRATION 000011) + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**
+**Aceito / Frontend Integration & Hardened** (Data: 2026-09-28)  
+- **Orders Backend:** **RUNTIME HARDENING PASS**
+- **000010:** **APLICADA / CONGELADA**
+- **000011:** **APLICADA / CONGELADA**
+- **submit-order-checkout:** **v2 ACTIVE**
+- **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO**
+- **Frontend:** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / AINDA NÃO VALIDADA COM PEDIDO REAL**
+- **B2B:** **tenant público canônico reconciliado com PUBLIC_TENANT_SLUG / purchaseMode e shoppingMode sincronizados**
+- **Legado ainda existente:** AppContext orders, OrderManager local, TenantDashboard KPIs locais
 
 ---
 

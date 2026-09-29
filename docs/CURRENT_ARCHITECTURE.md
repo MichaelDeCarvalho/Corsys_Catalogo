@@ -187,8 +187,25 @@
 
 ---
 
-## 11. Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1 Hardening)
-- **Status da Etapa:** **CORE BACKEND HOSTED (000010) + HARDENING CRIADO NO WORKSPACE (000011) + EDGE FUNCTION HOSPEDADA BLOQUEADA POR FEATURE GATE**
+## 11. Arquitetura Transacional Backend de Pedidos e Checkout (Orders V1 Frontend Integration & Hardening)
+- **Orders Backend:** **RUNTIME HARDENING PASS**
+- **000010:** **APLICADA / CONGELADA**
+- **000011:** **APLICADA / CONGELADA**
+- **submit-order-checkout:** **v2 ACTIVE** (verify_jwt = false, autorização service_role via SUPABASE_SECRET_KEYS)
+- **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO** (`CHECKOUT_ENABLED !== "true"` retorna HTTP 503)
+- **Frontend:** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / AINDA NÃO VALIDADA COM PEDIDO REAL**
+  - `CartDrawer` integrado ao `orderService.submitOrderCheckout`.
+  - Zero autoridade financeira no cliente (subtotal, total, descontos e fretes recalculados pelo backend).
+  - Idempotência baseada em UUID v4 e digest SHA-256 da intenção do pedido; sessionStorage livre de PII.
+  - Fail-closed: erro HTTP 503 tratado inline com preservação do carrinho, dados do formulário e chave de idempotência.
+  - Desacoplamento total de WhatsApp da criação de pedidos; PIX hardcoded e confetti expurgados.
+- **B2B:**
+  - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
+  - `purchaseMode` (WholesaleAccessContext) autoritativo, com `shoppingMode` (AppContext) temporariamente sincronizado.
+- **Legado ainda existente:**
+  - `AppContext` local orders
+  - `OrderManager` local
+  - `TenantDashboard` KPIs locais
 - **Decisão Arquitetural (ADR 004):** Duas camadas complementares (Edge Function pública como gateway + RPC PostgreSQL interna transacional).
 - **Contrato de Ingestão de Pedidos (Zero Autoridade Financeira no Cliente):**
   - O storefront submete requisição à Edge Function `submit-order-checkout` (`verify_jwt = false`).

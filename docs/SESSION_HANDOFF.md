@@ -133,40 +133,45 @@
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `991566a46952cf2a7873f6e86393ef7d153e0ff780e79074ce997b775cb1883f`)
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (SHA-256: `0a160dba2a7da7b6fd5fab1516afe9bd0c579820c127608bac98721696244051`)
 - `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA**
-- `supabase/migrations/20260929_000011_orders_checkout_hardening.sql`: **CRIADA NO WORKSPACE / AGUARDANDO DEPLOY HOSTED**
+- `supabase/migrations/20260929_000011_orders_checkout_hardening.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA**
 
-*Regra de Ouro: Migrations 000001 a 000010 estão estritamente congeladas e aplicadas no Supabase Hosted. A migration 000011 foi criada no workspace e aguarda homologação/deploy. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
+*Regra de Ouro: Migrations 000001 a 000011 estão estritamente congeladas e aplicadas no Supabase Hosted. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
 
 ---
 
-## 3. Estado de Orders / Checkout V1 (Hardening & Feature Gate)
+## 3. Estado de Orders / Checkout V1 (Frontend Integration & Runtime Hardening)
+- **Orders Backend:** **RUNTIME HARDENING PASS**
+- **000010:** **APLICADA / CONGELADA**
+- **000011:** **APLICADA / CONGELADA**
+- **submit-order-checkout:** **v2 ACTIVE** (verify_jwt = false, autorização service_role via SUPABASE_SECRET_KEYS)
+- **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO** (`CHECKOUT_ENABLED !== "true"` retorna HTTP 503)
+- **Frontend Integration Hardening & Correção Residual Final:** **CONCLUÍDO / PASS (158/158)**
+  - `buildCheckoutRequestBody`: Helper puro e testável extraído em `orderService.ts` com validação fail-closed antes da rede.
+  - Wholesale vazio: Se e-mail e telefone operacionais não forem fornecidos, envia explicitamente `customer: {}` (nunca `undefined`). Identidade comercial oficial provém estritamente do banco de dados (`wholesale_customers`), sem nunca enviar `name`, `document`, `companyName`, `type` ou `buyerUserId` pelo client.
+  - Retail: `customer`, `name` e `phone` são estritamente obrigatórios. Tipagem `PF` ou `PJ` validada sem coerção silenciosa.
+  - Fail-closed runtime input: `selectedVariant` validado estritamente como string com trim (máximo 160 caracteres), variantes vazias convertidas para `null`, rejeitando outros tipos; `quantity` restrita a inteiros entre 1 e 2147483647; limite técnico de no máximo 200 itens por pedido.
+  - `validateReceipt` estrito: Expurgada qualquer coerção arbitrária (`String(itemObj.selectedVariant)` removido); `selectedVariant` aceita apenas `undefined`, `null` ou `string`; quantidades, preços e totais exigem valores finitos `>= 0`; validação estrita de data em `createdAt` via `Date.parse`, rejeitando strings vazias, não-strings ou datas malformadas.
+  - Idempotência: Validação estrita de SHA-256 (64 hexadecimais), UUID v4 e TTL de 2 horas em `validateStoredAttempt` e `readStoredAttempt`; rejeição estrita fail-closed sem tolerância para `createdAt` no futuro (`now = Date.now(); createdAt > now` rejeitado, inclusive `now + 1` e `now + 5000`); purga automática de storage corrompido, futuro ou expirado; sessionStorage estritamente livre de PII.
+  - Resets e Ciclo de Vida: Botão de fechar (X) e "Voltar ao Catálogo" acionam `resetCheckoutLifecycle()`; inclusão de novos itens no carrinho reseta recibo antigo; formulário PII limpo após sucesso; tela de sucesso só consome recibo validado do servidor.
+  - Revalidação Pre-Network Completa (10 Guards): `handleFinishOrder` revalida imediatamente antes da chamada à Edge Function: (1) `settings` existe; (2) `settings.slug` válido e não vazio; (3) carrinho não vazio; (4) autorização de atacado ativa; (5) `wholesaleMinOrderValue` não nulo quando em atacado; (6) mínimo wholesale estimado atendido; (7) nenhum item com quantidade abaixo do mínimo ou estoque insuficiente; (8) `availableDeliveryMethods` não vazio; (9) `deliveryMethod` atual pertencente a `availableDeliveryMethods`; (10) formulário obrigatório válido.
+  - Formas de Pagamento: UI oferece exclusivamente PIX Instantâneo e Boleto Bancário; `PaymentMethod` canônico mantém os 4 valores válidos.
+  - Transição de Modalidade B2B: Confirmação limpa carrinho antes da troca; eliminados `recalculate` e `remove_incompatible`; `clearCart` desacoplado de state updaters de React; `cart.length` removido das dependências de recarga B2B; removido setter público desprotegido `setPurchaseMode`.
+  - Vitrine B2B: Atalho de cadastro B2B oculto quando `allowB2bMode = false`; switcher de grade rápida restrito a `allowB2bMode && purchaseMode === 'wholesale' && isApproved`; reset automático de quick mode para `false` ao sair de atacado ou revogação de aprovação.
+  - WhatsApp & Wording: WhatsApp disparado exclusivamente sob demanda após pedido criado; sanitização impede abertura com telefone vazio; recibo do servidor exibe "Total validado pelo servidor"; frete zero apresentado como "A combinar / Calculado pela loja" (nunca como frete grátis/total definitivo).
+- **Ativos Protegidos Intactos:**
+  - `AppContext.tsx`, `OrderManager.tsx`, `TenantDashboard.tsx`, `supabase/config.toml`, `supabase/functions/*`, `supabase/migrations/*` (000001 a 000011) permanecem estritamente congelados e inalterados.
+- **Suítes de Testes Automatizados:**
+  - `scripts/test-orders-frontend-integration-points.ts`: **158/158 PASSOU (0 FALHOU)**.
+  - `scripts/test-orders-checkout-points.ts`: **82/82 PASSOU (0 FALHOU)**.
+  - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)**.
+  - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
+  - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU)**.
+  - `npm run lint` (`tsc --noEmit`): **PASSOU**.
+  - `npm run build` (`vite build`): **PASSOU**.
 - **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
-- **Migration 000010 (Aplicada / Congelada):**
-  - `idempotency_key UUID NOT NULL` com `UNIQUE (tenant_id, idempotency_key)`.
-  - `shopping_mode TEXT NOT NULL CHECK IN ('retail', 'wholesale')`.
-  - `delivery_method TEXT NOT NULL`.
-  - `public.order_number_seq` (sequence server-side).
-  - RPC `public.create_order_checkout_internal` (service_role-only).
-  - RPC `public.manage_order_status` (authenticated, tenant_admin / stock_manager / platform_admin, locks pessimistas determinísticos, decremento atômico na aprovação, restauração atômica em cancelamento com `GET DIAGNOSTICS v_affected_rows = 1`).
-- **Migration 000011 (Criada no Workspace):**
-  - Transação `BEGIN / COMMIT` explícita.
-  - Reafirmação de constraints scoped em `pg_constraint.conrelid = 'public.orders'::regclass`.
-  - Validação estrita de UUID v4 para `p_idempotency_key` via regex.
-  - Snapshots canônicos estritos para `customer` e `shippingAddress` (sem JSON arbitrário).
-  - Limites de tamanho de strings na RPC (slug <= 120, seller_code <= 64, delivery_method <= 64, notes <= 1000, name <= 160, street <= 200, selectedVariant <= 160).
-- **Edge Function `submit-order-checkout` (Hospedada & Ativa):**
-  - Modernizada com `Deno.serve` e `npm:@supabase/supabase-js@2`.
-  - Chave de autorização via `SUPABASE_SECRET_KEYS` (extração segura da chave default; `SUPABASE_SERVICE_ROLE_KEY` legada removida).
-  - **Feature Gate Fail-Closed:** `CHECKOUT_ENABLED !== "true"` bloqueia qualquer requisição pública com HTTP 503 (`Checkout temporariamente indisponível.`).
-  - Limite de 64 KB aferido por bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
-  - Whitelist de campos sanitizados antes da chamada da RPC.
-  - Rejeição de campos de autoridade financeira (`subtotal`, `total`, `discount`, `unitPrice`, etc.) e `buyerUserId` no body com HTTP 400.
-  - Autenticação Bearer obrigatória para `wholesale` (extração do `user.id` real do JWT; nunca do body).
-  - Mapeamento e sanitização de erros SQLSTATE conhecidos e HTTP 500 para desconhecidos.
-  - **Minimização de Resposta:** Não expõe `tenant_id`, `seller_id`, `idempotency_key` ou `customer`/`shipping_address` brutos.
-- **Frontend e Storefront:**
-  - `CartDrawer.tsx`, `OrderManager.tsx` e `AppContext.tsx` ainda não integrados nesta etapa (fluxo de pedidos reais ainda não habilitado; não declarar runtime PASS).
-  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening.
+
+
+
 
 
 

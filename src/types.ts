@@ -170,7 +170,7 @@ export interface OrderItem {
 }
 
 export type OrderStatus = 'pending' | 'approved' | 'preparing' | 'dispatched' | 'delivered' | 'cancelled';
-export type PaymentMethod = 'pix' | 'boleto' | 'credit_card' | 'on_delivery' | 'negotiate';
+export type PaymentMethod = 'pix' | 'boleto' | 'credit_card' | 'cash_on_delivery';
 
 export interface Order {
   id: string;
