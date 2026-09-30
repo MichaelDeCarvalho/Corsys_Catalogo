@@ -50,12 +50,35 @@ assert(fs.existsSync(migration10Path), 'Migration 000010 existe no workspace');
 const migration11Path = 'supabase/migrations/20260929_000011_orders_checkout_hardening.sql';
 assert(fs.existsSync(migration11Path), 'Migration 000011 existe no workspace');
 
+const migration12Path = 'supabase/migrations/20260930_000012_order_documents_storage.sql';
+assert(fs.existsSync(migration12Path), 'Migration 000012 existe no workspace');
+
 const migration10Sql = fs.readFileSync(migration10Path, 'utf-8');
 const migration11Sql = fs.readFileSync(migration11Path, 'utf-8');
+const migration12Sql = fs.readFileSync(migration12Path, 'utf-8');
 
-// Verifica preservação de 000001-000011
+// Verifica preservação de 000001-000012
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
-assert(migrationFiles.length === 11, 'Exatamente 11 migrations registradas no workspace (000001 a 000011)');
+assert(migrationFiles.length === 12, 'Exatamente 12 migrations registradas no workspace (000001 a 000012)');
+
+// Verifica integridade da 000012 (Private Order Documents Storage)
+assert(
+  migration12Sql.includes('BEGIN;') && migration12Sql.includes('COMMIT;'),
+  'Migration 000012 utiliza explicitamente transação BEGIN / COMMIT'
+);
+assert(
+  migration12Sql.includes("'order-documents'") &&
+  migration12Sql.includes('public = false') &&
+  migration12Sql.includes('5242880') &&
+  migration12Sql.includes("ARRAY['application/pdf']"),
+  'Migration 000012 provisiona bucket privado order-documents (public = false, 5MiB, application/pdf)'
+);
+assert(
+  !migration12Sql.includes('CREATE POLICY') &&
+  migration12Sql.includes('ZERO CLIENT POLICIES') &&
+  !migration12Sql.includes('CREATE POLICY "order_documents_select_tenant_admin"'),
+  'Migration 000012 define ZERO client policies em storage.objects para order-documents'
+);
 
 // Verifica integridade da 000011
 assert(
@@ -1200,6 +1223,39 @@ assert(
   edgeFuncSource.includes('CPF do cliente inválido.') &&
   edgeFuncSource.includes('CNPJ do cliente inválido.'),
   'Edge Function exige document obrigatório e válido no varejo, rejeitando documentos inválidos com HTTP 400'
+);
+
+// Geração de PDF Server-Side & Armazenamento Privado (Checkout V1.2)
+const orderPdfPath = 'supabase/functions/_shared/orderPdf.ts';
+assert(fs.existsSync(orderPdfPath), 'Helper orderPdf.ts existe no diretório _shared da Edge Function');
+
+const orderPdfSource = fs.readFileSync(orderPdfPath, 'utf-8');
+assert(
+  orderPdfSource.includes('npm:pdf-lib@1.17.1'),
+  'orderPdf utiliza biblioteca pdf-lib com versão explicitamente fixada (npm:pdf-lib@1.17.1)'
+);
+assert(
+  orderPdfSource.includes('export async function generateOrderPdf(') &&
+  orderPdfSource.includes('sanitizePdfText') &&
+  (orderPdfSource.includes('PEDIDO PARA CONFIRMAÇÃO') || orderPdfSource.includes('ORÇAMENTO / PEDIDO PARA ANÁLISE')),
+  'orderPdf exporta generateOrderPdf e gera documento profissional com título oficial e sem PII sensível em texto'
+);
+assert(
+  edgeFuncSource.includes('generateOrderPdf(orderResult, branding)') &&
+  edgeFuncSource.includes("from(\"order-documents\")") &&
+  edgeFuncSource.includes('.upload(canonicalPdfPath, pdfBytes, {') &&
+  edgeFuncSource.includes('.createSignedUrl(canonicalPdfPath, 604800)'),
+  'Edge Function gera PDF server-side, realiza upload no bucket privado order-documents e gera signed URL de 7 dias'
+);
+assert(
+  edgeFuncSource.includes('documentUrl: documentUrl || null') &&
+  edgeFuncSource.includes('documentExpiresAt: documentExpiresAt || null'),
+  'Edge Function inclui documentUrl e documentExpiresAt no recibo sanitizado'
+);
+assert(
+  edgeFuncSource.includes('Falha na geração/assinatura do PDF NUNCA cancela nem desfaz o pedido já criado no banco') &&
+  edgeFuncSource.includes('documentUrl = null;'),
+  'Edge Function implementa Graceful Fallback para falha de documento (preserva pedido intacto no banco)'
 );
 
 // =========================================================================

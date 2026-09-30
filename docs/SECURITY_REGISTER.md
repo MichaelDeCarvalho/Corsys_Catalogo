@@ -105,5 +105,24 @@
 - **Governança de Deployment:**
   - Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.
 
+## 7. Armazenamento Seguro de Documentos de Pedido (PDF) e Handoff WhatsApp (V1.2 / ADR 006)
+- **Bucket Privado `order-documents` (Migration 000012):**
+  - Configuração: `public = false`, `file_size_limit = 5242880` (5 MiB), `allowed_mime_types = ARRAY['application/pdf']`.
+  - Zero acesso público ou anônimo: Nenhuma policy `anon` ou pública concedida.
+  - Uploads e assinaturas ocorrem exclusivamente via `service_role` na Edge Function (`submit-order-checkout`).
+  - Path canônico determinístico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`. O browser não possui autoridade para definir diretórios ou nomes de arquivo.
+  - Acesso de leitura autenticado restrito para role `tenant_admin` no diretório do próprio tenant ou `platform_admin`.
+- **Acesso Temporário via Signed URL (7 Dias):**
+  - A URL assinada expira em exatamente 604.800 segundos (7 dias).
+  - A URL é entregue exclusivamente sob protocolo HTTPS.
+  - A resposta da Edge Function é minimizada: expõe apenas `documentUrl` e `documentExpiresAt`, sem expor credenciais de storage, `tenant_id` ou nomes internos de bucket.
+- **Proteção e Minimização de PII no WhatsApp:**
+  - O texto enviado ao WhatsApp é curto e profissional, não incluindo CPF/CNPJ completo, e-mail ou endereço completo.
+  - Dados cadastrais completos permanecem confinados ao documento PDF no bucket privado e ao registro interno no banco de dados.
+- **Fail-Closed de Contato e Pop-up Blocker:**
+  - O número de WhatsApp da loja é validado antes de qualquer chamada à rede; se ausente ou inválido, o processo aborta sem tocar o banco.
+  - Uma janela neutra é aberta antes do `await` para prevenir bloqueio de pop-up pelo navegador; em caso de erro da transação, a janela é fechada imediatamente.
+
+
 
 

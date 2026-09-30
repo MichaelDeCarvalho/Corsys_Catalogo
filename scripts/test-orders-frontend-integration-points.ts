@@ -438,25 +438,32 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('<span>Confirmar pedido</span>') &&
+  cartDrawerCode.includes('<span>Enviar pedido pelo WhatsApp</span>') &&
   cartDrawerCode.includes('id="btn-submit-order"'),
-  '66. Botão final primário de submissão é "Confirmar pedido" (com id="btn-submit-order")'
+  '66. Botão final primário de submissão na etapa review é "Enviar pedido pelo WhatsApp" (com id="btn-submit-order")'
 );
 
 assert(
-  !cartDrawerCode.includes('handleFinishOrder(true)') &&
-  !cartDrawerCode.includes('sendWhatsAppDirect'),
-  '67. Submissão do pedido não dispara WhatsApp automaticamente'
+  cartDrawerCode.includes("window.open('about:blank', '_blank')") &&
+  cartDrawerCode.includes('prepWindow.location.href = waUrl;'),
+  '67. Submissão do pedido pré-abre aba neutra para prevenção de popup blocker pós-await'
+);
+
+assert(
+  cartDrawerCode.includes('if (prepWindow.closed) {') &&
+  cartDrawerCode.includes('Pedido registrado. Clique novamente para abrir o WhatsApp.') &&
+  cartDrawerCode.includes('if (createdOrder) {') &&
+  cartDrawerCode.includes('receipt = createdOrder;'),
+  '67b. Janela fechada prematuramente preserva carrinho/formulário e novo clique reutiliza createdOrder sem duplicidade'
 );
 
 assert(
   cartDrawerCode.includes('try {') &&
-  cartDrawerCode.includes('const receipt = await submitOrderCheckout(draft);') &&
-  cartDrawerCode.includes('setCreatedOrder(receipt);') &&
-  cartDrawerCode.includes('setCheckoutStep(\'success\');') &&
+  cartDrawerCode.includes('receipt = await submitOrderCheckout(draft);') &&
   cartDrawerCode.includes('catch (err: unknown) {') &&
+  cartDrawerCode.includes('prepWindow.close();') &&
   cartDrawerCode.includes('setSubmitError(message);'),
-  '68. Erro HTTP 503 bloqueia avanço para tela de success'
+  '68. Erro HTTP 503 fecha aba neutra, bloqueia WhatsApp e mantém usuário na etapa de revisão com feedback de erro'
 );
 
 assert(
@@ -477,21 +484,23 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('clearCart();\n      setCheckoutStep(\'success\');'),
+  cartDrawerCode.includes('clearCart();') &&
+  !cartDrawerCode.includes('clearCart();\n      const receipt'),
   '72. Erro não limpa carrinho; clearCart ocorre exclusivamente em caso de sucesso'
 );
 
 assert(
+  cartDrawerCode.includes('prepWindow.location.href = waUrl;') &&
   cartDrawerCode.includes('clearCart();') &&
-  cartDrawerCode.includes('setCheckoutStep(\'success\');'),
-  '73. Sucesso real validado executa clearCart()'
+  cartDrawerCode.includes('resetCheckoutLifecycle();'),
+  '73. Sucesso real validado prepara handoff, executa clearCart() e reseta ciclo'
 );
 
 assert(
-  cartDrawerCode.includes('createdOrder.subtotal') &&
-  cartDrawerCode.includes('createdOrder.total') &&
-  cartDrawerCode.includes('createdOrder.orderNumber'),
-  '74. Tela de sucesso consome exclusivamente o recibo validado do servidor'
+  cartDrawerCode.includes('receipt.subtotal') &&
+  cartDrawerCode.includes('receipt.orderNumber') &&
+  cartDrawerCode.includes('receipt.documentUrl'),
+  '74. Handoff de WhatsApp consome exclusivamente o recibo validado do servidor'
 );
 
 assert(
@@ -522,14 +531,15 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('Pedido recebido'),
-  '80. Termo correto "Pedido recebido" presente na tela de sucesso'
+  !cartDrawerCode.includes("checkoutStep === 'success'") &&
+  !cartDrawerCode.includes("setCheckoutStep('success')"),
+  '80. Fluxo V1.2 elimina etapa intermediária "Pedido recebido" e opera exclusivamente em cart -> details -> review'
 );
 
 assert(
-  cartDrawerCode.includes('Aguardando aprovação da loja') ||
-  cartDrawerCode.includes('Aguardando aprovação'),
-  '81. Status claro "Aguardando aprovação da loja" exibido ao comprador'
+  cartDrawerCode.includes('Pagamento ainda não realizado.') &&
+  cartDrawerCode.includes('Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp.'),
+  '81. Aviso claro "Pagamento ainda não realizado" e dependência de confirmação da loja exibidos na mensagem do WhatsApp'
 );
 
 // Verificação determinística dos 10 guards executados imediatamente antes da chamada de rede:
@@ -622,10 +632,10 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('Confirmar pedido') &&
+  cartDrawerCode.includes('<span>Enviar pedido pelo WhatsApp</span>') &&
   cartDrawerCode.includes('handleFinishOrder') &&
   cartDrawerCode.includes('id="btn-submit-order"'),
-  '81o. Ação "Confirmar pedido" aciona o envio oficial através do handleFinishOrder'
+  '81o. Ação "Enviar pedido pelo WhatsApp" aciona o envio oficial através do handleFinishOrder'
 );
 
 assert(
@@ -670,12 +680,11 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('Enviar pedido pelo WhatsApp') &&
-  cartDrawerCode.includes('order.orderNumber') &&
-  cartDrawerCode.includes('order.subtotal') &&
-  cartDrawerCode.includes('order.total') &&
-  (cartDrawerCode.includes('CPF:') || cartDrawerCode.includes('CNPJ:')),
-  '81v. WhatsApp usa dados financeiros do receipt validado do servidor e inclui CPF/CNPJ do snapshot'
+  cartDrawerCode.includes('<span>Enviar pedido pelo WhatsApp</span>') &&
+  cartDrawerCode.includes('receipt.orderNumber') &&
+  cartDrawerCode.includes('receipt.subtotal') &&
+  cartDrawerCode.includes('receipt.documentUrl'),
+  '81v. WhatsApp usa dados financeiros do receipt validado do servidor e anexa link para documento PDF oficial'
 );
 
 // =========================================================================
@@ -823,26 +832,26 @@ assert(
 
 // Req 44, 45, 46, 47, 48: WhatsApp
 assert(
-  cartDrawerCode.includes('dispatchWhatsAppMessage(createdOrder)') &&
-  cartDrawerCode.includes("checkoutStep === 'success'"),
-  'A12. WhatsApp somente após pedido criado e não abre automaticamente'
+  cartDrawerCode.includes('handleFinishOrder') &&
+  cartDrawerCode.includes('prepWindow.location.href = waUrl;'),
+  'A12. WhatsApp somente após receipt do servidor e handoff pelo Single CTA'
 );
 
 assert(
-  cartDrawerCode.includes("cleanPhone = whatsappNumber.replace(/\\D/g, '')") &&
-  cartDrawerCode.includes('if (!cleanPhone) return;'),
-  'A13. Número sanitizado vazio não abre WhatsApp'
+  cartDrawerCode.includes("cleanPhone = (whatsappNumber || '').replace(/\\D/g, '')") &&
+  cartDrawerCode.includes('if (!cleanPhone || cleanPhone.length < 10) {'),
+  'A13. Número sanitizado vazio ou incompleto não abre WhatsApp'
 );
 
 // Req 49, 50: Wording e frete
 assert(
-  cartDrawerCode.includes('Total validado pelo servidor:'),
-  'A14. Wording oficial usa "Total validado pelo servidor"'
+  cartDrawerCode.includes('showToast(`Pedido #${receipt.orderNumber} registrado. Conclua o envio na conversa do WhatsApp.`);'),
+  'A14. Wording oficial usa toast não-enganoso comunicando registro do pedido'
 );
 
 assert(
-  cartDrawerCode.includes("createdOrder.shippingFee === 0 ? 'A combinar / Calculado pela loja'") &&
-  !cartDrawerCode.includes("createdOrder.shippingFee === 0 ? 'Frete grátis'"),
+  cartDrawerCode.includes("receipt.shippingFee === 0 ? 'A combinar / Calculado pela loja'") &&
+  !cartDrawerCode.includes("receipt.shippingFee === 0 ? 'Frete grátis'"),
   'A15. shippingFee 0 não é apresentado como frete grátis nem total definitivo'
 );
 
@@ -858,16 +867,15 @@ assert(
 // Req 18, 19, 20, 21: Reset do ciclo de vida e PII
 assert(
   cartDrawerCode.includes('handleCloseDrawer') &&
-  cartDrawerCode.includes('resetCheckoutLifecycle()') &&
-  cartDrawerCode.includes("cart.length > 0 && checkoutStep === 'success'"),
-  'A17. Success lifecycle é resetado pelo X e novo item não reabre receipt antigo'
+  cartDrawerCode.includes('resetCheckoutLifecycle()'),
+  'A17. Fechamento do drawer via X reseta ciclo de vida do checkout'
 );
 
 assert(
-  cartDrawerCode.includes('Voltar ao Catálogo') &&
+  cartDrawerCode.includes('resetCheckoutLifecycle') &&
   cartDrawerCode.includes('setCustomerData({') &&
   cartDrawerCode.includes("name: ''"),
-  'A18. Voltar ao Catálogo usa o mesmo reset e formulário com PII é limpo após success'
+  'A18. resetCheckoutLifecycle limpa formulário com PII'
 );
 
 // Req 22, 23, 24: Revalidação de estado no submit imediatamente antes da rede
@@ -904,10 +912,11 @@ assert(
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 11 &&
+  migrationFiles.length === 12 &&
   fs.existsSync('supabase/migrations/20260928_000010_orders_checkout_v1.sql') &&
-  fs.existsSync('supabase/migrations/20260929_000011_orders_checkout_hardening.sql'),
-  '93. Migrations 000001 a 000011 permanecem intactas (zero novas migrations)'
+  fs.existsSync('supabase/migrations/20260929_000011_orders_checkout_hardening.sql') &&
+  fs.existsSync('supabase/migrations/20260930_000012_order_documents_storage.sql'),
+  '93. Migrations 000001 a 000012 registradas e intactas no workspace'
 );
 
 const edgeFunctionCode = fs.readFileSync('supabase/functions/submit-order-checkout/index.ts', 'utf-8');

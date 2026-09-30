@@ -274,5 +274,26 @@
   - Checkout fail-closed 503: **PASS** (`public.orders` permaneceu em 0).
   - Domínio customizado: Ainda não configurado.
 
+---
+
+## 13. Arquitetura de Documentos de Pedido (PDF) e Handoff WhatsApp com CTA Único (Checkout V1.2 & ADR 006)
+- **Fluxo do Carrinho Otimizado (Single Final CTA):**
+  - O fluxo simplificado evoluiu de `cart -> details -> review -> success -> WhatsApp` para `cart -> details -> review -> WhatsApp`.
+  - Na etapa `review`, existe um único CTA final: **"Enviar pedido pelo WhatsApp"**.
+  - O clique revalida os dados, checa o número de WhatsApp cadastrado (fail-closed antes de chamar a rede), pré-abre uma janela neutra para contornar bloqueadores de pop-up, submete o pedido ao backend, gera o PDF oficial assinado e redireciona para a conversa com mensagem concisa.
+- **Storage Privado de Pedidos (Migration 000012):**
+  - Bucket `order-documents` (`public = false`, 5 MiB, MIME `application/pdf`).
+  - Nenhuma permissão para `anon` ou uploads pelo browser.
+  - Gravação e criação de signed URL válidas por 7 dias (604.800 s) exclusivas da Edge Function com `service_role`.
+  - Path determinístico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`.
+- **Geração Server-Side de PDF (`_shared/orderPdf.ts`):**
+  - Gera PDF profissional através de `pdf-lib` (`npm:pdf-lib@1.17.9`).
+  - Autoridade de preços, itens e status estritamente derivada de `orderResult` e snapshots validados pelo banco de dados.
+  - Paginação dinâmica com cabeçalho repetido e numeração de páginas em documentos com até 200 itens.
+  - Resiliente: se a geração de PDF ou upload falhar, o pedido já criado não é abortado e o frontend cai para mensagem textual com dados do recibo (Graceful Fallback).
+- **Proteção de PII:**
+  - A mensagem curta no WhatsApp não expõe CPF/CNPJ completo, e-mail ou endereço completo; esses dados residem de forma segura dentro do PDF assinado no storage privado.
+
+
 
 

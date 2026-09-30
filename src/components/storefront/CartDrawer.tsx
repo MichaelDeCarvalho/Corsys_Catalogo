@@ -193,10 +193,11 @@ export const CartDrawer: React.FC<{
   // Modalidade de compra autoritativa da UI oficial
   const { purchaseMode, isApproved, wholesaleCompany } = useWholesaleAccess();
 
-  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'review' | 'success'>('cart');
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'review'>('cart');
   const [createdOrder, setCreatedOrder] = useState<CheckoutOrderReceipt | null>(null);
   const [confirmedCustomerSnapshot, setConfirmedCustomerSnapshot] = useState<ConfirmedCustomerSnapshot | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+  const [submittingStateText, setSubmittingStateText] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Métodos de entrega provenientes exclusivamente das configurações oficiais da loja
@@ -240,6 +241,7 @@ export const CartDrawer: React.FC<{
     setCreatedOrder(null);
     setConfirmedCustomerSnapshot(null);
     setSubmitError(null);
+    setSubmittingStateText(null);
     setErrors({});
     setCustomerData({
       name: '',
@@ -261,17 +263,7 @@ export const CartDrawer: React.FC<{
     });
   }, []);
 
-  // Quando novos itens entram no carrinho, garante que não reabra o receipt antigo
-  useEffect(() => {
-    if (cart.length > 0 && checkoutStep === 'success') {
-      resetCheckoutLifecycle();
-    }
-  }, [cart.length, checkoutStep, resetCheckoutLifecycle]);
-
   const handleCloseDrawer = () => {
-    if (checkoutStep === 'success') {
-      resetCheckoutLifecycle();
-    }
     setIsCartOpen(false);
   };
 
@@ -531,9 +523,30 @@ export const CartDrawer: React.FC<{
       return;
     }
 
+    // 11. Validação Fail-Closed do WhatsApp da loja ANTES de qualquer requisição de rede
+    const cleanPhone = (whatsappNumber || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setSubmitError('WhatsApp da loja não está configurado corretamente. Entre em contato com a loja.');
+      return;
+    }
+
+    // 12. Pré-abertura síncrona da janela de handoff para evitar bloqueio de popup pelo navegador pós-await
+    let prepWindow: Window | null = null;
+    try {
+      prepWindow = window.open('about:blank', '_blank');
+    } catch {
+      prepWindow = null;
+    }
+
+    if (!prepWindow) {
+      setSubmitError('Por favor, permita pop-ups para abrir a conversa no WhatsApp.');
+      return;
+    }
+
     setErrors({});
     setSubmitError(null);
     setIsSubmittingOrder(true);
+    setSubmittingStateText('Validando pedido...');
 
     // Snapshot em memória local imutável — aguarda receipt válido do servidor
     const pendingCustomerSnapshot: ConfirmedCustomerSnapshot = {
@@ -599,107 +612,93 @@ export const CartDrawer: React.FC<{
         sellerCode: customerData.sellerCode.trim() || undefined
       };
 
-      // 6. Chamada real à Edge Function com validação em runtime
-      const receipt = await submitOrderCheckout(draft);
+      // 6. Chamada real à Edge Function com validação em runtime (ou reutilização de receipt já gerado)
+      let receipt: CheckoutOrderReceipt;
+      if (createdOrder) {
+        receipt = createdOrder;
+      } else {
+        receipt = await submitOrderCheckout(draft);
+      }
 
-      // 7. Sucesso real validado: confirma snapshot do cliente, atualiza recibo e limpa carrinho e dados de formulário PII
+      // 7. Preparação do WhatsApp Handoff
+      setSubmittingStateText('Preparando WhatsApp...');
+
+      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+      const customerDisplay = isWholesale
+        ? (wholesaleCompany?.tradeName || wholesaleCompany?.legalName || 'Cliente Atacadista')
+        : (pendingCustomerSnapshot.name || 'Cliente');
+
+      let message = '';
+      if (receipt.documentUrl) {
+        // Mensagem curta profissional com link do documento PDF oficial
+        message = 
+          `Olá! Gostaria de enviar o pedido *${receipt.orderNumber}*.\n\n` +
+          `*Cliente:* ${customerDisplay}\n` +
+          `*Total dos produtos:* R$ ${receipt.subtotal.toFixed(2).replace('.', ',')}\n` +
+          `*Forma de pagamento pretendida:* ${getPaymentMethodLabel(receipt.paymentMethod)}\n` +
+          `*Entrega:* ${getDeliveryMethodLabel(receipt.deliveryMethod)}\n\n` +
+          `📄 *Pedido completo em PDF:*\n` +
+          `${receipt.documentUrl}\n\n` +
+          `_Pagamento ainda não realizado._\n` +
+          `_Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp._`;
+      } else {
+        // Fallback textual compacto com itens e totais exclusivos do receipt
+        const itemsText = receipt.items.map(i => 
+          `• *${i.quantity}x ${i.productName}* (${i.unit}) - R$ ${i.totalPrice.toFixed(2).replace('.', ',')}`
+        ).join('\n');
+
+        message = 
+          `Olá! Gostaria de enviar o pedido *${receipt.orderNumber}*.\n\n` +
+          `*Cliente:* ${customerDisplay}\n\n` +
+          `📦 *ITENS DO PEDIDO:*\n${itemsText}\n\n` +
+          `💵 *Subtotal:* R$ ${receipt.subtotal.toFixed(2).replace('.', ',')}\n` +
+          `🚚 *Frete:* ${receipt.shippingFee === 0 ? 'A combinar / Calculado pela loja' : `R$ ${receipt.shippingFee.toFixed(2).replace('.', ',')}`}\n` +
+          `💰 *Total:* R$ ${receipt.total.toFixed(2).replace('.', ',')}\n` +
+          `💳 *Forma de Pagamento Pretendida:* ${getPaymentMethodLabel(receipt.paymentMethod)}\n` +
+          `🚚 *Método de Entrega:* ${getDeliveryMethodLabel(receipt.deliveryMethod)}\n\n` +
+          `_Aviso: Não foi possível gerar o documento PDF automaticamente._\n` +
+          `_Pagamento ainda não realizado. Aguardo instruções e confirmação da loja._`;
+      }
+
+      const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+
+      // 8. Verificação de fechamento prematuro da janela pelo usuário durante o await
+      if (prepWindow.closed) {
+        setConfirmedCustomerSnapshot(pendingCustomerSnapshot);
+        setCreatedOrder(receipt);
+        setSubmitError('Pedido registrado. Clique novamente para abrir o WhatsApp.');
+        showToast(`Pedido #${receipt.orderNumber} registrado.`);
+        return;
+      }
+
+      // Redireciona a janela aberta previamente
+      prepWindow.location.href = waUrl;
+
+      // Sucesso real validado: confirma snapshot do cliente, atualiza recibo e limpa carrinho e formulário PII
       setConfirmedCustomerSnapshot(pendingCustomerSnapshot);
       setCreatedOrder(receipt);
       clearCart();
-      setCheckoutStep('success');
-      setCustomerData({
-        name: '',
-        type: 'PJ',
-        document: '',
-        companyName: '',
-        email: '',
-        phone: '',
-        street: '',
-        number: '',
-        complement: '',
-        neighborhood: '',
-        city: '',
-        state: '',
-        zipCode: '',
-        paymentMethod: 'pix',
-        notes: '',
-        sellerCode: ''
-      });
+      resetCheckoutLifecycle();
+      setIsCartOpen(false);
+
+      showToast(`Pedido #${receipt.orderNumber} registrado. Conclua o envio na conversa do WhatsApp.`);
     } catch (err: unknown) {
+      // Em caso de falha: fecha a janela de preparação e mantém o usuário na review com todos os dados intactos
+      if (prepWindow) {
+        try {
+          prepWindow.close();
+        } catch {
+          // Silencioso
+        }
+      }
       const message = err instanceof OrderCheckoutError 
         ? err.message 
         : 'Não foi possível processar o pedido.';
       setSubmitError(message);
     } finally {
       setIsSubmittingOrder(false);
+      setSubmittingStateText(null);
     }
-  };
-
-  const dispatchWhatsAppMessage = (order: CheckoutOrderReceipt) => {
-    if (!whatsappNumber) return;
-    const cleanPhone = whatsappNumber.replace(/\D/g, '');
-    if (!cleanPhone) return;
-    const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-
-    const itemsText = order.items.map(i => 
-      `• *${i.quantity}x ${i.productName}* (${i.unit}) - R$ ${i.totalPrice.toFixed(2).replace('.', ',')}`
-    ).join('\n');
-
-    const customerDisplay = isWholesale
-      ? (wholesaleCompany?.tradeName || wholesaleCompany?.legalName || 'Cliente Atacadista')
-      : (confirmedCustomerSnapshot?.name || 'Cliente');
-
-    const isRetirada = order.deliveryMethod.toLowerCase().includes('retirada');
-    const addressLabel = isRetirada ? 'Endereço do Comprador' : 'Endereço de Entrega';
-
-    const addressText = isWholesale
-      ? [
-          confirmedCustomerSnapshot?.street,
-          confirmedCustomerSnapshot?.number ? `Nº ${confirmedCustomerSnapshot.number}` : '',
-          confirmedCustomerSnapshot?.neighborhood,
-          confirmedCustomerSnapshot?.city && confirmedCustomerSnapshot?.state ? `${confirmedCustomerSnapshot.city}/${confirmedCustomerSnapshot.state}` : confirmedCustomerSnapshot?.city || confirmedCustomerSnapshot?.state
-        ].filter(Boolean).join(', ')
-      : [
-          confirmedCustomerSnapshot?.street,
-          confirmedCustomerSnapshot?.number ? `Nº ${confirmedCustomerSnapshot.number}` : '',
-          confirmedCustomerSnapshot?.neighborhood,
-          confirmedCustomerSnapshot?.city && confirmedCustomerSnapshot?.state ? `${confirmedCustomerSnapshot.city}/${confirmedCustomerSnapshot.state}` : confirmedCustomerSnapshot?.city || confirmedCustomerSnapshot?.state
-        ].filter(Boolean).join(', ');
-
-    const docText = isWholesale
-      ? (wholesaleCompany?.cnpj ? `🪪 *CNPJ:* ${wholesaleCompany.cnpj}\n` : '')
-      : (confirmedCustomerSnapshot?.document
-          ? (confirmedCustomerSnapshot.type === 'PJ' ? `🪪 *CNPJ:* ${confirmedCustomerSnapshot.document}\n` : `🪪 *CPF:* ${confirmedCustomerSnapshot.document}\n`)
-          : '');
-
-    const companyText = (!isWholesale && confirmedCustomerSnapshot?.companyName)
-      ? `🏢 *Empresa:* ${confirmedCustomerSnapshot.companyName}\n`
-      : '';
-
-    const phoneText = isWholesale
-      ? (confirmedCustomerSnapshot?.phone || 'Informado no cadastro')
-      : (confirmedCustomerSnapshot?.phone || 'Informado no checkout');
-
-    const message = 
-      `🛍️ *PEDIDO RECEBIDO — AGUARDANDO APROVAÇÃO #${order.orderNumber}*\n` +
-      `🏪 *Loja:* ${storeName}\n\n` +
-      `👤 *Cliente:* ${customerDisplay}\n` +
-      docText +
-      companyText +
-      `📱 *WhatsApp:* ${phoneText}\n` +
-      `📍 *${addressLabel}:* ${addressText || confirmedCustomerSnapshot?.street || 'Conforme cadastro'}\n\n` +
-      `📦 *ITENS DO PEDIDO:*\n${itemsText}\n\n` +
-      `💵 *Subtotal:* R$ ${order.subtotal.toFixed(2).replace('.', ',')}\n` +
-      `🚚 *Frete:* ${order.shippingFee === 0 ? 'A combinar / Calculado pela loja' : `R$ ${order.shippingFee.toFixed(2).replace('.', ',')}`}\n` +
-      `💰 *TOTAL DO PEDIDO:* R$ ${order.total.toFixed(2).replace('.', ',')}\n` +
-      `💳 *Forma de Pagamento:* ${getPaymentMethodLabel(order.paymentMethod)}\n` +
-      `🚚 *Método de Entrega:* ${getDeliveryMethodLabel(order.deliveryMethod)}\n` +
-      (order.items.length > 0 && confirmedCustomerSnapshot?.sellerCode ? `🏷️ *Cód. Vendedor:* ${confirmedCustomerSnapshot.sellerCode}\n` : '') +
-      (confirmedCustomerSnapshot?.notes ? `📝 *Obs:* ${confirmedCustomerSnapshot.notes}\n` : '') +
-      `\n_Pedido enviado ao catálogo oficial. Aguardando aprovação administrativa._`;
-
-    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
   };
 
   return (
@@ -718,9 +717,7 @@ export const CartDrawer: React.FC<{
                   ? 'Seu Pedido' 
                   : checkoutStep === 'details' 
                   ? 'Dados para Entrega & Pagamento' 
-                  : checkoutStep === 'review'
-                  ? 'Revise seu pedido'
-                  : 'Pedido Recebido'}
+                  : 'Revise seu pedido'}
               </h3>
               <p className="text-[11px] text-slate-500">{storeName}</p>
             </div>
@@ -1168,10 +1165,10 @@ export const CartDrawer: React.FC<{
                 </div>
               </div>
 
-              {/* Forma de Pagamento Canônica */}
+              {/* Forma de Pagamento Pretendida */}
               <div className="pt-2 border-t border-slate-100">
                 <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Forma de Pagamento Preferida
+                  Forma de Pagamento Pretendida
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -1202,6 +1199,11 @@ export const CartDrawer: React.FC<{
                     <CreditCard className="w-4 h-4 text-slate-700" />
                   </button>
                 </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  {customerData.paymentMethod === 'pix'
+                    ? 'Aguarde as instruções ou link de pagamento pelo WhatsApp após o envio do pedido.'
+                    : 'Aguarde o boleto ou link de pagamento pelo WhatsApp.'}
+                </p>
               </div>
 
               {/* Código de Vendedor / Representante */}
@@ -1328,7 +1330,12 @@ export const CartDrawer: React.FC<{
                 <span className="text-[#0F172A]">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
               </div>
               <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-600 space-y-1">
-                <div><strong>Forma de Pagamento:</strong> {getPaymentMethodLabel(customerData.paymentMethod)}</div>
+                <div><strong>Forma de Pagamento Pretendida:</strong> {getPaymentMethodLabel(customerData.paymentMethod)}</div>
+                <div className="text-[10px] text-amber-800">
+                  {customerData.paymentMethod === 'pix'
+                    ? 'Aguarde as instruções ou link de pagamento pelo WhatsApp após o envio do pedido.'
+                    : 'Aguarde o boleto ou link de pagamento pelo WhatsApp.'}
+                </div>
                 <div><strong>Método de Entrega:</strong> {getDeliveryMethodLabel(deliveryMethod)}</div>
               </div>
             </div>
@@ -1402,95 +1409,8 @@ export const CartDrawer: React.FC<{
           </div>
         )}
 
-        {/* STEP 4: SUCCESS & RECEIPT VERIFIED */}
-        {checkoutStep === 'success' && createdOrder && (
-          <div className="flex-1 overflow-y-auto p-6 text-center space-y-5">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-[#16A34A] flex items-center justify-center mx-auto shadow-md">
-              <Check className="w-8 h-8 stroke-[3]" />
-            </div>
-
-            <div>
-              <h4 className="text-xl font-extrabold text-[#0F172A]">
-                Pedido recebido
-              </h4>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-200 mt-2">
-                <Clock className="w-3.5 h-3.5 text-amber-700" />
-                <span>Aguardando aprovação da loja</span>
-              </div>
-              <p className="text-xs text-slate-500 font-mono mt-2">
-                Número do Pedido: <strong className="text-[#FF5A00]">#{createdOrder.orderNumber}</strong>
-              </p>
-            </div>
-
-            {/* Recibo Oficial do Servidor */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-2.5 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Subtotal Validado:</span>
-                <span className="font-semibold text-slate-800">R$ {createdOrder.subtotal.toFixed(2).replace('.', ',')}</span>
-              </div>
-              {createdOrder.discount > 0 && (
-                <div className="flex justify-between text-emerald-700">
-                  <span>Desconto:</span>
-                  <span className="font-semibold">- R$ {createdOrder.discount.toFixed(2).replace('.', ',')}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-slate-600">
-                <span>Frete:</span>
-                <span className="font-semibold text-slate-800">
-                  {createdOrder.shippingFee === 0 ? 'A combinar / Calculado pela loja' : `R$ ${createdOrder.shippingFee.toFixed(2).replace('.', ',')}`}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
-                <span>Total validado pelo servidor:</span>
-                <span className="text-[#0F172A]">R$ {createdOrder.total.toFixed(2).replace('.', ',')}</span>
-              </div>
-              <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-500 space-y-1">
-                <div><strong>Forma de Pagamento:</strong> {getPaymentMethodLabel(createdOrder.paymentMethod)}</div>
-                <div><strong>Método de Entrega:</strong> {getDeliveryMethodLabel(createdOrder.deliveryMethod)}</div>
-              </div>
-            </div>
-
-            {/* Informação sobre Pagamento PIX sem chave hardcoded */}
-            {createdOrder.paymentMethod === 'pix' && (
-              <div className="bg-emerald-50/80 p-3.5 rounded-xl border border-emerald-200 text-left text-xs text-emerald-900 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <QrCode className="w-4 h-4 text-emerald-700" />
-                  <span>Pagamento via PIX</span>
-                </div>
-                <p className="text-[11px] text-emerald-800">
-                  Os dados de pagamento serão confirmados pela loja após a aprovação do pedido.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2 pt-2">
-              {whatsappNumber ? (
-                <button
-                  type="button"
-                  onClick={() => dispatchWhatsAppMessage(createdOrder)}
-                  className="w-full py-3 rounded-2xl bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer transition-colors"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>Enviar pedido pelo WhatsApp</span>
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  resetCheckoutLifecycle();
-                  setIsCartOpen(false);
-                }}
-                className="w-full py-2.5 rounded-xl border border-[#E2E8F0] hover:bg-slate-50 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
-              >
-                Voltar ao Catálogo
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Footer Actions for Steps 1, 2 & 3 */}
-        {checkoutStep !== 'success' && cart.length > 0 && (
+        {/* Footer Actions for Steps: Cart, Details & Review */}
+        {cart.length > 0 && (
           <div className="p-4 sm:p-5 border-t border-[#E2E8F0] bg-slate-50 space-y-3">
             
             {/* Totals Summary */}
@@ -1578,12 +1498,12 @@ export const CartDrawer: React.FC<{
                   {isSubmittingOrder ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Confirmando pedido...</span>
+                      <span>{submittingStateText || 'Validando pedido...'}</span>
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Confirmar pedido</span>
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Enviar pedido pelo WhatsApp</span>
                     </>
                   )}
                 </button>

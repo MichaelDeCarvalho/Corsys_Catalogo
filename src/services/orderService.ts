@@ -67,6 +67,8 @@ export interface CheckoutOrderReceipt {
   status: 'pending';
   paymentMethod: PaymentMethod;
   createdAt: string;
+  documentUrl?: string | null;
+  documentExpiresAt?: string | null;
 }
 
 export class OrderCheckoutError extends Error {
@@ -627,6 +629,22 @@ export function validateReceipt(raw: unknown): CheckoutOrderReceipt {
     });
   }
 
+  let validatedDocumentUrl: string | null = null;
+  if (ord.documentUrl !== undefined && ord.documentUrl !== null) {
+    if (typeof ord.documentUrl !== 'string' || !ord.documentUrl.startsWith('https://') || ord.documentUrl.length > 2048) {
+      throw new OrderCheckoutError('Resposta inválida do serviço de pedidos: URL do documento inválida.');
+    }
+    validatedDocumentUrl = ord.documentUrl;
+  }
+
+  let validatedDocumentExpiresAt: string | null = null;
+  if (ord.documentExpiresAt !== undefined && ord.documentExpiresAt !== null) {
+    if (typeof ord.documentExpiresAt !== 'string' || isNaN(Date.parse(ord.documentExpiresAt))) {
+      throw new OrderCheckoutError('Resposta inválida do serviço de pedidos: Data de expiração do documento inválida.');
+    }
+    validatedDocumentExpiresAt = ord.documentExpiresAt;
+  }
+
   return {
     id: ord.id,
     orderNumber: ord.orderNumber,
@@ -639,7 +657,9 @@ export function validateReceipt(raw: unknown): CheckoutOrderReceipt {
     total: ord.total,
     status: 'pending',
     paymentMethod: ord.paymentMethod as PaymentMethod,
-    createdAt: ord.createdAt
+    createdAt: ord.createdAt,
+    documentUrl: validatedDocumentUrl,
+    documentExpiresAt: validatedDocumentExpiresAt
   };
 }
 

@@ -209,9 +209,35 @@
   - Storefront & Conexão Supabase: **PASS**.
   - Checkout Feature Gate (fail-closed HTTP 503): **PASS** (`public.orders` permaneceu em 0).
   - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
-  - Pedido real: Ainda NÃO validado.
   - Domínio customizado: Ainda NÃO configurado.
 - **ADR 005:** Registrado formalmente em `docs/adr/ADR_005_CLOUDFLARE_FRONTEND_DEPLOY.md`.
+
+---
+
+## 5. Checkout V1.2 — Single WhatsApp CTA + Private PDF (ADR 006)
+- **Status:** **IMPLEMENTADO NO WORKSPACE / AGUARDANDO DEPLOY**
+- **Validação de Pedido Real em Produção:**
+  - `PED-20260930-000001` criado e validado no Supabase hosted.
+  - Status `pending`, preços server-authoritative íntegros, sem duplicidade e sem decremento de estoque.
+  - `CHECKOUT_ENABLED` desativado novamente após o teste.
+- **Migration 000012 (`supabase/migrations/20260930_000012_order_documents_storage.sql`):**
+  - Bucket privado `order-documents` (5 MiB, `application/pdf`).
+  - Sem acesso público, sem policies para anon ou browser upload.
+  - Gravado exclusivamente via `service_role` na Edge Function.
+  - Path canônico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`.
+- **Geração de PDF Server-Side (`supabase/functions/_shared/orderPdf.ts`):**
+  - Implementado com `pdf-lib` (`npm:pdf-lib@1.17.9`).
+  - Formatação multi-página para até 200 itens com cabeçalho repetido.
+  - Signed URL válida por 7 dias.
+  - Graceful fallback: se falhar geração ou assinatura do PDF, o pedido não é desfeito e o cliente recebe mensagem textual com dados do recibo oficial.
+- **Frontend `CartDrawer`:**
+  - Fluxo otimizado: `cart -> details -> review -> WhatsApp` (step `success` intermediário removido).
+  - CTA único: "Enviar pedido pelo WhatsApp".
+  - Fail-closed: validação de WhatsApp da loja antes de qualquer requisição.
+  - Popup blocker pre-emption: pré-abertura de aba síncrona antes do `await` da Edge Function.
+  - Minimização de PII: mensagem curta no WhatsApp com link do documento PDF, omitindo CPF/CNPJ completo e endereços extensos do texto da conversa.
+- **ADR 006:** Registrado em `docs/adr/ADR_006_ORDER_DOCUMENT_AND_WHATSAPP_HANDOFF.md`.
+
 
 
 

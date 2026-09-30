@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { generateOrderPdf } from "../_shared/orderPdf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -814,7 +815,59 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 13. Minimização de Resposta (Response Minimization - sem expor tenant_id, seller_id, idempotency_key ou PII crua)
+    // 13. Geração e Assinatura do PDF de Pedido no Storage Privado (Order Documents)
+    let documentUrl: string | null = null;
+    let documentExpiresAt: string | null = null;
+
+    try {
+      // 13.1 Consulta de branding server-side
+      let branding: { public_name?: string; logo_url?: string; primary_color?: string; accent_color?: string } | null = null;
+      try {
+        const { data: bData } = await supabaseAdmin
+          .from("tenant_public_settings")
+          .select("public_name, logo_url, primary_color, accent_color")
+          .eq("tenant_id", orderResult.tenant_id)
+          .maybeSingle();
+        if (bData) branding = bData;
+      } catch {
+        // Fallback silencioso para branding padrão
+      }
+
+      // 13.2 Geração dos bytes do PDF via helper server-side oficial
+      const pdfBytes = await generateOrderPdf(orderResult, branding);
+
+      // 13.3 Upload idempotente para o bucket privado 'order-documents'
+      const canonicalPdfPath = `${orderResult.tenant_id}/orders/${orderResult.id}/pedido-${orderResult.order_number}.pdf`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("order-documents")
+        .upload(canonicalPdfPath, pdfBytes, {
+          contentType: "application/pdf",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.warn("[submit-order-checkout] Aviso: Falha no upload do documento de pedido no Storage.");
+      } else {
+        // 13.4 Criação de Signed URL temporária válida por 7 dias (604800 segundos)
+        const { data: signedData, error: signError } = await supabaseAdmin.storage
+          .from("order-documents")
+          .createSignedUrl(canonicalPdfPath, 604800);
+
+        if (!signError && signedData?.signedUrl) {
+          documentUrl = signedData.signedUrl;
+          documentExpiresAt = new Date(Date.now() + 604800 * 1000).toISOString();
+        } else {
+          console.warn("[submit-order-checkout] Aviso: Falha na assinatura da URL do documento de pedido.");
+        }
+      }
+    } catch {
+      // Falha na geração/assinatura do PDF NUNCA cancela nem desfaz o pedido já criado no banco (Graceful Fallback)
+      console.warn("[submit-order-checkout] Aviso: Falha na geração do documento PDF do pedido.");
+      documentUrl = null;
+      documentExpiresAt = null;
+    }
+
+    // 14. Minimização de Resposta (Response Minimization - sem expor tenant_id, seller_id, idempotency_key ou PII crua)
     const sanitizedResponse = {
       id: orderResult.id,
       orderNumber: orderResult.order_number,
@@ -828,6 +881,8 @@ Deno.serve(async (req: Request) => {
       status: orderResult.status,
       paymentMethod: orderResult.payment_method,
       createdAt: orderResult.created_at,
+      documentUrl: documentUrl || null,
+      documentExpiresAt: documentExpiresAt || null,
     };
 
     return new Response(

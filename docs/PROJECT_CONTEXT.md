@@ -58,8 +58,9 @@
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
 - `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
 - `supabase/migrations/20260929_000011_orders_checkout_hardening.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (reafirmação scoped de constraints em public.orders, validação estrita de UUID v4, snapshots canônicos estritos de cliente e endereço, limites de strings e hardening na RPC de checkout).
+- `supabase/migrations/20260930_000012_order_documents_storage.sql`: **NOVA MIGRATION CRIADA** (bucket privado `order-documents`, limite 5MiB, MIME application/pdf, acesso exclusivo service_role e SELECT autenticado para tenant_admin).
 
-*Regra de Ouro: Migrations 000001 a 000011 estão estritamente aplicadas e congeladas no Supabase Hosted. Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.*
+*Regra de Ouro: Migrations 000001 a 000011 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000012 provisiona o bucket privado de documentos de pedidos.*
 
 ## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.
@@ -79,24 +80,27 @@
   - Colisão concorrente resulta em status `SKIPPED_CONCURRENT_IMAGE` com rollback compensatório imediato do upload e preservação da imagem preexistente.
   - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo a qualquer momento.
 
-## 6. Estado Atual de Orders / Checkout V1 (Frontend Integration & Runtime Hardening)
-- **Orders Backend:** **RUNTIME HARDENING PASS**
-- **000010:** **APLICADA / CONGELADA**
-- **000011:** **APLICADA / CONGELADA**
-- **submit-order-checkout:** **v2 ACTIVE** (verify_jwt=false, autorização service_role via SUPABASE_SECRET_KEYS)
-- **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO** (`CHECKOUT_ENABLED !== "true"` bloqueia submissões públicas)
-- **Frontend (Checkout V1.1):** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / PASS**
-  - Fluxo do carrinho: `cart` → `details` → `review` → `success`.
-  - Etapa "Validar orçamento" sem chamadas à rede, levando à tela de revisão completa (UX marketplace).
-  - Validação estrita de CPF/CNPJ (módulo 11) com obrigatoriedade no varejo e feedback inline específico.
-  - Snapshot de cliente (`confirmedCustomerSnapshot`) em memória React garantindo integridade no envio ao WhatsApp após reset de formulário.
-  - Zero autoridade financeira no cliente (preços, totais e estoque resolvidos exclusivamente no backend).
-  - Idempotência robusta com UUID v4 e SHA-256 do payload canônico; zero PII persistida no storage.
-  - 503 tratado com feedback inline, preservando carrinho, formulário e tentativa de idempotência.
-  - WhatsApp explícito usando recibo oficial do servidor.
+## 6. Estado Atual de Orders / Checkout (V1.2 — Single WhatsApp CTA + Private PDF)
+- **Pedidos Reais em Produção:**
+  - PED-20260930-000001 validado no Supabase hosted:
+    - Status: `pending`
+    - Valores server-authoritative íntegros
+    - Estoque não decrementado (correto para pending)
+    - Sem duplicidades
+- **Checkout V1.2:**
+  - Fluxo otimizado: `cart -> details -> review -> WhatsApp`.
+  - Etapa intermediária "Pedido recebido" removida do fluxo padrão.
+  - CTA único na etapa review: "Enviar pedido pelo WhatsApp".
+  - Validação fail-closed do número de WhatsApp antes de chamar a rede.
+  - Pré-abertura de aba síncrona contra bloqueio de pop-up.
+  - Geração de PDF profissional server-side via `pdf-lib` no bucket privado `order-documents`.
+  - Signed URL com validade de 7 dias (604.800 s).
+  - Mensagem curta no WhatsApp com link para o documento, minimizando exposição de PII.
+  - Graceful fallback textual caso a geração/assinatura do PDF falhe.
+  - Preços e pagamentos continuam com autoridade do servidor e status pendente.
 - **B2B:**
   - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
-  - `purchaseMode` e `shoppingMode` temporariamente sincronizados com fallback fail-closed.
+  - `purchaseMode` e `shoppingMode` sincronizados com fallback fail-closed.
 - **Legado ainda existente:**
   - `AppContext` local orders
   - `OrderManager` local
@@ -111,9 +115,8 @@
 - **Validações Runtime:**
   - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
   - Storefront & Conexão Supabase: **PASS**.
-  - Checkout Feature Gate (503 fail-closed): **PASS** (`public.orders` permaneceu em 0).
+  - Checkout Feature Gate (503 fail-closed): **PASS**.
   - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
-  - Pedido real: Ainda NÃO validado.
   - Domínio customizado: Ainda NÃO configurado.
 
 
