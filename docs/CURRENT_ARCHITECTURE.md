@@ -239,8 +239,12 @@
   - Transição `approved/preparing -> cancelled`: restaura estoque atomicamente exatamente uma vez com diagnóstico `v_affected_rows = 1`.
   - Transição `pending -> cancelled`: não altera estoque.
   - Estados terminais imutáveis: `delivered` e `cancelled`.
-- **Frontend e Storefront:**
-  - `CartDrawer.tsx` integrado à Edge Function oficial com validação fail-closed antes da rede e no retorno.
+- **Frontend e Storefront (Checkout V1.1):**
+  - Fluxo do carrinho expandido: `cart` → `details` → `review` → `success`.
+  - Etapa de revisão do orçamento com UX de marketplace e validação estritamente local antes da rede.
+  - Validação real de CPF (PF) e CNPJ (PJ) no frontend (`src/utils/brDocument.ts`), `orderService.ts` e na Edge Function (`submit-order-checkout`).
+  - Estado `confirmedCustomerSnapshot` mantido em memória React para construção do link WhatsApp sem quebra de ciclo de vida após limpeza do formulário.
+  - WhatsApp explícito com valores financeiros extraídos exclusivamente do recibo oficial retornado pelo servidor.
   - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening e permaneceu com 0 pedidos no teste de deploy.
 
 ## 12. Arquitetura de Hospedagem Frontend (Cloudflare Workers Static Assets & ADR 005)

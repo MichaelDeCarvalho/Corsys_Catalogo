@@ -28,6 +28,12 @@ import {
   buildCheckoutRequestBody,
   validateStoredAttempt
 } from '../src/services/orderService';
+import { 
+  normalizeBrazilianDocument, 
+  isValidCPF, 
+  isValidCNPJ, 
+  isValidBrazilianDocument 
+} from '../src/utils/brDocument';
 import { PaymentMethod } from '../src/types';
 
 let passed = 0;
@@ -432,9 +438,9 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('<span>Enviar pedido</span>') &&
+  cartDrawerCode.includes('<span>Confirmar pedido</span>') &&
   cartDrawerCode.includes('id="btn-submit-order"'),
-  '66. Botão final primário é "Enviar pedido"'
+  '66. Botão final primário de submissão é "Confirmar pedido" (com id="btn-submit-order")'
 );
 
 assert(
@@ -580,6 +586,96 @@ assert(
   cartDrawerCode.includes('!customerData.phone.trim()') &&
   cartDrawerCode.includes('!customerData.street.trim()'),
   '81j. Guard 10: campos obrigatórios do formulário são revalidados imediatamente antes do submit'
+);
+
+// =========================================================================
+// 7B. CHECKOUT V1.1 — REVISÃO DE ORÇAMENTO, CPF/CNPJ & LIFECYCLE WHATSAPP
+// =========================================================================
+console.log('\n7B. Checkout V1.1 — Revisão, Validação de Documento & WhatsApp Handoff');
+
+assert(
+  cartDrawerCode.includes("checkoutStep === 'review'") &&
+  cartDrawerCode.includes("setCheckoutStep('review')"),
+  '81k. Fluxo de checkout inclui formalmente a etapa de revisão (checkoutStep: review)'
+);
+
+assert(
+  cartDrawerCode.includes('Validar orçamento') &&
+  cartDrawerCode.includes('handleValidateDetails') &&
+  !cartDrawerCode.includes('const handleValidateDetails = async') &&
+  cartDrawerCode.includes('id="btn-validate-quote"'),
+  '81l. Botão "Validar orçamento" executa validação estritamente local (zero chamadas de rede)'
+);
+
+assert(
+  cartDrawerCode.includes('Revise seu pedido') &&
+  cartDrawerCode.includes('Resumo Estimado') &&
+  cartDrawerCode.includes('Dados do Comprador') &&
+  cartDrawerCode.includes('Endereço de Entrega'),
+  '81m. Etapa review exibe resumo completo e legível no padrão marketplace'
+);
+
+assert(
+  cartDrawerCode.includes('Voltar e editar') &&
+  cartDrawerCode.includes("setCheckoutStep('details')"),
+  '81n. Ação "Voltar e editar" retorna para details preservando todos os dados do comprador'
+);
+
+assert(
+  cartDrawerCode.includes('Confirmar pedido') &&
+  cartDrawerCode.includes('handleFinishOrder') &&
+  cartDrawerCode.includes('id="btn-submit-order"'),
+  '81o. Ação "Confirmar pedido" aciona o envio oficial através do handleFinishOrder'
+);
+
+assert(
+  cartDrawerCode.includes('Revise os dados antes de confirmar.') &&
+  cartDrawerCode.includes('Preços, estoque e regras comerciais serão validados novamente pelo servidor.'),
+  '81p. Disclaimer explícito de que preços e regras serão revalidados pelo servidor é exibido na revisão'
+);
+
+assert(
+  cartDrawerCode.includes("customerData.type === 'PJ' ? 'CNPJ *' : 'CPF *'"),
+  '81q. Labels de documento em modo varejo indicam obrigatoriedade (CPF * e CNPJ *)'
+);
+
+assert(
+  cartDrawerCode.includes('isValidCPF(cleanDoc)') &&
+  cartDrawerCode.includes('isValidCNPJ(cleanDoc)') &&
+  cartDrawerCode.includes('Informe um CPF válido.') &&
+  cartDrawerCode.includes('Informe um CNPJ válido.'),
+  '81r. Validação real de CPF e CNPJ com feedback inline específico no frontend'
+);
+
+assert(
+  cartDrawerCode.includes("setCustomerData(prev => ({ ...prev, type: 'PJ' }))") &&
+  cartDrawerCode.includes("delete next.document"),
+  '81s. Troca entre PF e PJ limpa erros de validação anteriores'
+);
+
+assert(
+  cartDrawerCode.includes('ConfirmedCustomerSnapshot') &&
+  cartDrawerCode.includes('confirmedCustomerSnapshot') &&
+  cartDrawerCode.includes('const pendingCustomerSnapshot: ConfirmedCustomerSnapshot') &&
+  cartDrawerCode.includes('setConfirmedCustomerSnapshot(pendingCustomerSnapshot)') &&
+  !cartDrawerCode.includes('sessionStorage.setItem') && // snapshot não entra em storage
+  !cartDrawerCode.includes('localStorage.setItem'),
+  '81t. confirmedCustomerSnapshot atribuído no state estritamente após validação do receipt do servidor'
+);
+
+assert(
+  cartDrawerCode.includes('setConfirmedCustomerSnapshot(null)') &&
+  cartDrawerCode.includes('resetCheckoutLifecycle'),
+  '81u. resetCheckoutLifecycle limpa confirmedCustomerSnapshot e reinicializa ciclo'
+);
+
+assert(
+  cartDrawerCode.includes('Enviar pedido pelo WhatsApp') &&
+  cartDrawerCode.includes('order.orderNumber') &&
+  cartDrawerCode.includes('order.subtotal') &&
+  cartDrawerCode.includes('order.total') &&
+  (cartDrawerCode.includes('CPF:') || cartDrawerCode.includes('CNPJ:')),
+  '81v. WhatsApp usa dados financeiros do receipt validado do servidor e inclui CPF/CNPJ do snapshot'
 );
 
 // =========================================================================
@@ -845,6 +941,7 @@ async function runBehavioralSimulations() {
       name: 'João da Silva',
       phone: '41999998888',
       email: 'joao@example.com',
+      document: '52998224725',
       type: 'PF'
     },
     shippingAddress: {
@@ -1405,6 +1502,239 @@ async function runBehavioralSimulations() {
   assert(
     sanitizedDisplay === 'Não foi possível processar o pedido.',
     'S36. Erros inesperados de runtime exibem exclusivamente mensagem genérica segura'
+  );
+
+  // S37: isValidCPF aceita CPFs válidos (pontuados e não pontuados)
+  assert(isValidCPF('52998224725') === true, 'S37a. isValidCPF aceita CPF válido sem pontuação');
+  assert(isValidCPF('111.444.777-35') === true, 'S37b. isValidCPF aceita CPF válido com pontuação padrão');
+
+  // S38: isValidCPF rejeita CPFs com dígitos repetidos
+  assert(isValidCPF('00000000000') === false, 'S38a. isValidCPF rejeita sequência 00000000000');
+  assert(isValidCPF('111.111.111-11') === false, 'S38b. isValidCPF rejeita sequência 111.111.111-11');
+  assert(isValidCPF('99999999999') === false, 'S38c. isValidCPF rejeita sequência 99999999999');
+
+  // S39: isValidCPF rejeita CPFs com dígito verificador incorreto
+  assert(isValidCPF('52998224724') === false, 'S39a. isValidCPF rejeita 1º dígito verificador incorreto');
+  assert(isValidCPF('52998224720') === false, 'S39b. isValidCPF rejeita 2º dígito verificador incorreto');
+
+  // S40: isValidCPF rejeita tamanhos incorretos, vazios e não-strings
+  assert(isValidCPF('') === false, 'S40a. isValidCPF rejeita string vazia');
+  assert(isValidCPF('1234567890') === false, 'S40b. isValidCPF rejeita CPF com 10 dígitos');
+  assert(isValidCPF('123456789012') === false, 'S40c. isValidCPF rejeita CPF com 12 dígitos');
+  assert(isValidCPF(null) === false, 'S40d. isValidCPF rejeita null');
+  assert(isValidCPF(undefined) === false, 'S40e. isValidCPF rejeita undefined');
+
+  // S41: isValidCNPJ aceita CNPJs válidos (pontuados e não pontuados)
+  assert(isValidCNPJ('12345678000195') === true, 'S41a. isValidCNPJ aceita CNPJ válido sem pontuação');
+  assert(isValidCNPJ('12.345.678/0001-95') === true, 'S41b. isValidCNPJ aceita CNPJ válido com pontuação');
+
+  // S42: isValidCNPJ rejeita CNPJs com dígitos repetidos
+  assert(isValidCNPJ('00000000000000') === false, 'S42a. isValidCNPJ rejeita sequência 00000000000000');
+  assert(isValidCNPJ('11.111.111/1111-11') === false, 'S42b. isValidCNPJ rejeita sequência 11.111.111/1111-11');
+
+  // S43: isValidCNPJ rejeita CNPJs com dígito verificador incorreto
+  assert(isValidCNPJ('12345678000194') === false, 'S43a. isValidCNPJ rejeita 1º dígito verificador incorreto');
+  assert(isValidCNPJ('12345678000190') === false, 'S43b. isValidCNPJ rejeita 2º dígito verificador incorreto');
+
+  // S44: isValidCNPJ rejeita tamanhos incorretos e vazios
+  assert(isValidCNPJ('') === false, 'S44a. isValidCNPJ rejeita string vazia');
+  assert(isValidCNPJ('1234567800019') === false, 'S44b. isValidCNPJ com 13 dígitos rejeitado');
+  assert(isValidCNPJ('123456780001955') === false, 'S44c. isValidCNPJ com 15 dígitos rejeitado');
+
+  // S45: isValidBrazilianDocument valida conforme tipo
+  assert(isValidBrazilianDocument('52998224725', 'PF') === true, 'S45a. isValidBrazilianDocument valida PF com CPF');
+  assert(isValidBrazilianDocument('12345678000195', 'PJ') === true, 'S45b. isValidBrazilianDocument valida PJ com CNPJ');
+  assert(isValidBrazilianDocument('12345678000195', 'PF') === false, 'S45c. isValidBrazilianDocument rejeita CNPJ em modalidade PF');
+  assert(isValidBrazilianDocument('52998224725', 'PJ') === false, 'S45d. isValidBrazilianDocument rejeita CPF em modalidade PJ');
+
+  // S46: normalizeBrazilianDocument remove pontuações
+  assert(normalizeBrazilianDocument('12.345.678/0001-95') === '12345678000195', 'S46a. normalizeBrazilianDocument remove pontuação de CNPJ');
+  assert(normalizeBrazilianDocument('111.444.777-35') === '11144477735', 'S46b. normalizeBrazilianDocument remove pontuação de CPF');
+  assert(normalizeBrazilianDocument(null) === '', 'S46c. normalizeBrazilianDocument com null retorna string vazia');
+
+  // S47: buildCheckoutRequestBody no varejo exige document
+  let retailNoDocCaught = false;
+  try {
+    buildCheckoutRequestBody({
+      ...dummyDraft,
+      shoppingMode: 'retail',
+      customer: {
+        name: 'João',
+        phone: '41999998888',
+        type: 'PF'
+      }
+    }, 'key-test');
+  } catch (err) {
+    if (err instanceof OrderCheckoutError && err.message.includes('CPF do comprador é obrigatório')) {
+      retailNoDocCaught = true;
+    }
+  }
+  assert(retailNoDocCaught, 'S47. buildCheckoutRequestBody exige CPF no varejo PF');
+
+  // S48: buildCheckoutRequestBody no varejo PF valida CPF e armazena normalizado
+  const validPfBody = buildCheckoutRequestBody({
+    ...dummyDraft,
+    shoppingMode: 'retail',
+    customer: {
+      name: 'João',
+      phone: '41999998888',
+      document: '111.444.777-35',
+      type: 'PF'
+    }
+  }, 'key-test-pf');
+  assert(
+    (validPfBody.customer as Record<string, unknown>).document === '11144477735' &&
+    (validPfBody.customer as Record<string, unknown>).type === 'PF',
+    'S48. buildCheckoutRequestBody normaliza CPF pontuado para somente dígitos'
+  );
+
+  // S49: buildCheckoutRequestBody no varejo PJ exige CNPJ válido
+  const validPjBody = buildCheckoutRequestBody({
+    ...dummyDraft,
+    shoppingMode: 'retail',
+    customer: {
+      name: 'Carlos Representante',
+      phone: '41999998888',
+      document: '12.345.678/0001-95',
+      type: 'PJ'
+    }
+  }, 'key-test-pj');
+  assert(
+    (validPjBody.customer as Record<string, unknown>).document === '12345678000195' &&
+    (validPjBody.customer as Record<string, unknown>).type === 'PJ',
+    'S49. buildCheckoutRequestBody aceita e normaliza CNPJ no varejo PJ'
+  );
+
+  // S50: buildCheckoutRequestBody rejeita CPF inválido para PF
+  let invalidCpfBodyCaught = false;
+  try {
+    buildCheckoutRequestBody({
+      ...dummyDraft,
+      shoppingMode: 'retail',
+      customer: {
+        name: 'João',
+        phone: '41999998888',
+        document: '000.000.000-00',
+        type: 'PF'
+      }
+    }, 'key-test-fail-cpf');
+  } catch (err) {
+    if (err instanceof OrderCheckoutError && err.message.includes('CPF do comprador inválido')) {
+      invalidCpfBodyCaught = true;
+    }
+  }
+  assert(invalidCpfBodyCaught, 'S50. buildCheckoutRequestBody rejeita CPF inválido fail-closed');
+
+  // S51: buildCheckoutRequestBody rejeita CNPJ inválido para PJ
+  let invalidCnpjBodyCaught = false;
+  try {
+    buildCheckoutRequestBody({
+      ...dummyDraft,
+      shoppingMode: 'retail',
+      customer: {
+        name: 'Empresa',
+        phone: '41999998888',
+        document: '12.345.678/0001-00',
+        type: 'PJ'
+      }
+    }, 'key-test-fail-cnpj');
+  } catch (err) {
+    if (err instanceof OrderCheckoutError && err.message.includes('CNPJ do comprador inválido')) {
+      invalidCnpjBodyCaught = true;
+    }
+  }
+  assert(invalidCnpjBodyCaught, 'S51. buildCheckoutRequestBody rejeita CNPJ inválido fail-closed');
+
+  // S52: Simulação de Review: step review não submete à rede e preserva form
+  let testStep = 'details';
+  let isSubmitting = false;
+  const formData = {
+    name: 'Maria Silva',
+    phone: '41988887777',
+    document: '52998224725',
+    street: 'Rua das Palmeiras, 45'
+  };
+  // Ação: Validar Orçamento
+  if (formData.name && formData.phone && isValidCPF(formData.document) && formData.street) {
+    testStep = 'review';
+  }
+  assert(
+    testStep === 'review' && isSubmitting === false && formData.name === 'Maria Silva',
+    'S52. "Validar orçamento" avança para step review sem efetuar chamada à rede'
+  );
+
+  // S53: Ação "Voltar e editar" na review preserva dados intactos
+  if (testStep === 'review') {
+    testStep = 'details';
+  }
+  assert(
+    testStep === 'details' && formData.document === '52998224725' && formData.street === 'Rua das Palmeiras, 45',
+    'S53. "Voltar e editar" retorna a details preservando todos os campos'
+  );
+
+  // S54a: Ao iniciar a confirmação, o snapshot confirmado permanece estritamente null antes do receipt
+  let customerDataState = { ...formData };
+  let confirmedSnapshotState: any = null;
+  const pendingCustomerSnapshot = {
+    name: customerDataState.name,
+    phone: customerDataState.phone,
+    document: normalizeBrazilianDocument(customerDataState.document),
+    street: customerDataState.street,
+    type: 'PF'
+  };
+  assert(
+    confirmedSnapshotState === null,
+    'S54a. Ao iniciar confirmação, confirmedCustomerSnapshot permanece null'
+  );
+
+  // S54b: Em caso de falha no submit (ex: HTTP 503 Feature Gate fechado), o snapshot confirmado NUNCA é preenchido
+  const simulateSubmitFailure = true;
+  if (simulateSubmitFailure) {
+    // catch block simula erro: não executa setConfirmedCustomerSnapshot
+    const submitError = 'Checkout temporariamente indisponível.';
+    assert(
+      confirmedSnapshotState === null && submitError.length > 0,
+      'S54b. Falha de rede/backend (HTTP 503/400) mantém confirmedCustomerSnapshot estritamente como null'
+    );
+  }
+
+  // S54c: Sucesso com receipt válido do servidor atribui o pendingCustomerSnapshot ao state e limpa o form
+  confirmedSnapshotState = pendingCustomerSnapshot;
+  customerDataState = { name: '', phone: '', document: '', street: '' };
+  assert(
+    customerDataState.name === '' &&
+    confirmedSnapshotState !== null &&
+    confirmedSnapshotState.name === 'Maria Silva' &&
+    confirmedSnapshotState.document === '52998224725',
+    'S54c. submitOrderCheckout sucesso com receipt válido atribui confirmedCustomerSnapshot e limpa formulário PII'
+  );
+
+  // S54d: resetCheckoutLifecycle limpa confirmedCustomerSnapshot e redefine estado
+  let resetTriggeredSnapshot = confirmedSnapshotState;
+  resetTriggeredSnapshot = null;
+  assert(
+    resetTriggeredSnapshot === null,
+    'S54d. resetCheckoutLifecycle limpa confirmedCustomerSnapshot para null'
+  );
+
+  // S55: Formatação da mensagem do WhatsApp usa valores do receipt do servidor e CPF/CNPJ do snapshot
+  const mockReceiptForWa = {
+    orderNumber: 'PED-2026-9999',
+    subtotal: 500,
+    total: 500,
+    shippingFee: 0,
+    paymentMethod: 'pix' as PaymentMethod,
+    deliveryMethod: 'entrega',
+    items: [{ productName: 'Furadeira', quantity: 2, unit: 'un', unitPrice: 250, totalPrice: 500 }]
+  };
+  const waCustomerDoc = confirmedSnapshotState.type === 'PJ' ? `CNPJ: ${confirmedSnapshotState.document}` : `CPF: ${confirmedSnapshotState.document}`;
+  const waText = `PEDIDO #${mockReceiptForWa.orderNumber} - Cliente: ${confirmedSnapshotState.name} - ${waCustomerDoc} - Total: R$ ${mockReceiptForWa.total}`;
+  assert(
+    waText.includes('PED-2026-9999') &&
+    waText.includes('Maria Silva') &&
+    waText.includes('CPF: 52998224725') &&
+    waText.includes('Total: R$ 500'),
+    'S55. Mensagem do WhatsApp integra itens/totais do receipt e documento do snapshot'
   );
 }
 

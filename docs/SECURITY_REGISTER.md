@@ -100,6 +100,8 @@
   - Uso exclusivo de `SUPABASE_SECRET_KEYS` com extração segura da chave default (`SUPABASE_SERVICE_ROLE_KEY` legada removida).
   - Limite de 64 KB aferido por bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
   - Honeypot anti-bot e sanitização/minimização de erros e PII na resposta HTTP.
+  - Validação estrita de CPF/CNPJ (módulo 11) no frontend (`src/utils/brDocument.ts`), `orderService.ts` e na Edge Function (`submit-order-checkout`), normalizando para dígitos puros e rejeitando documentos inválidos.
+  - Isolamento de PII: `confirmedCustomerSnapshot` preservado estritamente em memória volátil de componente React durante o ciclo de checkout; zero persistência de PII em `sessionStorage`, `localStorage` ou `IndexedDB`.
 - **Governança de Deployment:**
   - Push para GitHub main deve ser tratado como potencial gatilho de deploy Supabase; não usar main como simples backup para mudanças ainda não aprovadas de migration ou Edge Function.
 

@@ -1,6 +1,7 @@
 import { FunctionsHttpError, FunctionsFetchError, FunctionsRelayError } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { PaymentMethod } from '../types';
+import { normalizeBrazilianDocument, isValidCPF, isValidCNPJ } from '../utils/brDocument';
 
 export type CheckoutShoppingMode = 'retail' | 'wholesale';
 
@@ -309,24 +310,6 @@ export function buildCheckoutRequestBody(
       if (trimmedEmail) email = trimmedEmail;
     }
 
-    let document: string | undefined = undefined;
-    if (draft.customer.document !== undefined && draft.customer.document !== null) {
-      if (typeof draft.customer.document !== 'string') {
-        throw new OrderCheckoutError('Documento do comprador deve ser texto.', { status: 400 });
-      }
-      const trimmedDoc = draft.customer.document.trim();
-      if (trimmedDoc) document = trimmedDoc;
-    }
-
-    let companyName: string | undefined = undefined;
-    if (draft.customer.companyName !== undefined && draft.customer.companyName !== null) {
-      if (typeof draft.customer.companyName !== 'string') {
-        throw new OrderCheckoutError('Razão social deve ser texto.', { status: 400 });
-      }
-      const trimmedCompany = draft.customer.companyName.trim();
-      if (trimmedCompany) companyName = trimmedCompany;
-    }
-
     let type: 'PF' | 'PJ' = 'PF';
     if (draft.customer.type !== undefined && draft.customer.type !== null) {
       if (typeof draft.customer.type !== 'string') {
@@ -339,11 +322,37 @@ export function buildCheckoutRequestBody(
       if (normalizedType === 'PJ') type = 'PJ';
     }
 
+    if (typeof draft.customer.document !== 'string' || !draft.customer.document.trim()) {
+      throw new OrderCheckoutError(
+        type === 'PF' ? 'CPF do comprador é obrigatório.' : 'CNPJ do comprador é obrigatório.',
+        { status: 400 }
+      );
+    }
+    const cleanDoc = normalizeBrazilianDocument(draft.customer.document);
+    if (type === 'PF') {
+      if (!isValidCPF(cleanDoc)) {
+        throw new OrderCheckoutError('CPF do comprador inválido.', { status: 400 });
+      }
+    } else {
+      if (!isValidCNPJ(cleanDoc)) {
+        throw new OrderCheckoutError('CNPJ do comprador inválido.', { status: 400 });
+      }
+    }
+
+    let companyName: string | undefined = undefined;
+    if (draft.customer.companyName !== undefined && draft.customer.companyName !== null) {
+      if (typeof draft.customer.companyName !== 'string') {
+        throw new OrderCheckoutError('Razão social deve ser texto.', { status: 400 });
+      }
+      const trimmedCompany = draft.customer.companyName.trim();
+      if (trimmedCompany) companyName = trimmedCompany;
+    }
+
     normalizedCustomer = {
       name,
       phone,
       ...(email ? { email } : {}),
-      ...(document ? { document } : {}),
+      document: cleanDoc,
       ...(companyName ? { companyName } : {}),
       type
     };

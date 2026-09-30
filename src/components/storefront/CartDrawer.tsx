@@ -12,10 +12,16 @@ import {
   QrCode, 
   AlertCircle,
   ArrowRight,
+  ArrowLeft,
   Building2,
   Clock,
   RefreshCw,
-  Info
+  Info,
+  User,
+  MapPin,
+  FileText,
+  Tag,
+  CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useWholesaleAccess } from '../../context/WholesaleAccessContext';
@@ -27,6 +33,11 @@ import {
   SubmitOrderCheckoutDraft, 
   OrderCheckoutError 
 } from '../../services/orderService';
+import { 
+  normalizeBrazilianDocument, 
+  isValidCPF, 
+  isValidCNPJ 
+} from '../../utils/brDocument';
 
 interface CartItemQuantityControlProps {
   quantity: number;
@@ -147,6 +158,24 @@ const CartItemQuantityControl: React.FC<CartItemQuantityControlProps> = ({
   );
 };
 
+export interface ConfirmedCustomerSnapshot {
+  type: 'PF' | 'PJ';
+  name: string;
+  document: string;
+  companyName?: string;
+  email?: string;
+  phone: string;
+  street: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  notes?: string;
+  sellerCode?: string;
+}
+
 export const CartDrawer: React.FC<{
   settings?: TenantPublicSettings | null;
 }> = ({ settings }) => {
@@ -164,8 +193,9 @@ export const CartDrawer: React.FC<{
   // Modalidade de compra autoritativa da UI oficial
   const { purchaseMode, isApproved, wholesaleCompany } = useWholesaleAccess();
 
-  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'review' | 'success'>('cart');
   const [createdOrder, setCreatedOrder] = useState<CheckoutOrderReceipt | null>(null);
+  const [confirmedCustomerSnapshot, setConfirmedCustomerSnapshot] = useState<ConfirmedCustomerSnapshot | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -208,6 +238,7 @@ export const CartDrawer: React.FC<{
   const resetCheckoutLifecycle = useCallback(() => {
     setCheckoutStep('cart');
     setCreatedOrder(null);
+    setConfirmedCustomerSnapshot(null);
     setSubmitError(null);
     setErrors({});
     setCustomerData({
@@ -322,6 +353,75 @@ export const CartDrawer: React.FC<{
     }
   };
 
+  /**
+   * Validação local prévia para avançar da etapa details para a etapa review.
+   * Não executa chamadas de rede nem submete pedido.
+   */
+  const handleValidateDetails = () => {
+    if (!settings || !settings.slug) {
+      setSubmitError('Configurações da loja ainda não estão disponíveis.');
+      return;
+    }
+    if (cart.length === 0) {
+      setSubmitError('Seu carrinho está vazio.');
+      return;
+    }
+    if (isWholesaleBlocked) {
+      setSubmitError('Modalidade atacado indisponível ou cadastro B2B não aprovado.');
+      return;
+    }
+    if (isBelowMinOrder) {
+      const minFormatted = minOrderValue !== null ? `R$ ${minOrderValue.toFixed(2).replace('.', ',')}` : 'a definir';
+      setSubmitError(`O valor mínimo para pedidos é de ${minFormatted}.`);
+      return;
+    }
+    if (hasInsufficientWholesaleItem) {
+      setSubmitError('Há itens no carrinho com estoque insuficiente para o mínimo de atacado.');
+      return;
+    }
+    if (!availableDeliveryMethods.includes(deliveryMethod.trim())) {
+      setSubmitError('Selecione uma forma de entrega disponível.');
+      return;
+    }
+
+    const newErrors: Record<string, string> = {};
+    if (!isWholesale) {
+      if (!customerData.name.trim()) {
+        newErrors.name = 'Nome do comprador é obrigatório';
+      }
+      if (!customerData.phone.trim()) {
+        newErrors.phone = 'Telefone/WhatsApp é obrigatório';
+      }
+      if (!customerData.document.trim()) {
+        newErrors.document = customerData.type === 'PF' ? 'Informe um CPF válido.' : 'Informe um CNPJ válido.';
+      } else {
+        const cleanDoc = normalizeBrazilianDocument(customerData.document);
+        if (customerData.type === 'PF') {
+          if (!isValidCPF(cleanDoc)) {
+            newErrors.document = 'Informe um CPF válido.';
+          }
+        } else {
+          if (!isValidCNPJ(cleanDoc)) {
+            newErrors.document = 'Informe um CNPJ válido.';
+          }
+        }
+      }
+    }
+    if (!customerData.street.trim()) {
+      newErrors.street = 'Endereço (rua/logradouro) é obrigatório';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setSubmitError('Por favor, corrija os campos obrigatórios destacados.');
+      return;
+    }
+
+    setErrors({});
+    setSubmitError(null);
+    setCheckoutStep('review');
+  };
+
   const handleFinishOrder = async () => {
     if (isSubmittingOrder) return;
 
@@ -410,6 +510,16 @@ export const CartDrawer: React.FC<{
     if (!isWholesale) {
       if (!customerData.name.trim()) newErrors.name = 'Nome do comprador é obrigatório';
       if (!customerData.phone.trim()) newErrors.phone = 'Telefone/WhatsApp é obrigatório';
+      if (!customerData.document.trim()) {
+        newErrors.document = customerData.type === 'PF' ? 'Informe um CPF válido.' : 'Informe um CNPJ válido.';
+      } else {
+        const cleanDoc = normalizeBrazilianDocument(customerData.document);
+        if (customerData.type === 'PF') {
+          if (!isValidCPF(cleanDoc)) newErrors.document = 'Informe um CPF válido.';
+        } else {
+          if (!isValidCNPJ(cleanDoc)) newErrors.document = 'Informe um CNPJ válido.';
+        }
+      }
     }
     if (!customerData.street.trim()) {
       newErrors.street = 'Endereço (rua/logradouro) é obrigatório';
@@ -424,6 +534,25 @@ export const CartDrawer: React.FC<{
     setErrors({});
     setSubmitError(null);
     setIsSubmittingOrder(true);
+
+    // Snapshot em memória local imutável — aguarda receipt válido do servidor
+    const pendingCustomerSnapshot: ConfirmedCustomerSnapshot = {
+      type: customerData.type,
+      name: customerData.name.trim(),
+      document: normalizeBrazilianDocument(customerData.document),
+      companyName: customerData.companyName.trim() || undefined,
+      email: customerData.email.trim() || undefined,
+      phone: customerData.phone.trim(),
+      street: customerData.street.trim(),
+      number: customerData.number.trim() || undefined,
+      complement: customerData.complement.trim() || undefined,
+      neighborhood: customerData.neighborhood.trim() || undefined,
+      city: customerData.city.trim() || undefined,
+      state: customerData.state.trim() || undefined,
+      zipCode: customerData.zipCode.trim() || undefined,
+      notes: customerData.notes.trim() || undefined,
+      sellerCode: customerData.sellerCode.trim() || undefined
+    };
 
     try {
       // 5. Montagem do draft estritamente sem autoridade financeira
@@ -473,7 +602,8 @@ export const CartDrawer: React.FC<{
       // 6. Chamada real à Edge Function com validação em runtime
       const receipt = await submitOrderCheckout(draft);
 
-      // 7. Sucesso real validado: atualiza recibo e limpa carrinho e dados de formulário PII
+      // 7. Sucesso real validado: confirma snapshot do cliente, atualiza recibo e limpa carrinho e dados de formulário PII
+      setConfirmedCustomerSnapshot(pendingCustomerSnapshot);
       setCreatedOrder(receipt);
       clearCart();
       setCheckoutStep('success');
@@ -517,34 +647,55 @@ export const CartDrawer: React.FC<{
 
     const customerDisplay = isWholesale
       ? (wholesaleCompany?.tradeName || wholesaleCompany?.legalName || 'Cliente Atacadista')
-      : (customerData.name || 'Cliente');
+      : (confirmedCustomerSnapshot?.name || 'Cliente');
 
     const isRetirada = order.deliveryMethod.toLowerCase().includes('retirada');
     const addressLabel = isRetirada ? 'Endereço do Comprador' : 'Endereço de Entrega';
 
-    const addressText = [
-      customerData.street,
-      customerData.number ? `Nº ${customerData.number}` : '',
-      customerData.neighborhood,
-      customerData.city && customerData.state ? `${customerData.city}/${customerData.state}` : customerData.city || customerData.state
-    ].filter(Boolean).join(', ');
+    const addressText = isWholesale
+      ? [
+          confirmedCustomerSnapshot?.street,
+          confirmedCustomerSnapshot?.number ? `Nº ${confirmedCustomerSnapshot.number}` : '',
+          confirmedCustomerSnapshot?.neighborhood,
+          confirmedCustomerSnapshot?.city && confirmedCustomerSnapshot?.state ? `${confirmedCustomerSnapshot.city}/${confirmedCustomerSnapshot.state}` : confirmedCustomerSnapshot?.city || confirmedCustomerSnapshot?.state
+        ].filter(Boolean).join(', ')
+      : [
+          confirmedCustomerSnapshot?.street,
+          confirmedCustomerSnapshot?.number ? `Nº ${confirmedCustomerSnapshot.number}` : '',
+          confirmedCustomerSnapshot?.neighborhood,
+          confirmedCustomerSnapshot?.city && confirmedCustomerSnapshot?.state ? `${confirmedCustomerSnapshot.city}/${confirmedCustomerSnapshot.state}` : confirmedCustomerSnapshot?.city || confirmedCustomerSnapshot?.state
+        ].filter(Boolean).join(', ');
+
+    const docText = isWholesale
+      ? (wholesaleCompany?.cnpj ? `🪪 *CNPJ:* ${wholesaleCompany.cnpj}\n` : '')
+      : (confirmedCustomerSnapshot?.document
+          ? (confirmedCustomerSnapshot.type === 'PJ' ? `🪪 *CNPJ:* ${confirmedCustomerSnapshot.document}\n` : `🪪 *CPF:* ${confirmedCustomerSnapshot.document}\n`)
+          : '');
+
+    const companyText = (!isWholesale && confirmedCustomerSnapshot?.companyName)
+      ? `🏢 *Empresa:* ${confirmedCustomerSnapshot.companyName}\n`
+      : '';
+
+    const phoneText = isWholesale
+      ? (confirmedCustomerSnapshot?.phone || 'Informado no cadastro')
+      : (confirmedCustomerSnapshot?.phone || 'Informado no checkout');
 
     const message = 
       `🛍️ *PEDIDO RECEBIDO — AGUARDANDO APROVAÇÃO #${order.orderNumber}*\n` +
       `🏪 *Loja:* ${storeName}\n\n` +
       `👤 *Cliente:* ${customerDisplay}\n` +
-      (isWholesale && wholesaleCompany?.cnpj ? `🏢 *CNPJ:* ${wholesaleCompany.cnpj}\n` : '') +
-      (!isWholesale && customerData.companyName ? `🏢 *Empresa:* ${customerData.companyName}\n` : '') +
-      `📱 *Contato:* ${customerData.phone || 'Informado no cadastro'}\n` +
-      `📍 *${addressLabel}:* ${addressText || customerData.street}\n\n` +
+      docText +
+      companyText +
+      `📱 *WhatsApp:* ${phoneText}\n` +
+      `📍 *${addressLabel}:* ${addressText || confirmedCustomerSnapshot?.street || 'Conforme cadastro'}\n\n` +
       `📦 *ITENS DO PEDIDO:*\n${itemsText}\n\n` +
       `💵 *Subtotal:* R$ ${order.subtotal.toFixed(2).replace('.', ',')}\n` +
       `🚚 *Frete:* ${order.shippingFee === 0 ? 'A combinar / Calculado pela loja' : `R$ ${order.shippingFee.toFixed(2).replace('.', ',')}`}\n` +
       `💰 *TOTAL DO PEDIDO:* R$ ${order.total.toFixed(2).replace('.', ',')}\n` +
       `💳 *Forma de Pagamento:* ${getPaymentMethodLabel(order.paymentMethod)}\n` +
       `🚚 *Método de Entrega:* ${getDeliveryMethodLabel(order.deliveryMethod)}\n` +
-      (order.items.length > 0 && customerData.sellerCode ? `🏷️ *Cód. Vendedor:* ${customerData.sellerCode}\n` : '') +
-      (customerData.notes ? `📝 *Obs:* ${customerData.notes}\n` : '') +
+      (order.items.length > 0 && confirmedCustomerSnapshot?.sellerCode ? `🏷️ *Cód. Vendedor:* ${confirmedCustomerSnapshot.sellerCode}\n` : '') +
+      (confirmedCustomerSnapshot?.notes ? `📝 *Obs:* ${confirmedCustomerSnapshot.notes}\n` : '') +
       `\n_Pedido enviado ao catálogo oficial. Aguardando aprovação administrativa._`;
 
     const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
@@ -563,7 +714,13 @@ export const CartDrawer: React.FC<{
             </div>
             <div>
               <h3 className="font-bold text-[#0F172A] text-sm">
-                {checkoutStep === 'cart' ? 'Seu Pedido' : checkoutStep === 'details' ? 'Dados para Entrega & Pagamento' : 'Pedido Recebido'}
+                {checkoutStep === 'cart' 
+                  ? 'Seu Pedido' 
+                  : checkoutStep === 'details' 
+                  ? 'Dados para Entrega & Pagamento' 
+                  : checkoutStep === 'review'
+                  ? 'Revise seu pedido'
+                  : 'Pedido Recebido'}
               </h3>
               <p className="text-[11px] text-slate-500">{storeName}</p>
             </div>
@@ -759,6 +916,11 @@ export const CartDrawer: React.FC<{
                     type="button"
                     onClick={() => {
                       setCustomerData(prev => ({ ...prev, type: 'PJ' }));
+                      setErrors(prev => {
+                        const next = { ...prev };
+                        delete next.document;
+                        return next;
+                      });
                       setSubmitError(null);
                     }}
                     className={`px-3 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
@@ -771,6 +933,11 @@ export const CartDrawer: React.FC<{
                     type="button"
                     onClick={() => {
                       setCustomerData(prev => ({ ...prev, type: 'PF' }));
+                      setErrors(prev => {
+                        const next = { ...prev };
+                        delete next.document;
+                        return next;
+                      });
                       setSubmitError(null);
                     }}
                     className={`px-3 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
@@ -802,6 +969,26 @@ export const CartDrawer: React.FC<{
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#FF5A00] focus:outline-none"
                   />
                   {errors.name && <p className="text-red-500 text-[10px] mt-0.5">{errors.name}</p>}
+                </div>
+              )}
+
+              {!isWholesale && (
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {customerData.type === 'PJ' ? 'CNPJ *' : 'CPF *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customerData.document}
+                    onChange={e => {
+                      setCustomerData(prev => ({ ...prev, document: e.target.value }));
+                      setSubmitError(null);
+                    }}
+                    placeholder={customerData.type === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:ring-2 focus:ring-[#FF5A00] focus:outline-none"
+                  />
+                  {errors.document && <p className="text-red-500 text-[10px] mt-0.5">{errors.document}</p>}
                 </div>
               )}
 
@@ -858,24 +1045,6 @@ export const CartDrawer: React.FC<{
                   />
                 </div>
               </div>
-
-              {!isWholesale && (
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {customerData.type === 'PJ' ? 'CNPJ (Opcional)' : 'CPF (Opcional)'}
-                  </label>
-                  <input
-                    type="text"
-                    value={customerData.document}
-                    onChange={e => {
-                      setCustomerData(prev => ({ ...prev, document: e.target.value }));
-                      setSubmitError(null);
-                    }}
-                    placeholder={customerData.type === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:ring-2 focus:ring-[#FF5A00] focus:outline-none"
-                  />
-                </div>
-              )}
 
               {/* Método de Entrega Oficial */}
               <div className="pt-2 border-t border-slate-100">
@@ -1069,19 +1238,171 @@ export const CartDrawer: React.FC<{
                 />
               </div>
 
-              {/* Disclaimer de UX: valores são estimativas */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
-                <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                <span>
-                  Valores exibidos são estimativas. Preços, regras comerciais e total final serão recalculados pelo servidor.
-                </span>
-              </div>
-
             </div>
           </div>
         )}
 
-        {/* STEP 3: SUCCESS & RECEIPT VERIFIED */}
+        {/* STEP 3: REVIEW / ORÇAMENTO SUMMARY (UX MARKETPLACE) */}
+        {checkoutStep === 'review' && (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+            
+            {/* Feedback de Erro Inline */}
+            {submitError && (
+              <div 
+                role="alert" 
+                className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-start gap-2.5 animate-shake"
+              >
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex-1 font-semibold leading-relaxed">
+                  {submitError}
+                </div>
+              </div>
+            )}
+
+            {/* Disclaimer de Revisão */}
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-amber-900">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                <strong>Revise os dados antes de confirmar.</strong> Preços, estoque e regras comerciais serão validados novamente pelo servidor.
+              </div>
+            </div>
+
+            {/* Itens do Pedido */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <ShoppingCart className="w-3.5 h-3.5 text-slate-600" />
+                  Itens do Pedido ({cart.length})
+                </span>
+                <span className="text-[11px] font-bold text-slate-600">
+                  {isWholesale ? 'Modalidade Atacado' : 'Modalidade Varejo'}
+                </span>
+              </div>
+
+              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                {cart.map((item, idx) => (
+                  <div key={`${item.product.id}-${idx}`} className="flex items-center justify-between gap-2.5 py-1.5 border-b border-slate-200/60 last:border-0">
+                    <img
+                      src={getSafeProductImage(item.product.images[0], item.product.category)}
+                      alt={item.product.name}
+                      className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                      onError={(e) => handleProductImageError(e, item.product.category)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h5 className="font-bold text-slate-900 truncate text-[11px]">{item.product.name}</h5>
+                      <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                        <span className="font-mono">SKU: {item.product.sku}</span>
+                        {item.selectedVariant && (
+                          <span className="bg-slate-200 text-slate-700 px-1 py-0.2 rounded text-[9px] font-medium truncate max-w-[120px]">
+                            {item.selectedVariant}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-600">
+                        {item.quantity} {item.product.unit} × R$ {item.unitPrice.toFixed(2).replace('.', ',')}
+                      </div>
+                    </div>
+                    <div className="text-right font-extrabold text-slate-900 text-xs">
+                      R$ {(item.unitPrice * item.quantity).toFixed(2).replace('.', ',')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Resumo Financeiro Estimado */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
+              <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-1.5">
+                Resumo Estimado
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal Estimado:</span>
+                <span className="font-medium text-slate-900">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Frete:</span>
+                <span className="text-amber-800 font-medium">A combinar / Calculado pela loja</span>
+              </div>
+              <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
+                <span>Total Estimado:</span>
+                <span className="text-[#0F172A]">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+                <div><strong>Forma de Pagamento:</strong> {getPaymentMethodLabel(customerData.paymentMethod)}</div>
+                <div><strong>Método de Entrega:</strong> {getDeliveryMethodLabel(deliveryMethod)}</div>
+              </div>
+            </div>
+
+            {/* Dados do Cliente */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-[11px]">
+              <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-slate-600" />
+                Dados do Comprador
+              </div>
+              {isWholesale ? (
+                <div className="space-y-1 text-slate-700">
+                  <div><strong>Razão Social:</strong> {wholesaleCompany?.legalName || 'Empresa B2B'}</div>
+                  {wholesaleCompany?.tradeName && <div><strong>Fantasia:</strong> {wholesaleCompany.tradeName}</div>}
+                  <div><strong>CNPJ:</strong> {wholesaleCompany?.cnpj || '—'}</div>
+                  {customerData.phone && <div><strong>WhatsApp:</strong> {customerData.phone}</div>}
+                  {customerData.email && <div><strong>E-mail:</strong> {customerData.email}</div>}
+                </div>
+              ) : (
+                <div className="space-y-1 text-slate-700">
+                  <div><strong>Tipo:</strong> {customerData.type === 'PJ' ? 'Pessoa Jurídica (PJ)' : 'Pessoa Física (PF)'}</div>
+                  <div><strong>Nome:</strong> {customerData.name}</div>
+                  <div><strong>{customerData.type === 'PJ' ? 'CNPJ' : 'CPF'}:</strong> {customerData.document}</div>
+                  {customerData.companyName && <div><strong>Empresa:</strong> {customerData.companyName}</div>}
+                  <div><strong>WhatsApp:</strong> {customerData.phone}</div>
+                  {customerData.email && <div><strong>E-mail:</strong> {customerData.email}</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Endereço de Entrega */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1 text-[11px]">
+              <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-slate-600" />
+                Endereço de Entrega
+              </div>
+              <div className="text-slate-700 pt-1">
+                <div>
+                  {customerData.street}{customerData.number ? `, Nº ${customerData.number}` : ''}
+                  {customerData.complement ? ` - ${customerData.complement}` : ''}
+                </div>
+                <div>
+                  {customerData.neighborhood ? `${customerData.neighborhood}, ` : ''}
+                  {customerData.city ? `${customerData.city}` : ''}
+                  {customerData.state ? `/${customerData.state}` : ''}
+                  {customerData.zipCode ? ` - CEP ${customerData.zipCode}` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Observações e Vendedor (quando preenchidos) */}
+            {(customerData.sellerCode || customerData.notes) && (
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1 text-[11px]">
+                <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-600" />
+                  Informações Adicionais
+                </div>
+                {customerData.sellerCode && (
+                  <div className="text-slate-700 pt-1">
+                    <strong>Código do Vendedor:</strong> {customerData.sellerCode}
+                  </div>
+                )}
+                {customerData.notes && (
+                  <div className="text-slate-700 pt-1">
+                    <strong>Observações:</strong> {customerData.notes}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* STEP 4: SUCCESS & RECEIPT VERIFIED */}
         {checkoutStep === 'success' && createdOrder && (
           <div className="flex-1 overflow-y-auto p-6 text-center space-y-5">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-[#16A34A] flex items-center justify-center mx-auto shadow-md">
@@ -1150,7 +1471,7 @@ export const CartDrawer: React.FC<{
                   className="w-full py-3 rounded-2xl bg-[#16A34A] hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer transition-colors"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  <span>Enviar cópia do pedido no WhatsApp</span>
+                  <span>Enviar pedido pelo WhatsApp</span>
                 </button>
               ) : null}
 
@@ -1168,7 +1489,7 @@ export const CartDrawer: React.FC<{
           </div>
         )}
 
-        {/* Footer Actions for Steps 1 & 2 */}
+        {/* Footer Actions for Steps 1, 2 & 3 */}
         {checkoutStep !== 'success' && cart.length > 0 && (
           <div className="p-4 sm:p-5 border-t border-[#E2E8F0] bg-slate-50 space-y-3">
             
@@ -1189,7 +1510,7 @@ export const CartDrawer: React.FC<{
             </div>
 
             {/* Buttons based on step */}
-            {checkoutStep === 'cart' ? (
+            {checkoutStep === 'cart' && (
               <button
                 type="button"
                 onClick={handleProceedToDetails}
@@ -1204,7 +1525,9 @@ export const CartDrawer: React.FC<{
                 <span>Avançar para Entrega e Pagamento</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
-            ) : (
+            )}
+
+            {checkoutStep === 'details' && (
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1213,26 +1536,54 @@ export const CartDrawer: React.FC<{
                     setCheckoutStep('cart');
                     setSubmitError(null);
                   }}
-                  className="py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 cursor-pointer transition-colors"
+                  className="py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
                 >
-                  Voltar
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Voltar</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingOrder || isBelowMinOrder}
+                  onClick={handleValidateDetails}
+                  className="py-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-colors disabled:cursor-not-allowed"
+                  id="btn-validate-quote"
+                >
+                  <span>Validar orçamento</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {checkoutStep === 'review' && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmittingOrder}
+                  onClick={() => {
+                    setCheckoutStep('details');
+                    setSubmitError(null);
+                  }}
+                  className="py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Voltar e editar</span>
                 </button>
                 <button
                   type="button"
                   disabled={isSubmittingOrder || isBelowMinOrder}
                   onClick={handleFinishOrder}
-                  className="py-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-colors disabled:cursor-not-allowed"
+                  className="py-2.5 rounded-xl bg-[#16A34A] hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-colors disabled:cursor-not-allowed"
                   id="btn-submit-order"
                 >
                   {isSubmittingOrder ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Enviando pedido...</span>
+                      <span>Confirmando pedido...</span>
                     </>
                   ) : (
                     <>
-                      <span>Enviar pedido</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirmar pedido</span>
                     </>
                   )}
                 </button>

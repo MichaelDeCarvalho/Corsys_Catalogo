@@ -22,6 +22,66 @@ function isValidUuid(uuid: unknown): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid.trim());
 }
 
+/**
+ * Validação rigorosa de CPF brasileiro (módulo 11)
+ */
+function isValidCPF(cpf: unknown): boolean {
+  if (typeof cpf !== "string") return false;
+  const clean = cpf.replace(/\D/g, "");
+  if (clean.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(clean)) return false;
+
+  const digits = clean.split("").map(Number);
+  let sum1 = 0;
+  for (let i = 0; i < 9; i++) {
+    sum1 += digits[i] * (10 - i);
+  }
+  const rem1 = (sum1 * 10) % 11;
+  const expected1 = rem1 === 10 || rem1 === 11 ? 0 : rem1;
+  if (digits[9] !== expected1) return false;
+
+  let sum2 = 0;
+  for (let i = 0; i < 10; i++) {
+    sum2 += digits[i] * (11 - i);
+  }
+  const rem2 = (sum2 * 10) % 11;
+  const expected2 = rem2 === 10 || rem2 === 11 ? 0 : rem2;
+  if (digits[10] !== expected2) return false;
+
+  return true;
+}
+
+/**
+ * Validação rigorosa de CNPJ brasileiro (módulo 11)
+ */
+function isValidCNPJ(cnpj: unknown): boolean {
+  if (typeof cnpj !== "string") return false;
+  const clean = cnpj.replace(/\D/g, "");
+  if (clean.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(clean)) return false;
+
+  const digits = clean.split("").map(Number);
+  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  let sum1 = 0;
+  for (let i = 0; i < 12; i++) {
+    sum1 += digits[i] * weights1[i];
+  }
+  const rem1 = sum1 % 11;
+  const expected1 = rem1 < 2 ? 0 : 11 - rem1;
+  if (digits[12] !== expected1) return false;
+
+  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  let sum2 = 0;
+  for (let i = 0; i < 13; i++) {
+    sum2 += digits[i] * weights2[i];
+  }
+  const rem2 = sum2 % 11;
+  const expected2 = rem2 < 2 ? 0 : 11 - rem2;
+  if (digits[13] !== expected2) return false;
+
+  return true;
+}
+
 // Lista de campos com autoridade financeira ou sensível que NUNCA devem ser enviados pelo cliente
 const FORBIDDEN_BODY_FIELDS = [
   "subtotal",
@@ -301,44 +361,6 @@ Deno.serve(async (req: Request) => {
         if (!custEmail) custEmail = null;
       }
 
-      // Documento opcional (fail-closed se tipo incorreto)
-      let custDoc: string | null = null;
-      if (custRecord.document !== undefined && custRecord.document !== null) {
-        if (typeof custRecord.document !== "string") {
-          return new Response(
-            JSON.stringify({ error: "Documento do cliente deve ser texto." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        custDoc = custRecord.document.trim();
-        if (custDoc.length > 32) {
-          return new Response(
-            JSON.stringify({ error: "Documento do cliente excede o limite máximo de 32 caracteres." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        if (!custDoc) custDoc = null;
-      }
-
-      // Razão Social opcional (fail-closed se tipo incorreto)
-      let custCompName: string | null = null;
-      if (custRecord.companyName !== undefined && custRecord.companyName !== null) {
-        if (typeof custRecord.companyName !== "string") {
-          return new Response(
-            JSON.stringify({ error: "Razão social deve ser texto." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        custCompName = custRecord.companyName.trim();
-        if (custCompName.length > 200) {
-          return new Response(
-            JSON.stringify({ error: "Razão social excede o limite máximo de 200 caracteres." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        if (!custCompName) custCompName = null;
-      }
-
       // Tipo (PF ou PJ - fail-closed se inválido)
       let custType = "PF";
       if (custRecord.type !== undefined && custRecord.type !== null) {
@@ -358,6 +380,61 @@ Deno.serve(async (req: Request) => {
         if (normalizedType === "PJ") {
           custType = "PJ";
         }
+      }
+
+      // Documento obrigatório para retail (CPF para PF, CNPJ para PJ)
+      if (typeof custRecord.document !== "string") {
+        return new Response(
+          JSON.stringify({
+            error: custType === "PF" ? "CPF do cliente é obrigatório." : "CNPJ do cliente é obrigatório.",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const rawDoc = custRecord.document.trim();
+      if (!rawDoc) {
+        return new Response(
+          JSON.stringify({
+            error: custType === "PF" ? "CPF do cliente é obrigatório." : "CNPJ do cliente é obrigatório.",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const cleanDoc = rawDoc.replace(/\D/g, "");
+      if (custType === "PF") {
+        if (!isValidCPF(cleanDoc)) {
+          return new Response(
+            JSON.stringify({ error: "CPF do cliente inválido." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        if (!isValidCNPJ(cleanDoc)) {
+          return new Response(
+            JSON.stringify({ error: "CNPJ do cliente inválido." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+      const custDoc = cleanDoc;
+
+      // Razão Social opcional (fail-closed se tipo incorreto)
+      let custCompName: string | null = null;
+      if (custRecord.companyName !== undefined && custRecord.companyName !== null) {
+        if (typeof custRecord.companyName !== "string") {
+          return new Response(
+            JSON.stringify({ error: "Razão social deve ser texto." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        custCompName = custRecord.companyName.trim();
+        if (custCompName.length > 200) {
+          return new Response(
+            JSON.stringify({ error: "Razão social excede o limite máximo de 200 caracteres." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (!custCompName) custCompName = null;
       }
 
       sanitizedCustomer = {

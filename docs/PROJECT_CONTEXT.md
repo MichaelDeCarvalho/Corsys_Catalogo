@@ -85,12 +85,15 @@
 - **000011:** **APLICADA / CONGELADA**
 - **submit-order-checkout:** **v2 ACTIVE** (verify_jwt=false, autorização service_role via SUPABASE_SECRET_KEYS)
 - **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO** (`CHECKOUT_ENABLED !== "true"` bloqueia submissões públicas)
-- **Frontend:** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / AINDA NÃO VALIDADA COM PEDIDO REAL**
-  - `CartDrawer` integrado via `orderService.submitOrderCheckout`.
+- **Frontend (Checkout V1.1):** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / PASS**
+  - Fluxo do carrinho: `cart` → `details` → `review` → `success`.
+  - Etapa "Validar orçamento" sem chamadas à rede, levando à tela de revisão completa (UX marketplace).
+  - Validação estrita de CPF/CNPJ (módulo 11) com obrigatoriedade no varejo e feedback inline específico.
+  - Snapshot de cliente (`confirmedCustomerSnapshot`) em memória React garantindo integridade no envio ao WhatsApp após reset de formulário.
   - Zero autoridade financeira no cliente (preços, totais e estoque resolvidos exclusivamente no backend).
   - Idempotência robusta com UUID v4 e SHA-256 do payload canônico; zero PII persistida no storage.
   - 503 tratado com feedback inline, preservando carrinho, formulário e tentativa de idempotência.
-  - WhatsApp desacoplado da criação de pedidos; PIX hardcoded e confetti removidos.
+  - WhatsApp explícito usando recibo oficial do servidor.
 - **B2B:**
   - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
   - `purchaseMode` e `shoppingMode` temporariamente sincronizados com fallback fail-closed.

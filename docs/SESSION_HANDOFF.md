@@ -160,15 +160,25 @@
   - WhatsApp & Wording: WhatsApp disparado exclusivamente sob demanda após pedido criado; sanitização impede abertura com telefone vazio; recibo do servidor exibe "Total validado pelo servidor"; frete zero apresentado como "A combinar / Calculado pela loja" (nunca como frete grátis/total definitivo).
 - **Ativos Protegidos Intactos:**
   - `AppContext.tsx`, `OrderManager.tsx`, `TenantDashboard.tsx`, `supabase/config.toml`, `supabase/functions/*`, `supabase/migrations/*` (000001 a 000011) permanecem estritamente congelados e inalterados.
-- **Suítes de Testes Automatizados:**
-  - `scripts/test-orders-frontend-integration-points.ts`: **158/158 PASSOU (0 FALHOU)**.
-  - `scripts/test-orders-checkout-points.ts`: **82/82 PASSOU (0 FALHOU)**.
+- **Checkout V1.1 — Revisão de Orçamento + CPF/CNPJ Obrigatório + WhatsApp Handoff:** **CONCLUÍDO / PASS**
+  - `checkoutStep = 'review'`: Fluxo evoluído para `cart` → `details` → `review` → `success`.
+  - "Validar orçamento": Na etapa `details`, valida formulário e regras localmente (zero chamadas à rede) e avança para `review`.
+  - Tela de Revisão: UX marketplace com resumo completo dos itens, fotos, subtotal, frete a combinar, total estimado, forma de pagamento, entrega, dados do cliente, endereço e disclaimer explícito de que preços, estoque e regras serão revalidados pelo servidor. "Voltar e editar" preserva todos os dados; "Confirmar pedido" executa `submitOrderCheckout`.
+  - Validação Real de CPF/CNPJ: Módulo puro `src/utils/brDocument.ts` (sem dependências externas) com algoritmo módulo 11 para CPF (11 dígitos) e CNPJ (14 dígitos), rejeição de sequências repetidas e normalização de pontuação.
+  - Varejo: CPF obrigatório para PF e CNPJ obrigatório para PJ com mensagens inline específicas. Chaveamento PF/PJ limpa erros de documento.
+  - Fail-Closed em `orderService.ts`: `buildCheckoutRequestBody` exige documento válido no varejo e normaliza para dígitos.
+  - Edge Function `submit-order-checkout`: Exige documento válido no varejo, valida checksum módulo 11 (CPF para PF, CNPJ para PJ) e rejeita com HTTP 400 em caso de documento inválido. `CHECKOUT_ENABLED` mantido fail-closed.
+  - Lifecycle de Dados para WhatsApp: Estado `confirmedCustomerSnapshot` em memória React (nunca em localStorage/sessionStorage/IndexedDB) preservado durante a confirmação e mantido após o sucesso do pedido. Limpo no `resetCheckoutLifecycle`.
+  - WhatsApp: Botão explícito "Enviar pedido pelo WhatsApp" utiliza exclusivamente dados financeiros e itens do recibo validado do servidor (`createdOrder`), mesclando dados cadastrais do snapshot e incluindo CPF/CNPJ.
+- **Suítes de Testes Automatizados (5 Suítes - 518/518 testes):**
+  - `scripts/test-orders-frontend-integration-points.ts`: **207/207 PASSOU (0 FALHOU)**.
+  - `scripts/test-orders-checkout-points.ts`: **89/89 PASSOU (0 FALHOU)**.
   - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)**.
   - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU)**.
   - `npm run lint` (`tsc --noEmit`): **PASSOU**.
   - `npm run build` (`vite build`): **PASSOU**.
-- **ADR 004:** Registrado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
+- **ADR 004:** Atualizado formalmente em `docs/adr/ADR_004_ORDERS_CHECKOUT_V1.md`.
 
 ---
 

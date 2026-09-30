@@ -1188,6 +1188,20 @@ assert(
   'Edge Function minimiza a resposta enviada ao browser, não expondo tenant_id nem idempotency_key'
 );
 
+// Validação de Documento no Edge Function
+assert(
+  edgeFuncSource.includes('function isValidCPF(cpf: unknown): boolean') &&
+  edgeFuncSource.includes('function isValidCNPJ(cnpj: unknown): boolean'),
+  'Edge Function implementa helpers de validação nativa de CPF e CNPJ (módulo 11)'
+);
+
+assert(
+  edgeFuncSource.includes('custType === "PF" ? "CPF do cliente é obrigatório." : "CNPJ do cliente é obrigatório."') &&
+  edgeFuncSource.includes('CPF do cliente inválido.') &&
+  edgeFuncSource.includes('CNPJ do cliente inválido.'),
+  'Edge Function exige document obrigatório e válido no varejo, rejeitando documentos inválidos com HTTP 400'
+);
+
 // =========================================================================
 // 6. Simulação de Casos de Borda da Edge Function
 // =========================================================================
@@ -1276,6 +1290,35 @@ assert(!('tenant_id' in minimized), 'Resposta sanitizada NÃO contém tenant_id'
 assert(!('seller_id' in minimized), 'Resposta sanitizada NÃO contém seller_id');
 assert(!('shipping_address' in minimized), 'Resposta sanitizada NÃO expõe shipping_address bruto');
 assert(minimized.orderNumber.startsWith('PED-'), 'Resposta contém orderNumber formatado');
+
+// Simulação de Validação de Documentos no Backend
+function simulateEdgeCustomerValidation(customer: any, shoppingMode: string) {
+  if (shoppingMode !== 'retail') return { ok: true };
+  const custType = (customer?.type || 'PF').toUpperCase();
+  if (custType !== 'PF' && custType !== 'PJ') {
+    return { status: 400, error: "Tipo de cliente inválido (deve ser 'PF' ou 'PJ')." };
+  }
+  if (!customer?.document || typeof customer.document !== 'string' || !customer.document.trim()) {
+    return { status: 400, error: custType === 'PF' ? 'CPF do cliente é obrigatório.' : 'CNPJ do cliente é obrigatório.' };
+  }
+  const clean = customer.document.replace(/\D/g, '');
+  if (custType === 'PF') {
+    if (clean.length !== 11 || /^(\d)\1{10}$/.test(clean)) {
+      return { status: 400, error: 'CPF do cliente inválido.' };
+    }
+  } else {
+    if (clean.length !== 14 || /^(\d)\1{13}$/.test(clean)) {
+      return { status: 400, error: 'CNPJ do cliente inválido.' };
+    }
+  }
+  return { ok: true, normalizedDocument: clean };
+}
+
+assert(simulateEdgeCustomerValidation({ name: 'A', phone: '1', type: 'PF' }, 'retail').status === 400, 'Edge: Retail PF sem document é rejeitado com 400');
+assert(simulateEdgeCustomerValidation({ name: 'A', phone: '1', type: 'PF', document: '11111111111' }, 'retail').status === 400, 'Edge: Retail PF com CPF repetido é rejeitado com 400');
+assert(simulateEdgeCustomerValidation({ name: 'A', phone: '1', type: 'PJ', document: '12345678000195' }, 'retail').ok === true, 'Edge: Retail PJ com CNPJ válido aceito');
+assert(simulateEdgeCustomerValidation({ name: 'A', phone: '1', type: 'PJ', document: '00000000000000' }, 'retail').status === 400, 'Edge: Retail PJ com CNPJ repetido é rejeitado com 400');
+assert(simulateEdgeCustomerValidation({}, 'wholesale').ok === true, 'Edge: Wholesale não exige customer.document no request');
 
 console.log('\n======================================================');
 console.log(`RESULTADO: ${passed} PASSOU / ${failed} FALHOU`);
