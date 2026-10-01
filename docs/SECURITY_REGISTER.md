@@ -108,10 +108,9 @@
 ## 7. Armazenamento Seguro de Documentos de Pedido (PDF) e Handoff WhatsApp (V1.2 / ADR 006)
 - **Bucket Privado `order-documents` (Migration 000012):**
   - Configuração: `public = false`, `file_size_limit = 5242880` (5 MiB), `allowed_mime_types = ARRAY['application/pdf']`.
-  - Zero acesso público ou anônimo: Nenhuma policy `anon` ou pública concedida.
-  - Uploads e assinaturas ocorrem exclusivamente via `service_role` na Edge Function (`submit-order-checkout`).
-  - Path canônico determinístico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`. O browser não possui autoridade para definir diretórios ou nomes de arquivo.
-  - Acesso de leitura autenticado restrito para role `tenant_admin` no diretório do próprio tenant ou `platform_admin`.
+  - Zero acesso público ou de cliente: ZERO client policies em storage.objects para order-documents (nenhuma policy para anon, authenticated, tenant_admin ou platform_admin).
+  - O bucket é estritamente server-managed: uploads e criação de signed URLs ocorrem exclusivamente via `service_role` na Edge Function (`submit-order-checkout`).
+  - Path canônico determinístico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`. O browser não possui autoridade para definir diretórios ou nomes de arquivo e não acessa storage.objects diretamente.
 - **Acesso Temporário via Signed URL (7 Dias):**
   - A URL assinada expira em exatamente 604.800 segundos (7 dias).
   - A URL é entregue exclusivamente sob protocolo HTTPS.
@@ -123,6 +122,27 @@
   - O número de WhatsApp da loja é validado antes de qualquer chamada à rede; se ausente ou inválido, o processo aborta sem tocar o banco.
   - Uma janela neutra é aberta antes do `await` para prevenir bloqueio de pop-up pelo navegador; em caso de erro da transação, a janela é fechada imediatamente.
 
-
-
-
+## 8. Hardening de Funções SECURITY DEFINER e Acesso B2B Privilegiado (Migration 000013)
+- **Status:** **MIGRATION 000013 CRIADA NO WORKSPACE + EDGE FUNCTION GATEWAY GET-WHOLESALE-CATALOG CONFIGURADA + FRONTEND ALINHADO**
+- **Tratamento dos Achados do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
+  - **1. `public.get_my_wholesale_status(p_tenant_slug text)`:**
+    - Convertida de `SECURITY DEFINER` para `SECURITY INVOKER` com `SET search_path = ''`.
+    - Resolução canônica de tenant realizada exclusivamente sobre `public.tenant_public_settings` (onde `authenticated` possui SELECT sob RLS, sem requerer vínculo em `tenant_users`).
+    - Consulta a `public.wholesale_customers` protegida deterministicamente pela política RLS `wholesale_customers_select_self` (`user_id = auth.uid()`).
+    - Preserva exatamente o contrato público e estados esperados (`unauthenticated`, `tenant_not_found`, `not_registered`, `pending`, `approved`, `rejected`, `suspended`).
+    - Privilégios: `REVOKE ALL FROM PUBLIC, anon; GRANT EXECUTE TO authenticated;`.
+  - **2. `public.get_wholesale_catalog(p_tenant_slug text)`:**
+    - Não convertida para `SECURITY INVOKER` direto no browser, para evitar expansão indevida de RLS em `public.products` que pudesse expor `cost_price` ou dados operacionais a compradores B2B.
+    - Privilégio de execução revogado de `PUBLIC`, `anon` e `authenticated`. Função física preservada no banco para segurança de rollback.
+    - Nova RPC interna `public.get_wholesale_catalog_internal(p_tenant_slug text, p_user_id uuid)` criada com `SECURITY DEFINER`, `SET search_path = ''`, com execução concedida **EXCLUSIVAMENTE a `service_role`** (`REVOKE ALL FROM PUBLIC, anon, authenticated;`).
+    - Projeção atacadista estritamente sanitizada: retorna exclusivamente 4 colunas (`product_id`, `sku`, `wholesale_price`, `wholesale_min_quantity`). Jamais projeta `cost_price`, dados internos ou PII.
+  - **3. Gateway Edge Function Autenticado (`get-wholesale-catalog`):**
+    - Ponto único de entrada para o browser obter preços de atacado.
+    - Validação obrigatória de cabeçalho `Authorization: Bearer <token>` via `supabaseAdmin.auth.getUser(token)`.
+    - O `userId` é estritamente derivado da sessão validada server-side; o payload do cliente não possui autoridade para declarar `userId` ou `tenantId`.
+    - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.).
+    - Limite técnico de tamanho de body de 4 KB aferido em bytes UTF-8.
+  - **4. `public.manage_order_status(p_order_id uuid, p_new_status text)`:**
+    - Revogação de privilégios de execução direta para `PUBLIC`, `anon` e `authenticated`.
+    - Concessão de execução a `service_role` para uso por eventuais gateways/workers autenticados de backend.
+    - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por usuários autenticados do browser.

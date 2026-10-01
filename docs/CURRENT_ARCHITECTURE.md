@@ -287,13 +287,32 @@
   - Gravação e criação de signed URL válidas por 7 dias (604.800 s) exclusivas da Edge Function com `service_role`.
   - Path determinístico: `<tenant_uuid>/orders/<order_uuid>/pedido-<order_number>.pdf`.
 - **Geração Server-Side de PDF (`_shared/orderPdf.ts`):**
-  - Gera PDF profissional através de `pdf-lib` (`npm:pdf-lib@1.17.9`).
+  - Gera PDF profissional através de `pdf-lib` (`npm:pdf-lib@1.17.1`).
   - Autoridade de preços, itens e status estritamente derivada de `orderResult` e snapshots validados pelo banco de dados.
   - Paginação dinâmica com cabeçalho repetido e numeração de páginas em documentos com até 200 itens.
   - Resiliente: se a geração de PDF ou upload falhar, o pedido já criado não é abortado e o frontend cai para mensagem textual com dados do recibo (Graceful Fallback).
 - **Proteção de PII:**
   - A mensagem curta no WhatsApp não expõe CPF/CNPJ completo, e-mail ou endereço completo; esses dados residem de forma segura dentro do PDF assinado no storage privado.
 
+---
 
+## 14. Hardening de Segurança V1 — Funções SECURITY DEFINER e Baseline de Autenticação (Migration 000013 & ADR 007)
 
-
+- **Correção dos Achados do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
+  - **`public.get_my_wholesale_status(p_tenant_slug text)`:** Convertida para `SECURITY INVOKER` com `SET search_path = ''`. Resolução canônica de tenant realizada sobre `public.tenant_public_settings` (onde `authenticated` possui SELECT sob RLS, sem requerer vínculo em `tenant_users`). Acesso aos dados do comprador protegido pela barreira RLS `wholesale_customers_select_self` (`user_id = auth.uid()`). Execução concedida a `authenticated` e revogada de `PUBLIC` e `anon`.
+  - **`public.get_wholesale_catalog(p_tenant_slug text)` (Legada):** Permissão de execução revogada para `PUBLIC`, `anon` e `authenticated`. A função física permanece no banco de dados exclusivamente para segurança de rollback, mas não pode ser chamada pelo browser.
+  - **RPC Interna `public.get_wholesale_catalog_internal(p_tenant_slug text, p_user_id uuid)`:** Criada na migration 000013 como `SECURITY DEFINER` com `SET search_path = ''` e permissão de execução concedida **EXCLUSIVAMENTE a `service_role`** (`REVOKE ALL FROM PUBLIC, anon, authenticated; GRANT EXECUTE TO service_role;`). Valida parâmetros, status ativo do tenant, `allow_b2b_mode = true` e credenciamento `approved`. Retorna estritamente 4 colunas (`product_id`, `sku`, `wholesale_price`, `wholesale_min_quantity`).
+  - **Blindagem de `public.products` (Zero Ampliação de RLS):** A RLS da tabela `products` NÃO foi ampliada para compradores B2B. A projeção de preços atacadistas é sanitizada via gateway backend, impedindo qualquer exposição de `cost_price` ou dados internos da loja.
+  - **Gateway Edge Function Autenticado (`get-wholesale-catalog`):** Endpoint autenticado configurado com `verify_jwt = true` em `supabase/config.toml`. Exige token Bearer, extrai o usuário validado via `auth.getUser(token)`, rejeita payloads com injeção de identidade ou dados financeiros (`userId`, `costPrice`, etc.), limita o body a 4 KB e consome a RPC interna com credenciais de `service_role`.
+  - **Frontend (`src/services/wholesaleService.ts`):** `fetchWholesaleCatalog` invoca `get-wholesale-catalog` via `supabase.functions.invoke()`, sem nenhuma chamada RPC direta pelo browser.
+  - **`public.manage_order_status(p_order_id uuid, p_new_status text)`:** Execução revogada de todos os papéis de API (`PUBLIC`, `anon`, `authenticated`, `service_role`). Sem concessão para `service_role` nesta etapa por não existir gateway server-side ativo (princípio do menor privilégio estrito).
+- **Baseline de Autenticação em Código (`supabase/config.toml`):**
+  - `minimum_password_length = 12`
+  - `password_requirements = "lower_upper_letters_digits_symbols"`
+  - `secure_password_change = true`
+  - `enable_signup = true`
+  - `enable_anonymous_sign_ins = false`
+  - `auth.email.enable_signup = true`
+  - `auth.email.enable_confirmations = false`
+  - `[functions.get-wholesale-catalog] verify_jwt = true`
+  - *Governança de Ambiente:* Estas configurações de Auth foram estabelecidas no arquivo fonte `supabase/config.toml` do workspace como baseline declarativo de governança. Não declarar que a instância Supabase Hosted já recebeu essas configurações, uma vez que a aplicação no hosted depende de sincronização via CLI / painel do projeto. A proteção contra vazamento de senhas comprometidas (*leaked-password protection*) permanece como risco residual aceito pela restrição de tiers do plano Free do Supabase.

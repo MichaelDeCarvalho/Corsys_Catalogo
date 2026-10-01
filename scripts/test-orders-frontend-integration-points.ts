@@ -912,11 +912,18 @@ assert(
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 12 &&
+  migrationFiles.length === 13 &&
   fs.existsSync('supabase/migrations/20260928_000010_orders_checkout_v1.sql') &&
   fs.existsSync('supabase/migrations/20260929_000011_orders_checkout_hardening.sql') &&
-  fs.existsSync('supabase/migrations/20260930_000012_order_documents_storage.sql'),
-  '93. Migrations 000001 a 000012 registradas e intactas no workspace'
+  fs.existsSync('supabase/migrations/20260930_000012_order_documents_storage.sql') &&
+  fs.existsSync('supabase/migrations/20261001_000013_security_definer_hardening.sql'),
+  '93. Migrations 000001 a 000013 registradas e intactas no workspace'
+);
+
+const migrationVersions = migrationFiles.map(f => f.split('_')[0]);
+assert(
+  new Set(migrationVersions).size === migrationFiles.length,
+  '93b. Prefixos de versão das migrations são estritamente únicos (sem colisão de versionamento)'
 );
 
 const edgeFunctionCode = fs.readFileSync('supabase/functions/submit-order-checkout/index.ts', 'utf-8');

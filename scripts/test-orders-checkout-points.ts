@@ -57,9 +57,22 @@ const migration10Sql = fs.readFileSync(migration10Path, 'utf-8');
 const migration11Sql = fs.readFileSync(migration11Path, 'utf-8');
 const migration12Sql = fs.readFileSync(migration12Path, 'utf-8');
 
-// Verifica preservação de 000001-000012
+// Verifica preservação de 000001-000013 no contexto de checkout
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
-assert(migrationFiles.length === 12, 'Exatamente 12 migrations registradas no workspace (000001 a 000012)');
+assert(
+  migrationFiles.length === 13 &&
+  fs.existsSync('supabase/migrations/20260928_000010_orders_checkout_v1.sql') &&
+  fs.existsSync('supabase/migrations/20260929_000011_orders_checkout_hardening.sql') &&
+  fs.existsSync('supabase/migrations/20260930_000012_order_documents_storage.sql') &&
+  fs.existsSync('supabase/migrations/20261001_000013_security_definer_hardening.sql'),
+  'Migrations de Checkout e Security (000010 a 000013) registradas e intactas no workspace'
+);
+
+const migrationVersions = migrationFiles.map(f => f.split('_')[0]);
+assert(
+  new Set(migrationVersions).size === migrationFiles.length,
+  'Prefixos de versão das migrations são estritamente únicos (sem colisão de versionamento)'
+);
 
 // Verifica integridade da 000012 (Private Order Documents Storage)
 assert(

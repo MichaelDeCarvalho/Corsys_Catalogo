@@ -3,7 +3,7 @@
  * 
  * DIRETRIZES:
  * 1. O catálogo de varejo não expõe preços de atacado.
- * 2. Preços atacadistas são obtidos EXCLUSIVAMENTE via RPC segura 'get_wholesale_catalog' (apenas clientes approved).
+ * 2. Preços atacadistas são obtidos EXCLUSIVAMENTE via Edge Function autenticada 'get-wholesale-catalog' (apenas clientes approved).
  * 3. Submissão de novas solicitações B2B é processada via Edge Function 'submit-wholesale-application'.
  * 4. Aprovação, rejeição e suspensão são processadas via Edge Function autenticada 'manage-wholesale-customer'.
  * 5. Não armazena secrets ou service_role no client-side.
@@ -192,32 +192,81 @@ export async function fetchMyWholesaleStatus(tenantSlug: string): Promise<Wholes
 }
 
 /**
- * Consulta a lista sanitizada de preços atacadistas via RPC get_wholesale_catalog.
- * Somente executável por usuário com status 'approved' e allow_b2b_mode ativo.
+ * Consulta a lista sanitizada de preços atacadistas via Edge Function gateway 'get-wholesale-catalog'.
+ * Somente executável por usuário autenticado com status 'approved' e allow_b2b_mode ativo.
+ * Não invoca diretamente RPC privilegiada com SECURITY DEFINER no PostgreSQL a partir do browser.
  */
 export async function fetchWholesaleCatalog(tenantSlug: string): Promise<WholesaleItemData[]> {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase não configurado.');
   }
 
-  const { data, error } = await supabase.rpc('get_wholesale_catalog', {
-    p_tenant_slug: tenantSlug
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke('get-wholesale-catalog', {
+      body: { tenantSlug }
+    });
 
-  if (error) {
-    throw new Error(`Falha ao carregar catálogo atacadista autorizado: ${error.message}`);
+    if (error) {
+      let errMsg = error.message || 'Falha ao carregar catálogo atacadista autorizado.';
+      if ((error as any).context) {
+        try {
+          const bodyJson = await (error as any).context.json();
+          if (bodyJson?.error) errMsg = bodyJson.error;
+        } catch {
+          // Mantém mensagem padrão
+        }
+      }
+      throw new Error(errMsg);
+    }
+
+    if (data && data.error) {
+      throw new Error(data.error);
+    }
+
+    if (!data || typeof data !== 'object' || Array.isArray(data) || data.success !== true || !Array.isArray(data.items)) {
+      throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+    }
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const validatedItems: WholesaleItemData[] = [];
+
+    for (const item of data.items) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+      }
+
+      if (typeof item.productId !== 'string' || !UUID_REGEX.test(item.productId.trim())) {
+        throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+      }
+
+      if (typeof item.sku !== 'string' || item.sku.trim().length === 0) {
+        throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+      }
+
+      if (typeof item.wholesalePrice !== 'number' || !Number.isFinite(item.wholesalePrice) || item.wholesalePrice <= 0) {
+        throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+      }
+
+      if (typeof item.wholesaleMinQuantity !== 'number' || !Number.isInteger(item.wholesaleMinQuantity) || item.wholesaleMinQuantity < 1) {
+        throw new Error('Falha ao carregar catálogo atacadista autorizado.');
+      }
+
+      validatedItems.push({
+        productId: item.productId.trim(),
+        sku: item.sku.trim(),
+        wholesalePrice: item.wholesalePrice,
+        wholesaleMinQuantity: item.wholesaleMinQuantity
+      });
+    }
+
+    return validatedItems;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Falha na comunicação com o servidor.';
+    if (msg.includes('404') || msg.includes('Failed to send a request to the Edge Function')) {
+      throw new Error('A Edge Function de catálogo B2B (get-wholesale-catalog) aguarda deploy na instância Supabase vinculada.');
+    }
+    throw new Error(msg);
   }
-
-  if (!Array.isArray(data)) {
-    return [];
-  }
-
-  return data.map((row: any) => ({
-    productId: row.product_id,
-    sku: row.sku,
-    wholesalePrice: typeof row.wholesale_price === 'number' ? row.wholesale_price : Number(row.wholesale_price) || 0,
-    wholesaleMinQuantity: typeof row.wholesale_min_quantity === 'number' ? row.wholesale_min_quantity : Number(row.wholesale_min_quantity) || 1
-  }));
 }
 
 /**

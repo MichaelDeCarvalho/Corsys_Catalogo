@@ -57,10 +57,10 @@
 - `supabase/migrations/20260916_000008_product_media_storage.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (bucket `product-media`, estrutura de paths e policies iniciais).
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
 - `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
-- `supabase/migrations/20260929_000011_orders_checkout_hardening.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (reafirmação scoped de constraints em public.orders, validação estrita de UUID v4, snapshots canônicos estritos de cliente e endereço, limites de strings e hardening na RPC de checkout).
-- `supabase/migrations/20260930_000012_order_documents_storage.sql`: **NOVA MIGRATION CRIADA** (bucket privado `order-documents`, limite 5MiB, MIME application/pdf, acesso exclusivo service_role e SELECT autenticado para tenant_admin).
+- `supabase/migrations/20260930_000012_order_documents_storage.sql`: **APLICADA / CONGELADA** (bucket privado `order-documents`, limite 5MiB, MIME application/pdf, zero client policies em storage.objects, zero SELECT/INSERT/UPDATE/DELETE para browser, operações server-side via service_role, cliente recebe somente signed URL temporária).
+- `supabase/migrations/20261001_000013_security_definer_hardening.sql`: **NOVA MIGRATION CRIADA** (get_my_wholesale_status SECURITY INVOKER + RLS, RPC interna get_wholesale_catalog_internal service-role-only, desativação de get_wholesale_catalog para browser, revogação de manage_order_status para API roles).
 
-*Regra de Ouro: Migrations 000001 a 000011 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000012 provisiona o bucket privado de documentos de pedidos.*
+*Regra de Ouro: Migrations 000001 a 000012 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000013 realiza o hardening de funções SECURITY DEFINER no workspace.*
 
 ## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.
@@ -93,7 +93,7 @@
   - CTA único na etapa review: "Enviar pedido pelo WhatsApp".
   - Validação fail-closed do número de WhatsApp antes de chamar a rede.
   - Pré-abertura de aba síncrona contra bloqueio de pop-up.
-  - Geração de PDF profissional server-side via `pdf-lib` no bucket privado `order-documents`.
+  - Geração de PDF profissional server-side via `pdf-lib` (1.17.1) no bucket privado `order-documents` (zero client policies; browser consome exclusivamente signed URL temporária de 7 dias).
   - Signed URL com validade de 7 dias (604.800 s).
   - Mensagem curta no WhatsApp com link para o documento, minimizando exposição de PII.
   - Graceful fallback textual caso a geração/assinatura do PDF falhe.

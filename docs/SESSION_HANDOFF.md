@@ -238,11 +238,39 @@
   - Minimização de PII: mensagem curta no WhatsApp com link do documento PDF, omitindo CPF/CNPJ completo e endereços extensos do texto da conversa.
 - **ADR 006:** Registrado em `docs/adr/ADR_006_ORDER_DOCUMENT_AND_WHATSAPP_HANDOFF.md`.
 
+---
 
-
-
-
-
-
-
-
+## 6. Security Hardening V1 — SECURITY DEFINER & Acesso B2B Privilegiado (ADR 007)
+- **Status:** **MIGRATION 000013 CRIADA NO WORKSPACE + EDGE FUNCTION GATEWAY GET-WHOLESALE-CATALOG CONFIGURADA + FRONTEND ALINHADO**
+- **Tratamento dos 3 Achados de Segurança do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
+  1. **`public.get_my_wholesale_status(p_tenant_slug text)`:**
+     - Convertida de `SECURITY DEFINER` para `SECURITY INVOKER` com `SET search_path = ''`.
+     - Resolução canônica de tenant realizada exclusivamente sobre `public.tenant_public_settings` (onde `authenticated` possui SELECT sob RLS, sem requerer vínculo em `tenant_users`).
+     - Consulta a `public.wholesale_customers` protegida deterministicamente pela política RLS `wholesale_customers_select_self` (`user_id = auth.uid()`).
+     - Preserva rigorosamente os estados de retorno públicos: `unauthenticated`, `tenant_not_found`, `not_registered`, `pending`, `approved`, `rejected`, `suspended`.
+     - Privilégios: `REVOKE ALL FROM PUBLIC, anon; GRANT EXECUTE TO authenticated;`.
+  2. **`public.get_wholesale_catalog(p_tenant_slug text)`:**
+     - Não convertida para `SECURITY INVOKER` direto no browser, para evitar expansão indevida de RLS em `public.products` que pudesse expor `cost_price` ou dados operacionais a compradores B2B.
+     - Privilégio de execução revogado de `PUBLIC`, `anon` e `authenticated`. Função física preservada no banco para segurança de rollback.
+     - Nova RPC interna `public.get_wholesale_catalog_internal(p_tenant_slug text, p_user_id uuid)` criada com `SECURITY DEFINER`, `SET search_path = ''` e execução concedida **EXCLUSIVAMENTE a `service_role`** (`REVOKE ALL FROM PUBLIC, anon, authenticated;`).
+     - Projeção atacadista estritamente sanitizada: retorna exclusivamente 4 colunas (`product_id`, `sku`, `wholesale_price`, `wholesale_min_quantity`). Jamais projeta `cost_price`, dados internos ou PII.
+  3. **Gateway Edge Function Autenticado (`get-wholesale-catalog`):**
+     - Ponto único de entrada para o browser obter preços de atacado.
+     - Validação obrigatória de cabeçalho `Authorization: Bearer <token>` via `supabaseAdmin.auth.getUser(token)`.
+     - O `userId` é estritamente derivado da sessão validada server-side; o payload do cliente não possui autoridade para declarar `userId` ou `tenantId`.
+     - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.).
+     - Limite técnico de tamanho de body de 4 KB aferido em bytes UTF-8.
+     - Frontend em `src/services/wholesaleService.ts` consome a Edge Function via `supabase.functions.invoke('get-wholesale-catalog', ...)` e cessa chamadas diretas a RPC legada.
+  4. **`public.manage_order_status(p_order_id uuid, p_new_status text)`:**
+     - Revogação de privilégios de execução direta para `PUBLIC`, `anon` e `authenticated`.
+     - Concessão de execução a `service_role` para uso por eventuais gateways/workers autenticados de backend.
+     - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por usuários autenticados do browser.
+- **ADR 007:** Registrado formalmente em `docs/adr/ADR_007_SECURITY_DEFINER_HARDENING_AND_B2B_GATEWAY.md`.
+- **Suítes de Testes Automatizados (5 Suítes - 538 testes no total):**
+  - `scripts/test-orders-frontend-integration-points.ts`: **211/211 PASSOU (0 FALHOU)**.
+  - `scripts/test-orders-checkout-points.ts`: **105/105 PASSOU (0 FALHOU)**.
+  - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)**.
+  - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
+  - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU)**.
+  - `bun run lint` (`tsc --noEmit`): **PASSOU**.
+  - `bun run build` (`vite build`): **PASSOU**.
