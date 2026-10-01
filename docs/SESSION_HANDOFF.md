@@ -241,7 +241,11 @@
 ---
 
 ## 6. Security Hardening V1 — SECURITY DEFINER & Acesso B2B Privilegiado (ADR 007)
-- **Status:** **MIGRATION 000013 CRIADA NO WORKSPACE + EDGE FUNCTION GATEWAY GET-WHOLESALE-CATALOG CONFIGURADA + FRONTEND ALINHADO**
+- **Status:** **MIGRATION 000013 APLICADA / CONGELADA NO SUPABASE HOSTED (DATABASE HARDENING: RUNTIME VERIFIED) | EDGE FUNCTION GET-WHOLESALE-CATALOG: CORREÇÃO DE BUNDLE PREPARADA / AGUARDANDO REDEPLOY E RUNTIME VALIDATION**
+- **Supabase Security Advisor:**
+  - Os 3 achados `authenticated_security_definer_function_executable` foram eliminados com sucesso no banco Hosted.
+  - Risco residual: `auth_leaked_password_protection` permanece devido a restrições do plano Free do Supabase.
+- **Cloudflare Frontend:** Último build do commit de hardening concluído com sucesso (SUCCESS).
 - **Tratamento dos 3 Achados de Segurança do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
   1. **`public.get_my_wholesale_status(p_tenant_slug text)`:**
      - Convertida de `SECURITY DEFINER` para `SECURITY INVOKER` com `SET search_path = ''`.
@@ -258,13 +262,15 @@
      - Ponto único de entrada para o browser obter preços de atacado.
      - Validação obrigatória de cabeçalho `Authorization: Bearer <token>` via `supabaseAdmin.auth.getUser(token)`.
      - O `userId` é estritamente derivado da sessão validada server-side; o payload do cliente não possui autoridade para declarar `userId` ou `tenantId`.
-     - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.).
+     - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.) e allowlist exata (`tenantSlug`).
      - Limite técnico de tamanho de body de 4 KB aferido em bytes UTF-8.
      - Frontend em `src/services/wholesaleService.ts` consome a Edge Function via `supabase.functions.invoke('get-wholesale-catalog', ...)` e cessa chamadas diretas a RPC legada.
+     - Correção de bundle preparada no workspace; aguardando redeploy e validação em runtime.
   4. **`public.manage_order_status(p_order_id uuid, p_new_status text)`:**
-     - Revogação de privilégios de execução direta para `PUBLIC`, `anon` e `authenticated`.
-     - Concessão de execução a `service_role` para uso por eventuais gateways/workers autenticados de backend.
-     - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por usuários autenticados do browser.
+     - Revogação de privilégios de execução de `PUBLIC`, `anon`, `authenticated` e `service_role` (`REVOKE EXECUTE FROM PUBLIC, anon, authenticated, service_role`).
+     - Zero concessão para `service_role` nesta etapa por não existir gateway server-side ativo (menor privilégio estrito).
+     - Função física preservada no banco; futura integração administrativa deverá estabelecer arquitetura server-side explícita antes de qualquer novo GRANT.
+     - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por papéis de API.
 - **ADR 007:** Registrado formalmente em `docs/adr/ADR_007_SECURITY_DEFINER_HARDENING_AND_B2B_GATEWAY.md`.
 - **Suítes de Testes Automatizados (5 Suítes - 538 testes no total):**
   - `scripts/test-orders-frontend-integration-points.ts`: **211/211 PASSOU (0 FALHOU)**.

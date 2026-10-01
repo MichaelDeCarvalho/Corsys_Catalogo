@@ -41,9 +41,10 @@ Análise de Risco e Menor Privilégio:
 3. **Frontend Alinhado:**
    - `src/services/wholesaleService.ts` atualiza a função `fetchWholesaleCatalog` para consumir a Edge Function `get-wholesale-catalog` via `supabase.functions.invoke()`, cessando qualquer chamada direta a RPC legada no PostgreSQL.
 
-4. **Revogação de Execução de `manage_order_status` no Client:**
-   - Privilégios de execução de `public.manage_order_status` revogados de `PUBLIC`, `anon` e `authenticated`.
-   - Execução concedida a `service_role` para uso por gateways administrativos de backend.
+4. **Revogação de Execução de `manage_order_status`:**
+   - Privilégios de execução de `public.manage_order_status` revogados de `PUBLIC`, `anon`, `authenticated` e `service_role`.
+   - Zero concessão para `service_role` nesta etapa por não existir gateway server-side ativo (menor privilégio estrito).
+   - Função física preservada no banco para integridade e rollback; futura integração administrativa deverá estabelecer arquitetura server-side explícita antes de qualquer novo GRANT.
 
 ## Consequências
 
@@ -52,5 +53,8 @@ Análise de Risco e Menor Privilégio:
   - Blindagem total da coluna `cost_price` contra vazamento para compradores B2B.
   - Eliminação de vetores de enumeração de catálogo e adulteração de status via chamadas RPC diretas do browser.
   - Alinhamento total aos princípios de defesa em profundidade e menor privilégio.
-- **Negativas/Requisitos Operacionais:**
-  - A Edge Function `get-wholesale-catalog` deve ser implantada no Supabase hosted juntamente com a aplicação da migration 000013.
+- **Status Operacional e de Deploy:**
+  - **Migration 000013:** APLICADA / CONGELADA NO SUPABASE HOSTED (Database hardening: RUNTIME VERIFIED).
+  - **Supabase Security Advisor:** Os 3 achados `authenticated_security_definer_function_executable` eliminados. Residual: `auth_leaked_password_protection` permanece por plano Free.
+  - **Edge Function `get-wholesale-catalog`:** CORREÇÃO DE BUNDLE PREPARADA / AGUARDANDO REDEPLOY E RUNTIME VALIDATION (não declarada como runtime pass até conclusão do deploy hospedado).
+  - **Cloudflare Frontend:** Último build do commit de hardening concluído com sucesso (SUCCESS).

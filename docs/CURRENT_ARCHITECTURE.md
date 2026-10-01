@@ -298,6 +298,11 @@
 
 ## 14. Hardening de Segurança V1 — Funções SECURITY DEFINER e Baseline de Autenticação (Migration 000013 & ADR 007)
 
+- **Status Operacional de Deploy:**
+  - **Migration 000013:** APLICADA / CONGELADA NO SUPABASE HOSTED (Database hardening: RUNTIME VERIFIED).
+  - **Supabase Security Advisor:** Os 3 achados `authenticated_security_definer_function_executable` foram eliminados com sucesso. Residual: `auth_leaked_password_protection` permanece por restrição do plano Free.
+  - **Edge Function `get-wholesale-catalog`:** CORREÇÃO DE BUNDLE PREPARADA / AGUARDANDO REDEPLOY E RUNTIME VALIDATION (não declarada como runtime pass até conclusão do deploy hospedado).
+  - **Cloudflare Frontend:** Último build do commit de hardening concluído com sucesso (SUCCESS).
 - **Correção dos Achados do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
   - **`public.get_my_wholesale_status(p_tenant_slug text)`:** Convertida para `SECURITY INVOKER` com `SET search_path = ''`. Resolução canônica de tenant realizada sobre `public.tenant_public_settings` (onde `authenticated` possui SELECT sob RLS, sem requerer vínculo em `tenant_users`). Acesso aos dados do comprador protegido pela barreira RLS `wholesale_customers_select_self` (`user_id = auth.uid()`). Execução concedida a `authenticated` e revogada de `PUBLIC` e `anon`.
   - **`public.get_wholesale_catalog(p_tenant_slug text)` (Legada):** Permissão de execução revogada para `PUBLIC`, `anon` e `authenticated`. A função física permanece no banco de dados exclusivamente para segurança de rollback, mas não pode ser chamada pelo browser.

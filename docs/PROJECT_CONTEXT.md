@@ -58,9 +58,9 @@
 - `supabase/migrations/20260917_000009_fix_product_media_policy_scope.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (qualificação explícita `storage.foldername(storage.objects.name)` contra shadowing).
 - `supabase/migrations/20260928_000010_orders_checkout_v1.sql`: **APLICADA NO SUPABASE HOSTED / CONGELADA** (idempotency_key, shopping_mode, delivery_method, order_number_seq, RPC interna e RPC de status).
 - `supabase/migrations/20260930_000012_order_documents_storage.sql`: **APLICADA / CONGELADA** (bucket privado `order-documents`, limite 5MiB, MIME application/pdf, zero client policies em storage.objects, zero SELECT/INSERT/UPDATE/DELETE para browser, operações server-side via service_role, cliente recebe somente signed URL temporária).
-- `supabase/migrations/20261001_000013_security_definer_hardening.sql`: **NOVA MIGRATION CRIADA** (get_my_wholesale_status SECURITY INVOKER + RLS, RPC interna get_wholesale_catalog_internal service-role-only, desativação de get_wholesale_catalog para browser, revogação de manage_order_status para API roles).
+- `supabase/migrations/20261001_000013_security_definer_hardening.sql`: **APLICADA / CONGELADA NO SUPABASE HOSTED** (Database hardening: RUNTIME VERIFIED - get_my_wholesale_status SECURITY INVOKER + RLS, RPC interna get_wholesale_catalog_internal service-role-only, desativação de get_wholesale_catalog para browser, revogação de manage_order_status para API roles PUBLIC, anon, authenticated e service_role).
 
-*Regra de Ouro: Migrations 000001 a 000012 estão estritamente aplicadas e congeladas no Supabase Hosted. A migration 000013 realiza o hardening de funções SECURITY DEFINER no workspace.*
+*Regra de Ouro: Migrations 000001 a 000013 estão estritamente aplicadas e congeladas no Supabase Hosted. O hardening de banco foi verificado em runtime (3 achados do Security Advisor eliminados; residual auth_leaked_password_protection permanece por plano Free). A Edge Function get-wholesale-catalog está com correção de bundle preparada aguardando redeploy e runtime validation. Cloudflare frontend build: SUCCESS.*
 
 ## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.

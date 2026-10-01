@@ -87,7 +87,7 @@
 - **Isolamento de Privilégios (Least Privilege):**
   - A RPC `public.create_order_checkout_internal` tem `REVOKE ALL` para `PUBLIC`, `anon` e `authenticated`.
   - Acesso concedido estritamente para `service_role`, invocado exclusivamente pelo gateway da Edge Function.
-  - A RPC `public.manage_order_status` é restrita a `authenticated`, com verificação interna de papel `tenant_admin` ou `stock_manager` do mesmo tenant (ou `platform_admin`).
+  - A RPC `public.manage_order_status` teve seus privilégios de execução revogados de `PUBLIC`, `anon`, `authenticated` e `service_role` na migration 000013, eliminando a superfície de execução direta por papéis de API (menor privilégio estrito).
 - **Idempotência Composta & UUID v4 Estrito:**
   - A tabela `public.orders` possui constraint `UNIQUE (tenant_id, idempotency_key)` reafirmada com verificação scoped em `public.orders`::regclass.
   - Apenas UUIDs na versão 4 (`/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/`) são aceitos; UUID v1/v5 são rejeitados fail-closed.
@@ -123,7 +123,11 @@
   - Uma janela neutra é aberta antes do `await` para prevenir bloqueio de pop-up pelo navegador; em caso de erro da transação, a janela é fechada imediatamente.
 
 ## 8. Hardening de Funções SECURITY DEFINER e Acesso B2B Privilegiado (Migration 000013)
-- **Status:** **MIGRATION 000013 CRIADA NO WORKSPACE + EDGE FUNCTION GATEWAY GET-WHOLESALE-CATALOG CONFIGURADA + FRONTEND ALINHADO**
+- **Status:** **MIGRATION 000013 APLICADA / CONGELADA NO SUPABASE HOSTED (DATABASE HARDENING: RUNTIME VERIFIED) | EDGE FUNCTION GET-WHOLESALE-CATALOG: CORREÇÃO DE BUNDLE PREPARADA / AGUARDANDO REDEPLOY E RUNTIME VALIDATION**
+- **Supabase Security Advisor:**
+  - Os 3 achados `authenticated_security_definer_function_executable` foram eliminados com sucesso no banco Hosted.
+  - Risco residual aceito: `auth_leaked_password_protection` permanece devido a restrições de tiers do plano Free do Supabase.
+- **Cloudflare Frontend:** Último build do commit de hardening concluído com sucesso (SUCCESS).
 - **Tratamento dos Achados do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
   - **1. `public.get_my_wholesale_status(p_tenant_slug text)`:**
     - Convertida de `SECURITY DEFINER` para `SECURITY INVOKER` com `SET search_path = ''`.
@@ -140,9 +144,11 @@
     - Ponto único de entrada para o browser obter preços de atacado.
     - Validação obrigatória de cabeçalho `Authorization: Bearer <token>` via `supabaseAdmin.auth.getUser(token)`.
     - O `userId` é estritamente derivado da sessão validada server-side; o payload do cliente não possui autoridade para declarar `userId` ou `tenantId`.
-    - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.).
+    - Bloqueio imediato de campos proibidos no body (`userId`, `costPrice`, chaves financeiras, etc.) e allowlist exata de campos (`tenantSlug`).
     - Limite técnico de tamanho de body de 4 KB aferido em bytes UTF-8.
+    - Status de Deploy: Correção de bundle preparada no workspace; aguardando redeploy e validação em runtime.
   - **4. `public.manage_order_status(p_order_id uuid, p_new_status text)`:**
-    - Revogação de privilégios de execução direta para `PUBLIC`, `anon` e `authenticated`.
-    - Concessão de execução a `service_role` para uso por eventuais gateways/workers autenticados de backend.
-    - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por usuários autenticados do browser.
+    - Privilégios de execução revogados de `PUBLIC`, `anon`, `authenticated` e `service_role` (`REVOKE EXECUTE FROM PUBLIC, anon, authenticated, service_role`).
+    - Zero concessão para `service_role` nesta etapa por não existir gateway server-side ativo consumindo a RPC (menor privilégio estrito).
+    - Função física preservada no banco para integridade e rollback; futura integração administrativa deverá estabelecer arquitetura server-side explícita antes de qualquer novo GRANT.
+    - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por papéis de API.

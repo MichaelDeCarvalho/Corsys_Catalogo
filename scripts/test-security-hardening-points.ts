@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 let passCount = 0;
 let failCount = 0;
@@ -162,6 +163,23 @@ const edgeFuncPath = 'supabase/functions/get-wholesale-catalog/index.ts';
 assert(fs.existsSync(edgeFuncPath), 'Edge Function get-wholesale-catalog existe no workspace');
 
 const edgeFuncCode = fs.readFileSync(edgeFuncPath, 'utf-8');
+
+const transpileResult = ts.transpileModule(edgeFuncCode, {
+  compilerOptions: {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext
+  },
+  reportDiagnostics: true
+});
+
+const syntaxErrors = (transpileResult.diagnostics || []).filter(
+  d => d.category === ts.DiagnosticCategory.Error
+);
+
+assert(
+  syntaxErrors.length === 0,
+  'Edge Function get-wholesale-catalog passa no parsing/transpilação sintática TypeScript (zero erros de sintaxe)'
+);
 
 assert(
   edgeFuncCode.includes('Authorization') &&
