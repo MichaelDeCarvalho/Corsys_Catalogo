@@ -321,3 +321,11 @@
   - `auth.email.enable_confirmations = false`
   - `[functions.get-wholesale-catalog] verify_jwt = true`
   - *Governança de Ambiente:* Estas configurações de Auth foram estabelecidas no arquivo fonte `supabase/config.toml` do workspace como baseline declarativo de governança. Não declarar que a instância Supabase Hosted já recebeu essas configurações, uma vez que a aplicação no hosted depende de sincronização via CLI / painel do projeto. A proteção contra vazamento de senhas comprometidas (*leaked-password protection*) permanece como risco residual aceito pela restrição de tiers do plano Free do Supabase.
+
+## 7. Engenharia / CI — Adoção ECC (2026-10-02)
+- Package manager canônico: Bun 1.4.2 para os checks versionados desta adoção.
+- Gate local: `bun run check`.
+- Gate remoto: `.github/workflows/quality.yml` em PR/push para `main` e execução manual.
+- Permissões da Action: `contents: read`; nenhum secret é fornecido ao job de qualidade.
+- A CI valida o código, mas não executa deploy. Cloudflare Workers Builds permanece uma esteira separada.
+- Runtime ECC completo, hooks globais, MCPs e auto-update não fazem parte da arquitetura do produto.
