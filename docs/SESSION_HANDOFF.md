@@ -39,25 +39,24 @@ Nenhuma variável criada ou alterada.
 - Nenhum hook global, MCP, auto-update ou serviço permanente instalado.
 
 ## Testes executados
-Ainda não executados nesta sessão por ausência de runner de repositório conectado ao ambiente de GitHub. Configuração preparada para:
-- `bun run lint`
-- `bun run test:regression`
-- `bun run build`
-- `bun run check`
+GitHub Actions Quality:
+- Run #1: **FAIL** — os cenários S11/S12 foram interceptados pela guarda de Supabase não configurado (503) antes do comportamento pretendido.
+- Correção: ambiente CI recebeu apenas valores públicos sintéticos `VITE_SUPABASE_URL=https://ci-test.invalid` e `VITE_SUPABASE_PUBLISHABLE_KEY=ci-public-placeholder`; nenhum secret e nenhuma conexão real.
+- Run #2: **PASS** — `bun run check` concluído.
+- Evidências do run #2: suíte principal **212/212**, performance **34/34**, build Vite concluído; a sequência também confirmou lint e as demais suítes porque o comando consolidado terminou com sucesso.
 
 ## Findings / riscos
-- Primeiro workflow remoto ainda precisa ser observado; até lá, CI = NÃO AVALIADA.
+- CI de qualidade está **VERIFICADA** para esta revisão.
 - `main` continua potencialmente ligada ao deploy Cloudflare, portanto merge exige revisão.
 - Pendência anterior do projeto permanece: Edge Function `get-wholesale-catalog` tinha correção de bundle preparada aguardando redeploy/runtime validation conforme contexto do projeto.
 
 ## Pendências
-- Abrir/revisar PR.
-- Observar GitHub Actions.
-- Corrigir somente falhas reais evidenciadas pelo primeiro run.
+- Revisar o PR antes do merge.
 - Não ativar módulos ECC adicionais sem necessidade concreta.
+- Manter a pendência anterior de redeploy/runtime validation da Edge Function `get-wholesale-catalog` separada desta adoção.
 
 ## Próxima ação
-Revisar o PR de adoção ECC e validar o primeiro run da CI.
+Revisar o PR de adoção ECC. Merge em `main` somente após revisão humana, pois pode acionar deploy Cloudflare.
 
 ## Estado do deploy
 Não deployado por esta adoção.
