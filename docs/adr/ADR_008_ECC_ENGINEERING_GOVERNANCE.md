@@ -64,4 +64,6 @@ Nenhum. Nenhuma migration ou dado é alterado.
 Reverter os arquivos desta adoção e restaurar o `package.json` anterior. Não há rollback de banco.
 
 ## PR/commit relacionado
-Preencher após criação do PR.
+- PR: #1 — `chore: adoção seletiva do ECC e gate de qualidade`
+- Branch: `chore/ecc-adoption-20261002`
+- Commit de merge: registrar após merge, se necessário.
