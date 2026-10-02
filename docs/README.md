@@ -114,3 +114,10 @@ npm run build
 ```
 
 O dev server rodará em `http://localhost:3000`.
+
+## Governança de Engenharia / ECC
+
+- **[Adoção seletiva do ECC](./engineering/ecc-adoption.md)** — recursos adotados, adiados, excluídos, ativação e reversão.
+- **[Release Checklist](./RELEASE_CHECKLIST.md)** — verificação antes de merge/release.
+- **[ADR 008 — ECC Engineering Governance](./adr/ADR_008_ECC_ENGINEERING_GOVERNANCE.md)** — decisão de adoção seletiva e CI de qualidade.
+- **[Session Handoff](./SESSION_HANDOFF.md)** — estado operacional mais recente e próxima ação.
