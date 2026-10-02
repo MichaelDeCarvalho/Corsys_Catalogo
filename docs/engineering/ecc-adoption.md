@@ -58,9 +58,9 @@
 ## Validação e limites
 
 - A criação dos arquivos e configuração de CI é verificável no diff/PR.
-- GitHub Actions Quality run #2: **PASS** para `bun run check`.
-- Evidência observada no run #2: `bun run lint` concluiu; todas as suítes configuradas em `test:regression` concluíram; suíte principal de integração marcou **212/212**; suíte de performance marcou **34/34**; `vite build` concluiu com sucesso.
-- O run #1 falhou porque os testes pré-rede encontraram a guarda de Supabase não configurado (503) antes dos cenários pretendidos. A CI foi corrigida com URL/chave **públicas sintéticas** em domínio `.invalid`, sem backend real e sem secrets; run #2 validou a correção.
+- GitHub Actions Quality runs #2 e #3: **PASS** para `bun run check`.
+- Evidência observada nos runs #2/#3: `bun run lint` concluiu; todas as suítes configuradas em `test:regression` concluíram; suíte principal de integração marcou **212/212**; suíte de performance marcou **34/34**; `vite build` concluiu com sucesso.
+- O run #1 falhou porque os testes pré-rede encontraram a guarda de Supabase não configurado (503) antes dos cenários pretendidos. A CI foi corrigida com URL/chave **públicas sintéticas** em domínio `.invalid`, sem backend real e sem secrets; runs #2 e #3 validaram a correção e o estado final pré-merge.
 - Nenhuma migration, Edge Function, configuração Supabase hosted, DNS ou deploy de produção foi alterado nesta adoção.
 - Nenhum secret foi criado, copiado ou solicitado.
 
