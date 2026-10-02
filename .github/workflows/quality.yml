@@ -21,6 +21,10 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Valores públicos sintéticos: habilitam guards pré-rede sem apontar para backend real.
+      VITE_SUPABASE_URL: https://ci-test.invalid
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-public-placeholder
 
     steps:
       - name: Checkout
