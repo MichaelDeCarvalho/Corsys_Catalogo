@@ -119,5 +119,9 @@
   - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
   - Domínio customizado: Ainda NÃO configurado.
 
-
-
+## 8. Governança de Engenharia — ECC (2026-10-02)
+- ECC adotado seletivamente como metodologia de engenharia; bundle/runtime completo não foi copiado.
+- Comando consolidado: `bun run check` = typecheck + regressões + build.
+- GitHub Actions de qualidade executa em PR/push para `main` com `contents: read` e sem secrets.
+- Referência: `docs/engineering/ecc-adoption.md` e ADR 008.
+- Nenhuma migration, dado ou configuração Supabase hosted foi alterada por esta adoção.
