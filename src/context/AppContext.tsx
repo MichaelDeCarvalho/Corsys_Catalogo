@@ -174,6 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  // LEGACY DEMO ORDER STATE — NOT AUTHORITATIVE FOR ADMIN ORDERS.
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_orders`);

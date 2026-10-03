@@ -23,11 +23,12 @@ import { TeamAccessManager } from './TeamAccessManager';
 import { StoreSettings } from './StoreSettings';
 import { WholesaleCustomerManager } from './WholesaleCustomerManager';
 import { fetchAdminProducts, isValidUuid } from '../../services/adminCatalogService';
+import { fetchAdminOrders } from '../../services/adminOrderService';
 import { fetchTenantPublicSettings } from '../../services/catalogService';
-import { Product } from '../../types';
+import { Product, Order } from '../../types';
 
 export const TenantDashboard: React.FC = () => {
-  const { currentTenant, currentTenantOrders, setViewMode, showToast } = useApp();
+  const { currentTenant, setViewMode, showToast } = useApp();
   const { authTenant, authTenantId, isPlatformAdmin } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'wholesale_customers' | 'team' | 'settings'>('products');
@@ -38,6 +39,11 @@ export const TenantDashboard: React.FC = () => {
   const [productsLoading, setProductsLoading] = useState<boolean>(true);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [adminTenantId, setAdminTenantId] = useState<string | null>(null);
+
+  // Estado dos pedidos administrativos reais carregados do Supabase (public.orders)
+  const [adminOrders, setAdminOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState<boolean>(true);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
 
   /**
    * Resolução segura de Tenant UUID Administrativo:
@@ -97,17 +103,38 @@ export const TenantDashboard: React.FC = () => {
     }
   }, [resolveTargetTenantId]);
 
+  const loadAdminOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError(null);
+    try {
+      const resolvedTenantId = await resolveTargetTenantId();
+      if (!isValidUuid(resolvedTenantId)) {
+        throw new Error('Identificador de tenant resolvido não é um UUID v4 válido.');
+      }
+      const data = await fetchAdminOrders(resolvedTenantId);
+      setAdminOrders(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar pedidos administrativos do Supabase.';
+      console.error('[TenantDashboard] Erro ao carregar pedidos:', err);
+      setOrdersError(msg);
+      setAdminOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [resolveTargetTenantId]);
+
   useEffect(() => {
     loadAdminProducts();
-  }, [loadAdminProducts]);
+    loadAdminOrders();
+  }, [loadAdminProducts, loadAdminOrders]);
 
   const displayTenantName = authTenant?.name || currentTenant.name;
   const displayTenantSlug = authTenant?.slug || currentTenant.slug;
   const displayTenantPlan = (authTenant?.plan || currentTenant.plan).toUpperCase();
 
-  // Stats
-  const totalRevenue = currentTenantOrders.reduce((sum, o) => sum + o.total, 0);
-  const pendingOrders = currentTenantOrders.filter(o => o.status === 'pending').length;
+  // Stats calculadas EXCLUSIVAMENTE a partir dos dados reais do Supabase (public.orders)
+  const totalRevenue = adminOrders.reduce((sum, o) => sum + o.total, 0);
+  const pendingOrders = adminOrders.filter(o => o.status === 'pending').length;
   const activeProductsCount = adminProducts.filter(p => p.active).length;
 
   const handleCopyPublicLink = () => {
@@ -186,10 +213,14 @@ export const TenantDashboard: React.FC = () => {
             </div>
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 font-['Outfit']">
-            R$ {totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            {ordersLoading ? (
+              <span className="inline-block w-24 h-6 bg-slate-100 rounded animate-pulse" />
+            ) : (
+              `R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            )}
           </div>
           <div className="text-[11px] text-emerald-600 font-medium mt-0.5">
-            {currentTenantOrders.length} pedidos no total
+            {ordersLoading ? 'Carregando pedidos...' : `${adminOrders.length} pedidos no total`}
           </div>
         </div>
 
@@ -220,10 +251,14 @@ export const TenantDashboard: React.FC = () => {
             </div>
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2 font-['Outfit']">
-            {pendingOrders}
+            {ordersLoading ? (
+              <span className="inline-block w-12 h-6 bg-slate-100 rounded animate-pulse" />
+            ) : (
+              pendingOrders
+            )}
           </div>
           <div className="text-[11px] text-amber-600 font-semibold mt-0.5">
-            Aguardando aprovação
+            {ordersLoading ? 'Carregando pedidos...' : 'Aguardando aprovação'}
           </div>
         </div>
 
@@ -270,7 +305,7 @@ export const TenantDashboard: React.FC = () => {
           id="tab-tenant-orders"
         >
           <ShoppingCart className="w-4 h-4" />
-          Pedidos & Vendas ({currentTenantOrders.length})
+          Pedidos & Vendas ({ordersLoading ? '...' : adminOrders.length})
           {pendingOrders > 0 && (
             <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-extrabold flex items-center justify-center">
               {pendingOrders}
@@ -330,7 +365,14 @@ export const TenantDashboard: React.FC = () => {
             onReload={loadAdminProducts}
           />
         )}
-        {activeTab === 'orders' && <OrderManager />}
+        {activeTab === 'orders' && (
+          <OrderManager 
+            orders={adminOrders}
+            loading={ordersLoading}
+            error={ordersError}
+            onReload={loadAdminOrders}
+          />
+        )}
         {activeTab === 'wholesale_customers' && <WholesaleCustomerManager />}
         {activeTab === 'team' && <TeamAccessManager />}
         {activeTab === 'settings' && <StoreSettings />}

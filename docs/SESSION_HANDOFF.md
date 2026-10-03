@@ -343,11 +343,49 @@ Não deployado por esta adoção.
      - Função física preservada no banco; futura integração administrativa deverá estabelecer arquitetura server-side explícita antes de qualquer novo GRANT.
      - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por papéis de API.
 - **ADR 007:** Registrado formalmente em `docs/adr/ADR_007_SECURITY_DEFINER_HARDENING_AND_B2B_GATEWAY.md`.
-- **Suítes de Testes Automatizados (5 Suítes - 538 testes no total):**
-  - `scripts/test-orders-frontend-integration-points.ts`: **211/211 PASSOU (0 FALHOU)**.
+- **Suítes de Testes Automatizados (7 Suítes - 687 testes no total):**
+  - `scripts/test-orders-frontend-integration-points.ts`: **212/212 PASSOU (0 FALHOU)**.
   - `scripts/test-orders-checkout-points.ts`: **105/105 PASSOU (0 FALHOU)**.
   - `scripts/test-product-media-storage-points.ts`: **153/153 PASSOU (0 FALHOU)**.
   - `scripts/test-catalog-performance-points.ts`: **34/34 PASSOU (0 FALHOU)**.
   - `scripts/test-branding-storage-points.ts`: **35/35 PASSOU (0 FALHOU)**.
+  - `scripts/test-security-hardening-points.ts`: **63/63 PASSOU (0 FALHOU)**.
+  - `scripts/test-admin-orders-points.ts`: **85/85 PASSOU (0 FALHOU)** (inclui validação de shape real do Checkout V1 sem PII, campos opcionais vazios no banco e fail-closed).
   - `bun run lint` (`tsc --noEmit`): **PASSOU**.
   - `bun run build` (`vite build`): **PASSOU**.
+  - `bun run test:regression`: **PASSOU (687/687)**.
+  - `bun run check`: **PASSOU (lint + build + test:regression com exit code 0)**.
+
+---
+
+## 7. Admin Orders V1 — Integração Real Read-Only (Supabase RLS)
+- **Status:** **CONCLUÍDO NO WORKSPACE / READ-ONLY / CI PASS**.
+- **Contexto Operacional:**
+  - O checkout real persiste pedidos em `public.orders` (ex: `PED-20260930-000001`, `PED-20260930-000002`, `PED-20261001-000003`).
+  - O painel administrativo anterior usava `AppContext` com `localStorage` e `INITIAL_ORDERS` (`PED-2025-0841`, `PED-2025-0842`).
+- **Arquitetura Implementada:**
+  - O painel agora lê EXCLUSIVAMENTE `public.orders` via Supabase Client autenticado sob proteção de RLS (`orders_select_tenant_admin` / `platform_admin`).
+  - `TenantDashboard` resolve o UUID real do tenant (`resolveTargetTenantId`) e executa `fetchAdminOrders(tenantId)`.
+  - Mocks deixam de alimentar a superfície administrativa e permanecem estritamente isolados.
+  - O único *source of truth* para KPIs e listagem é `adminOrders` no `TenantDashboard`.
+  - `OrderManager` é puramente props-driven (`orders`, `loading`, `error`, `onReload`).
+  - Status administrativo permanece **estritamente read-only** nesta etapa (sem optimistic updates, sem mutação em memória e sem `.update()`).
+  - Hard delete não existe; pedidos reais permanecem 100% auditáveis e preservados.
+- **Contrato Real do Checkout V1 & Adapter Fail-Closed:**
+  - Em `src/types.ts` e `src/services/adminOrderService.ts`, o contrato reflete fielmente o schema do Checkout V1:
+    - `customer.name`, `customer.phone`, `customer.type` são obrigatórios não-vazios; `customer.email`, `customer.document`, `customer.companyName` são opcionais (podem estar ausentes, null ou vazios sem quebrar o parsing).
+    - `shippingAddress.street` é obrigatória não-vazia; `number`, `complement`, `neighborhood`, `city`, `state`, `zipCode` são opcionais (podem estar ausentes, null ou vazios sem mascaramento ou invenção de dados como `'S/N'`).
+    - Validação Fail-Closed preservada para objetos nulos/não-objeto, strings obrigatórias ausentes, UUIDs inválidos, status/meio de pagamento inválidos e valores financeiros negativos/NaN.
+    - Testes dedicados sem PII em `scripts/test-admin-orders-points.ts` cobrem os novos contratos e casos de rejeição (total de 85 testes).
+- **Integração no CI (Gate Remoto de Qualidade):**
+  - Scripts `test:regression` e `check` configurados em `package.json` encadeando todas as 7 suítes.
+  - Execução validada com `bun run check` retornando exit code 0.
+- **Governança de Migrations:**
+  - Nenhuma migration nova criada (zero 000014).
+  - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
+  - RLS, grants e `manage_order_status` permanecem intocados.
+- **Transição para ADMIN ORDERS V2:**
+  - A mutação segura de status e o cancelamento operacional de pedidos ficam explicitamente pendentes para ADMIN ORDERS V2 via Edge Function administrativa + RPC interna server-side com credenciais de `service_role`.
+  - Nenhum ADR 008 criado nesta etapa (será registrado na V2 com a arquitetura server-side de mutação).
+
+

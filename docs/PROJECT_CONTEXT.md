@@ -60,7 +60,7 @@
 - `supabase/migrations/20260930_000012_order_documents_storage.sql`: **APLICADA / CONGELADA** (bucket privado `order-documents`, limite 5MiB, MIME application/pdf, zero client policies em storage.objects, zero SELECT/INSERT/UPDATE/DELETE para browser, operações server-side via service_role, cliente recebe somente signed URL temporária).
 - `supabase/migrations/20261001_000013_security_definer_hardening.sql`: **APLICADA / CONGELADA NO SUPABASE HOSTED** (Database hardening: RUNTIME VERIFIED - get_my_wholesale_status SECURITY INVOKER + RLS, RPC interna get_wholesale_catalog_internal service-role-only, desativação de get_wholesale_catalog para browser, revogação de manage_order_status para API roles PUBLIC, anon, authenticated e service_role).
 
-*Regra de Ouro: Migrations 000001 a 000013 estão estritamente aplicadas e congeladas no Supabase Hosted. O hardening de banco foi verificado em runtime (3 achados do Security Advisor eliminados; residual auth_leaked_password_protection permanece por plano Free). A Edge Function get-wholesale-catalog está com correção de bundle preparada aguardando redeploy e runtime validation. Cloudflare frontend build: SUCCESS.*
+*Regra de Ouro: Migrations 000001 a 000013 estão estritamente aplicadas e congeladas no Supabase Hosted. O hardening de banco foi verificado em runtime (3 achados do Security Advisor eliminados; residual auth_leaked_password_protection permanece por plano Free). A Edge Function get-wholesale-catalog está ACTIVE (versão 1, verify_jwt=true) com deploy concluído no Supabase Hosted (fluxo positivo B2B aprovado ainda NOT EVALUATED). O Checkout está OPERACIONAL no Hosted com 3 pedidos reais persistidos em public.orders (último conhecido: PED-20261001-000003). Cloudflare frontend build: SUCCESS.*
 
 ## 5. Fechamento de Mídia de Produtos (Product Media Storage V1 — RUNTIME PASS)
 - **Status Geral:** **RUNTIME PASS CONCLUÍDO (SUPABASE HOSTED + WORKSPACE VALIDADO)**.
@@ -81,12 +81,14 @@
   - Novas fotos continuam podendo ser adicionadas individualmente pelo painel administrativo a qualquer momento.
 
 ## 6. Estado Atual de Orders / Checkout (V1.2 — Single WhatsApp CTA + Private PDF)
-- **Pedidos Reais em Produção:**
-  - PED-20260930-000001 validado no Supabase hosted:
-    - Status: `pending`
-    - Valores server-authoritative íntegros
-    - Estoque não decrementado (correto para pending)
-    - Sem duplicidades
+- **Pedidos Reais em Produção (Supabase Hosted):**
+  - Checkout OPERACIONAL no Hosted.
+  - 3 pedidos reais atualmente persistidos em `public.orders`:
+    - `PED-20260930-000001`
+    - `PED-20260930-000002`
+    - `PED-20261001-000003` (último pedido conhecido gerado pelo checkout real)
+  - Zero inclusão de PII em documentações públicas ou código.
+  - Valores server-authoritative íntegros e auditáveis.
 - **Checkout V1.2:**
   - Fluxo otimizado: `cart -> details -> review -> WhatsApp`.
   - Etapa intermediária "Pedido recebido" removida do fluxo padrão.
@@ -101,11 +103,6 @@
 - **B2B:**
   - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
   - `purchaseMode` e `shoppingMode` sincronizados com fallback fail-closed.
-- **Legado ainda existente:**
-  - `AppContext` local orders
-  - `OrderManager` local
-  - `TenantDashboard` KPIs locais
-
 ## 7. Hospedagem Frontend (Cloudflare Workers Static Assets)
 - **Pipeline de Deploy:** GitHub `main` → Cloudflare Workers Builds → `bun run build` → Workers Static Assets (`dist/`).
 - **Deploy Command:** `npx wrangler deploy`.
@@ -115,13 +112,31 @@
 - **Validações Runtime:**
   - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
   - Storefront & Conexão Supabase: **PASS**.
-  - Checkout Feature Gate (503 fail-closed): **PASS**.
-  - `CHECKOUT_ENABLED`: Mantido desligado (OFF).
+  - Checkout e Persistência de Pedidos: **PASS** (Operacional no Hosted com 3 pedidos reais).
   - Domínio customizado: Ainda NÃO configurado.
 
-## 8. Governança de Engenharia — ECC (2026-10-02)
-- ECC adotado seletivamente como metodologia de engenharia; bundle/runtime completo não foi copiado.
-- Comando consolidado: `bun run check` = typecheck + regressões + build.
-- GitHub Actions de qualidade executa em PR/push para `main` com `contents: read` e sem secrets.
-- Referência: `docs/engineering/ecc-adoption.md` e ADR 008.
-- Nenhuma migration, dado ou configuração Supabase hosted foi alterada por esta adoção.
+## 8. Admin Orders V1 — Integração Real Read-Only (Supabase RLS)
+- **Status:** **IMPLEMENTADO E TESTADO NO WORKSPACE / READ-ONLY / PRE-SYNC**.
+- **Fonte Autoritativa:** O painel "Pedidos & Vendas" lê EXCLUSIVAMENTE registros reais da tabela `public.orders` protegidos por Supabase Auth + RLS (`orders_select_tenant_admin` / `platform_admin`).
+- **Desacoplamento de Mocks:** Mocks (`INITIAL_ORDERS`, `PED-2025-0841`, `PED-2025-0842`) e `localStorage` foram 100% isolados fora da superfície administrativa.
+- **TenantDashboard:** Resolve o UUID real do tenant via `resolveTargetTenantId()` e invoca `fetchAdminOrders(tenantId)`. KPIs de faturamento, total de pedidos e pedidos pendentes derivam 100% dos dados reais do Supabase.
+- **OrderManager:** Componente puramente props-driven (`orders`, `loading`, `error`, `onReload`), sem consultas diretas paralelas.
+- **Contrato Real do Checkout V1:**
+  - `customer.name`, `customer.phone`, `customer.type` são obrigatórios não-vazios; `customer.email`, `customer.document`, `customer.companyName` são opcionais.
+  - `shippingAddress.street` é obrigatória não-vazia; `number`, `complement`, `neighborhood`, `city`, `state`, `zipCode` são opcionais (podem estar ausentes, null ou vazios sem invenção de dados como `'S/N'`).
+  - Fail-closed preservado contra registros corrompidos e sem inventar dados.
+- **Gate de Qualidade CI:**
+  - `bun run test:regression` e `bun run check` configurados no `package.json` integrando todas as 7 suítes (687 testes automatizados com 100% de aprovação).
+- **Status Administrativo Read-Only:** O status do pedido é exibido de forma puramente informativa/badge nesta V1. Zero optimistic updates e zero alteração de status em memória ou no banco.
+- **Hard Delete Inexistente:** Não há remoção física de pedidos (`.delete()`); registros permanecem auditáveis.
+- **Governança de Migrations:** Nenhuma migration nova (zero 000014); migrations 000001 a 000013 continuam estritamente aplicadas e congeladas.
+- **Futura V2:** Gestão segura de ciclo de vida de status e cancelamento operacional de pedidos fica reservada para ADMIN ORDERS V2 com gateway server-side (Edge Function + RPC interna).
+
+## 9. Governança de Engenharia — ECC (2026-10-02)
+- **Gerenciador de Pacotes:** `bun@1.4.2` especificado no `package.json`.
+- **Quality Gate Unificado:** `bun run check` encadeia `bun run lint` (`tsc --noEmit`), `bun run build` (`vite build`) e `bun run test:regression` (7 suítes com 687 testes automatizados aprovados).
+- **GitHub Actions Quality:** Workflow `.github/workflows/quality.yml` com `permissions: contents: read` e zero secrets no runner.
+- **Governança Documental:** Registrado no ADR 008 (`docs/adr/ADR_008_ECC_ENGINEERING_GOVERNANCE.md`).
+
+
+

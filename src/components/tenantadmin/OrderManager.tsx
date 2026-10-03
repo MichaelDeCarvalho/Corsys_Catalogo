@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ShoppingCart, 
   Search, 
-  Filter, 
   CheckCircle, 
   Clock, 
   Truck, 
@@ -10,42 +9,52 @@ import {
   XCircle, 
   MessageSquare, 
   Printer, 
-  ExternalLink, 
   User, 
   MapPin, 
-  Calendar,
-  DollarSign,
-  ChevronRight,
-  Eye,
-  FileText
+  Eye, 
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Order, OrderStatus } from '../../types';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 
-export const OrderManager: React.FC = () => {
-  const { 
-    currentTenant, 
-    currentTenantOrders, 
-    updateOrderStatus, 
-    showToast 
-  } = useApp();
+export interface OrderManagerProps {
+  orders: Order[];
+  loading: boolean;
+  error: string | null;
+  onReload: () => void;
+}
+
+export const OrderManager: React.FC<OrderManagerProps> = ({
+  orders,
+  loading,
+  error,
+  onReload
+}) => {
+  const { currentTenant } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewLayout, setViewLayout] = useState<'kanban' | 'list'>('kanban');
 
-  const filteredOrders = currentTenantOrders.filter(order => {
-    const matchesSearch = 
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (order.customer.companyName && order.customer.companyName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      order.customer.phone.includes(searchTerm);
-    
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      const term = searchTerm.toLowerCase().trim();
+      const matchesSearch = !term ||
+        order.orderNumber.toLowerCase().includes(term) ||
+        order.customer.name.toLowerCase().includes(term) ||
+        (order.customer.companyName && order.customer.companyName.toLowerCase().includes(term)) ||
+        (order.customer.document && order.customer.document.toLowerCase().includes(term)) ||
+        order.customer.phone.includes(term);
+      
+      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, searchTerm, statusFilter]);
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -64,6 +73,26 @@ export const OrderManager: React.FC = () => {
     }
   };
 
+  const getShoppingModeBadge = (mode?: 'retail' | 'wholesale') => {
+    if (mode === 'wholesale') {
+      return <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full">Atacado (B2B)</span>;
+    }
+    return <span className="bg-slate-100 text-slate-700 text-[10px] font-medium px-2 py-0.5 rounded-full">Varejo</span>;
+  };
+
+  const getSourceLabel = (source: Order['source']) => {
+    switch (source) {
+      case 'web_checkout':
+        return 'Checkout Web';
+      case 'whatsapp':
+        return 'WhatsApp';
+      case 'sales_rep':
+        return 'Representante';
+      default:
+        return source;
+    }
+  };
+
   const handleSendWhatsAppUpdate = (order: Order) => {
     const phone = order.customer.phone.replace(/\D/g, '');
     const cleanPhone = phone.startsWith('55') ? phone : `55${phone}`;
@@ -75,13 +104,14 @@ export const OrderManager: React.FC = () => {
     else if (order.status === 'delivered') statusText = 'foi *entregue com sucesso*! Agradecemos pela preferência.';
     else statusText = 'está *em análise* pela nossa equipe.';
 
-    const message = `Olá, *${order.customer.name}*! 👋\n\nAqui é da equipe *${currentTenant.name}*.\n\nInformamos que seu pedido *#${order.orderNumber}* no valor de *R$ ${order.total.toFixed(2).replace('.', ',')}* ${statusText}\n\nQualquer dúvida estamos à disposição!`;
+    const storeName = currentTenant?.name || 'nossa loja';
+    const message = `Olá, *${order.customer.name}*! 👋\n\nAqui é da equipe *${storeName}*.\n\nInformamos que seu pedido *#${order.orderNumber}* no valor de *R$ ${order.total.toFixed(2).replace('.', ',')}* ${statusText}\n\nQualquer dúvida estamos à disposição!`;
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 
-  const handlePrintSlip = (order: Order) => {
+  const handlePrintSlip = () => {
     window.print();
   };
 
@@ -104,30 +134,64 @@ export const OrderManager: React.FC = () => {
             Central de Pedidos & Vendas
           </h2>
           <p className="text-xs text-slate-500">
-            Acompanhe pedidos recebidos pelo catálogo digital, WhatsApp e representantes de {currentTenant.name}
+            Acompanhe pedidos oficiais registrados no Supabase (public.orders) para {currentTenant?.name || 'sua loja'}
           </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
-          <button
-            onClick={() => setViewLayout('kanban')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${
-              viewLayout === 'kanban' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Kanban Visual
-          </button>
-          <button
-            onClick={() => setViewLayout('list')}
-            className={`px-3 py-1.5 rounded-lg transition-all ${
-              viewLayout === 'list' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Tabela / Lista
-          </button>
+        {/* View Toggle & Refresh */}
+        <div className="flex items-center gap-2">
+          {onReload && (
+            <button
+              onClick={onReload}
+              disabled={loading}
+              className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 transition-colors disabled:opacity-50 cursor-pointer"
+              title="Recarregar pedidos do Supabase"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+            </button>
+          )}
+
+          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <button
+              onClick={() => setViewLayout('kanban')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                viewLayout === 'kanban' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Kanban Visual
+            </button>
+            <button
+              onClick={() => setViewLayout('list')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                viewLayout === 'list' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tabela / Lista
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-800 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-sm font-bold">Falha ao carregar pedidos do Supabase</h4>
+              <p className="text-xs text-rose-700 mt-0.5">{error}</p>
+            </div>
+          </div>
+          {onReload && (
+            <button
+              onClick={onReload}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Tentar novamente
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -135,7 +199,7 @@ export const OrderManager: React.FC = () => {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Buscar por nº pedido, cliente ou telefone..."
+            placeholder="Buscar por nº pedido, cliente, documento ou telefone..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-slate-300 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -149,7 +213,7 @@ export const OrderManager: React.FC = () => {
             onChange={e => setStatusFilter(e.target.value)}
             className="text-xs px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium cursor-pointer"
           >
-            <option value="all">Todos ({currentTenantOrders.length})</option>
+            <option value="all">Todos ({orders.length})</option>
             <option value="pending">Pendentes</option>
             <option value="approved">Aprovados</option>
             <option value="preparing">Em Separação</option>
@@ -160,8 +224,33 @@ export const OrderManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Kanban Layout */}
-      {viewLayout === 'kanban' ? (
+      {/* Loading Skeleton */}
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
+          <p className="text-sm font-bold text-slate-700">Carregando pedidos de public.orders...</p>
+          <p className="text-xs text-slate-400 mt-1">Sincronizando registros protegidos por RLS</p>
+        </div>
+      ) : orders.length === 0 ? (
+        /* Empty State */
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-sm font-bold text-slate-800">Nenhum pedido registrado nesta loja ainda</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            Quando clientes realizarem pedidos pelo catálogo digital ou representantes emitirem pedidos, eles serão listados aqui em tempo real.
+          </p>
+        </div>
+      ) : filteredOrders.length === 0 ? (
+        /* Filter Empty State */
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <Search className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+          <h3 className="text-sm font-bold text-slate-800">Nenhum pedido encontrado</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Nenhum pedido corresponde aos filtros ou busca fornecida.
+          </p>
+        </div>
+      ) : viewLayout === 'kanban' ? (
+        /* Kanban Layout */
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 overflow-x-auto pb-4">
           {kanbanColumns.map(col => {
             const colOrders = filteredOrders.filter(o => o.status === col.id);
@@ -198,6 +287,15 @@ export const OrderManager: React.FC = () => {
                           )}
                         </div>
 
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {getShoppingModeBadge(order.shoppingMode)}
+                          {order.deliveryMethod && (
+                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {order.deliveryMethod}
+                            </span>
+                          )}
+                        </div>
+
                         <div className="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
                           <span>{order.items.length} {order.items.length === 1 ? 'item' : 'itens'}</span>
                           <span className="mx-1">•</span>
@@ -211,13 +309,13 @@ export const OrderManager: React.FC = () => {
                         )}
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                          <span className="text-[10px] text-slate-400 capitalize">{order.paymentMethod}</span>
+                          <span className="text-[10px] text-slate-400 uppercase">{order.paymentMethod}</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSendWhatsAppUpdate(order);
                             }}
-                            className="text-emerald-600 hover:text-emerald-700 p-1 rounded hover:bg-emerald-50"
+                            className="text-emerald-600 hover:text-emerald-700 p-1 rounded hover:bg-emerald-50 cursor-pointer"
                             title="Notificar no WhatsApp"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
@@ -244,6 +342,7 @@ export const OrderManager: React.FC = () => {
                 <tr>
                   <th className="py-3.5 px-4 sm:px-6">Nº Pedido</th>
                   <th className="py-3.5 px-4">Cliente / Contato</th>
+                  <th className="py-3.5 px-4">Modalidade</th>
                   <th className="py-3.5 px-4">Data</th>
                   <th className="py-3.5 px-4">Itens</th>
                   <th className="py-3.5 px-4">Valor Total</th>
@@ -256,12 +355,22 @@ export const OrderManager: React.FC = () => {
                   <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                     <td className="py-3.5 px-4 sm:px-6">
                       <div className="font-mono font-bold text-blue-700 text-xs">{order.orderNumber}</div>
-                      <span className="text-[10px] text-slate-400 capitalize">{order.source.replace('_', ' ')}</span>
+                      <span className="text-[10px] text-slate-400">{getSourceLabel(order.source)}</span>
                     </td>
 
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 text-xs">{order.customer.name}</div>
+                      {order.customer.companyName && (
+                        <div className="text-[10px] text-slate-500">{order.customer.companyName}</div>
+                      )}
                       <div className="text-[11px] text-slate-500">{order.customer.phone}</div>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      {getShoppingModeBadge(order.shoppingMode)}
+                      {order.deliveryMethod && (
+                        <div className="text-[10px] text-slate-400 mt-0.5">{order.deliveryMethod}</div>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4">
@@ -288,31 +397,22 @@ export const OrderManager: React.FC = () => {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <select
-                        value={order.status}
-                        onChange={e => updateOrderStatus(order.id, e.target.value as OrderStatus)}
-                        className="text-xs font-bold px-2 py-1 rounded-lg border border-slate-300 bg-white"
-                      >
-                        <option value="pending">Pendente</option>
-                        <option value="approved">Aprovado</option>
-                        <option value="preparing">Em Separação</option>
-                        <option value="dispatched">Despachado</option>
-                        <option value="delivered">Entregue</option>
-                        <option value="cancelled">Cancelado</option>
-                      </select>
+                      <div className="flex items-center gap-1.5">
+                        {getStatusBadge(order.status)}
+                      </div>
                     </td>
 
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => setSelectedOrder(order)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold text-xs flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" /> Detalhes
                         </button>
                         <button
                           onClick={() => handleSendWhatsAppUpdate(order)}
-                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700"
+                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
                           title="Enviar WhatsApp"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
@@ -337,22 +437,23 @@ export const OrderManager: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-bold text-blue-700">{selectedOrder.orderNumber}</span>
                   {getStatusBadge(selectedOrder.status)}
+                  {getShoppingModeBadge(selectedOrder.shoppingMode)}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Realizado em {new Date(selectedOrder.createdAt).toLocaleString('pt-BR')}
+                  Realizado em {new Date(selectedOrder.createdAt).toLocaleString('pt-BR')} via {getSourceLabel(selectedOrder.source)}
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleSendWhatsAppUpdate(selectedOrder)}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" /> Notificar WhatsApp
                 </button>
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+                  className="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
@@ -376,7 +477,9 @@ export const OrderManager: React.FC = () => {
                     <div className="text-[11px] text-slate-500 font-mono">Doc: {selectedOrder.customer.document}</div>
                   )}
                   <div className="text-[11px] text-slate-600 mt-1">Tel: {selectedOrder.customer.phone}</div>
-                  <div className="text-[11px] text-slate-600">Email: {selectedOrder.customer.email}</div>
+                  {selectedOrder.customer.email && (
+                    <div className="text-[11px] text-slate-600">Email: {selectedOrder.customer.email}</div>
+                  )}
                 </div>
 
                 <div>
@@ -385,25 +488,37 @@ export const OrderManager: React.FC = () => {
                     Endereço de Entrega
                   </div>
                   <div className="text-xs text-slate-800">
-                    {selectedOrder.shippingAddress.street}, {selectedOrder.shippingAddress.number}
+                    {selectedOrder.shippingAddress.street}
+                    {selectedOrder.shippingAddress.number ? `, ${selectedOrder.shippingAddress.number}` : ''}
                     {selectedOrder.shippingAddress.complement ? ` - ${selectedOrder.shippingAddress.complement}` : ''}
                   </div>
-                  <div className="text-xs text-slate-600">
-                    {selectedOrder.shippingAddress.neighborhood}
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    {selectedOrder.shippingAddress.city} - {selectedOrder.shippingAddress.state}
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-mono">
-                    CEP: {selectedOrder.shippingAddress.zipCode}
-                  </div>
+                  {selectedOrder.shippingAddress.neighborhood && (
+                    <div className="text-xs text-slate-600">
+                      {selectedOrder.shippingAddress.neighborhood}
+                    </div>
+                  )}
+                  {(selectedOrder.shippingAddress.city || selectedOrder.shippingAddress.state) && (
+                    <div className="text-xs text-slate-600">
+                      {[selectedOrder.shippingAddress.city, selectedOrder.shippingAddress.state].filter(Boolean).join(' - ')}
+                    </div>
+                  )}
+                  {selectedOrder.shippingAddress.zipCode && (
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      CEP: {selectedOrder.shippingAddress.zipCode}
+                    </div>
+                  )}
+                  {selectedOrder.deliveryMethod && (
+                    <div className="text-[11px] text-blue-700 font-medium mt-1">
+                      Método: {selectedOrder.deliveryMethod}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Items List */}
               <div>
                 <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                  Itens Solicitados
+                  Itens do Pedido ({selectedOrder.items.length})
                 </div>
                 <div className="space-y-2 border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                   {selectedOrder.items.map((item, idx) => (
@@ -439,6 +554,14 @@ export const OrderManager: React.FC = () => {
                 </div>
               </div>
 
+              {/* Notes */}
+              {selectedOrder.notes && (
+                <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/60 text-xs">
+                  <span className="font-bold text-amber-800">Observações: </span>
+                  <span className="text-amber-900">{selectedOrder.notes}</span>
+                </div>
+              )}
+
               {/* Total Calculation */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
                 <div className="flex justify-between text-slate-600">
@@ -455,7 +578,7 @@ export const OrderManager: React.FC = () => {
                   <span>Frete / Entrega:</span>
                   <span>
                     {selectedOrder.shippingFee === 0 
-                      ? <strong className="text-emerald-600">Grátis</strong> 
+                      ? <strong className="text-emerald-600">A Combinar / Grátis</strong> 
                       : `R$ ${selectedOrder.shippingFee.toFixed(2).replace('.', ',')}`}
                   </span>
                 </div>
@@ -465,31 +588,30 @@ export const OrderManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* Status Change Selector */}
-              <div className="flex items-center justify-between pt-2">
+              {/* Status Section (Read-Only) */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">Alterar Status:</span>
-                  <select
-                    value={selectedOrder.status}
-                    onChange={e => {
-                      const newSt = e.target.value as OrderStatus;
-                      updateOrderStatus(selectedOrder.id, newSt);
-                      setSelectedOrder({ ...selectedOrder, status: newSt });
-                    }}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-blue-700"
-                  >
-                    <option value="pending">Pendente</option>
-                    <option value="approved">Aprovado</option>
-                    <option value="preparing">Em Separação</option>
-                    <option value="dispatched">Despachado</option>
-                    <option value="delivered">Concluído / Entregue</option>
-                    <option value="cancelled">Cancelado</option>
-                  </select>
+                  <span className="text-xs font-bold text-slate-700">Status do Pedido:</span>
+                  {getStatusBadge(selectedOrder.status)}
                 </div>
+                <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>Gestão de status será habilitada em uma etapa administrativa segura.</span>
+                </div>
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  onClick={handlePrintSlip}
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Imprimir
+                </button>
 
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
                 >
                   Fechar
                 </button>

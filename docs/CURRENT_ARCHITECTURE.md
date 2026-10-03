@@ -192,20 +192,19 @@
 - **000010:** **APLICADA / CONGELADA**
 - **000011:** **APLICADA / CONGELADA**
 - **submit-order-checkout:** **v2 ACTIVE** (verify_jwt = false, autorização service_role via SUPABASE_SECRET_KEYS)
-- **Feature Gate:** **RUNTIME 503 PASS / CHECKOUT DESABILITADO** (`CHECKOUT_ENABLED !== "true"` retorna HTTP 503)
-- **Frontend:** **INTEGRAÇÃO REAL IMPLEMENTADA NO WORKSPACE / AINDA NÃO VALIDADA COM PEDIDO REAL**
+- **Checkout:** **OPERACIONAL NO SUPABASE HOSTED** (pedidos reais persistidos em `public.orders`)
+- **Frontend:** **INTEGRAÇÃO REAL OPERACIONAL**
   - `CartDrawer` integrado ao `orderService.submitOrderCheckout`.
   - Zero autoridade financeira no cliente (subtotal, total, descontos e fretes recalculados pelo backend).
   - Idempotência baseada em UUID v4 e digest SHA-256 da intenção do pedido; sessionStorage livre de PII.
-  - Fail-closed: erro HTTP 503 tratado inline com preservação do carrinho, dados do formulário e chave de idempotência.
+  - Fail-closed: erros de rede e indisponibilidade tratados inline com preservação do carrinho, dados do formulário e chave de idempotência.
   - Desacoplamento total de WhatsApp da criação de pedidos; PIX hardcoded e confetti expurgados.
 - **B2B:**
   - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
   - `purchaseMode` (WholesaleAccessContext) autoritativo, com `shoppingMode` (AppContext) temporariamente sincronizado.
-- **Legado ainda existente:**
-  - `AppContext` local orders
-  - `OrderManager` local
-  - `TenantDashboard` KPIs locais
+- **Transição de Superfície Administrativa (Admin Orders V1):**
+  - `TenantDashboard` e `OrderManager` desacoplados de mocks e integrados a `public.orders` via Supabase RLS em modo read-only.
+  - Mocks legados em `AppContext` isolados e não-autoritativos para a gestão administrativa.
 - **Decisão Arquitetural (ADR 004):** Duas camadas complementares (Edge Function pública como gateway + RPC PostgreSQL interna transacional).
 - **Contrato de Ingestão de Pedidos (Zero Autoridade Financeira no Cliente):**
   - O storefront submete requisição à Edge Function `submit-order-checkout` (`verify_jwt = false`).
@@ -214,7 +213,7 @@
 - **Edge Function `submit-order-checkout` (Hospedada & Ativa):**
   - Modernizada com `Deno.serve` e `npm:@supabase/supabase-js@2`.
   - Autenticação via `SUPABASE_SECRET_KEYS` (extração segura da chave default; `SUPABASE_SERVICE_ROLE_KEY` legada removida).
-  - **Feature Gate Fail-Closed:** `CHECKOUT_ENABLED !== "true"` retorna HTTP 503 (`Checkout temporariamente indisponível.`).
+  - **Feature Gate Fail-Closed:** Validação fail-closed via Edge Function (retorno seguro HTTP 503 se inativo; ativo e operacional no ambiente hospedado).
   - Limite de 64 KB aferido por contagem de bytes UTF-8 (`TextEncoder.encode(rawBody).byteLength`).
   - Honeypot anti-spam.
   - Autenticação Bearer obrigatória para `wholesale` (extração do `user.id` real do JWT; nunca do body).
@@ -245,7 +244,7 @@
   - Validação real de CPF (PF) e CNPJ (PJ) no frontend (`src/utils/brDocument.ts`), `orderService.ts` e na Edge Function (`submit-order-checkout`).
   - Estado `confirmedCustomerSnapshot` mantido em memória React para construção do link WhatsApp sem quebra de ciclo de vida após limpeza do formulário.
   - WhatsApp explícito com valores financeiros extraídos exclusivamente do recibo oficial retornado pelo servidor.
-  - `public.orders` continha exatamente 0 pedidos no momento da validação pré-hardening e permaneceu com 0 pedidos no teste de deploy.
+  - `public.orders` possui atualmente 3 pedidos reais persistidos com sucesso pelo Checkout V1 (ex: `PED-20260930-000001`, `PED-20260930-000002`, `PED-20261001-000003`).
 
 ## 12. Arquitetura de Hospedagem Frontend (Cloudflare Workers Static Assets & ADR 005)
 - **Pipeline de Deploy Frontend:**
@@ -266,12 +265,12 @@
   - `VITE_PUBLIC_TENANT_SLUG`
 - **Segurança de Ativos e Secrets:**
   - Zero secrets server-side no bundle client-side.
-  - `CHECKOUT_ENABLED` pertence exclusivamente à Edge Function Supabase e permanece desabilitado/fail-closed (`503`).
+  - Segregação estrita entre frontend estático e credenciais administrativas no Supabase.
   - Documentações internas e binários expurgados do diretório `public/`.
 - **Status de Validação em Runtime:**
   - Cloudflare runtime validation: **PASS** (`https://corsys-catalogo.corsys1.workers.dev`).
   - Storefront runtime & Supabase connection: **PASS**.
-  - Checkout fail-closed 503: **PASS** (`public.orders` permaneceu em 0).
+  - Checkout e persistência transacional: **PASS** (3 pedidos reais em `public.orders`).
   - Domínio customizado: Ainda não configurado.
 
 ---
@@ -301,7 +300,7 @@
 - **Status Operacional de Deploy:**
   - **Migration 000013:** APLICADA / CONGELADA NO SUPABASE HOSTED (Database hardening: RUNTIME VERIFIED).
   - **Supabase Security Advisor:** Os 3 achados `authenticated_security_definer_function_executable` foram eliminados com sucesso. Residual: `auth_leaked_password_protection` permanece por restrição do plano Free.
-  - **Edge Function `get-wholesale-catalog`:** CORREÇÃO DE BUNDLE PREPARADA / AGUARDANDO REDEPLOY E RUNTIME VALIDATION (não declarada como runtime pass até conclusão do deploy hospedado).
+  - **Edge Function `get-wholesale-catalog`:** ACTIVE (versão 1, `verify_jwt = true`). Deploy concluído no Supabase Hosted. Fluxo positivo B2B aprovado permanece como ainda não avaliado (NOT EVALUATED).
   - **Cloudflare Frontend:** Último build do commit de hardening concluído com sucesso (SUCCESS).
 - **Correção dos Achados do Supabase Security Advisor (`authenticated_security_definer_function_executable`):**
   - **`public.get_my_wholesale_status(p_tenant_slug text)`:** Convertida para `SECURITY INVOKER` com `SET search_path = ''`. Resolução canônica de tenant realizada sobre `public.tenant_public_settings` (onde `authenticated` possui SELECT sob RLS, sem requerer vínculo em `tenant_users`). Acesso aos dados do comprador protegido pela barreira RLS `wholesale_customers_select_self` (`user_id = auth.uid()`). Execução concedida a `authenticated` e revogada de `PUBLIC` e `anon`.
@@ -322,10 +321,57 @@
   - `[functions.get-wholesale-catalog] verify_jwt = true`
   - *Governança de Ambiente:* Estas configurações de Auth foram estabelecidas no arquivo fonte `supabase/config.toml` do workspace como baseline declarativo de governança. Não declarar que a instância Supabase Hosted já recebeu essas configurações, uma vez que a aplicação no hosted depende de sincronização via CLI / painel do projeto. A proteção contra vazamento de senhas comprometidas (*leaked-password protection*) permanece como risco residual aceito pela restrição de tiers do plano Free do Supabase.
 
-## 7. Engenharia / CI — Adoção ECC (2026-10-02)
-- Package manager canônico: Bun 1.4.2 para os checks versionados desta adoção.
-- Gate local: `bun run check`.
-- Gate remoto: `.github/workflows/quality.yml` em PR/push para `main` e execução manual.
-- Permissões da Action: `contents: read`; nenhum secret é fornecido ao job de qualidade.
-- A CI valida o código, mas não executa deploy. Cloudflare Workers Builds permanece uma esteira separada.
-- Runtime ECC completo, hooks globais, MCPs e auto-update não fazem parte da arquitetura do produto.
+---
+
+## 15. Arquitetura de Gestão de Pedidos Administrativos (Admin Orders V1 — Read-Only)
+- **Status:** **IMPLEMENTADO NO WORKSPACE / READ-ONLY / PRE-SYNC**.
+- **Fonte de Dados Autoritativa:** O painel "Pedidos & Vendas" consome exclusivamente a tabela `public.orders` via Supabase Client autenticado, sob proteção rigorosa de RLS (`orders_select_tenant_admin` / `orders_select_stock_manager` / `orders_select_sales_rep` / `private.is_platform_admin()`).
+- **Desacoplamento Completo de Mocks:**
+  - O painel administrativo deixou de consumir `currentTenantOrders` do `AppContext`.
+  - Mocks de demonstração (`INITIAL_ORDERS`, `PED-2025-0841`, `PED-2025-0842`) e `localStorage` estão estritamente segregados fora da superfície do `TenantDashboard` e do `OrderManager`.
+- **Fluxo Único de Dados:**
+  - `TenantDashboard` resolve o UUID real do tenant via `resolveTargetTenantId()`.
+  - Executa `fetchAdminOrders(tenantId)` em `src/services/adminOrderService.ts`.
+  - O `adminOrders` é o único *source of truth* da visualização.
+  - KPIs de Faturamento Total (`adminOrders.reduce`), Contagem Total de Pedidos (`adminOrders.length`) e Novos Pedidos Pendentes (`adminOrders.filter(pending)`) derivam 100% dos registros do banco.
+  - Injeta `orders`, `loading`, `error` e `onReload` no `OrderManager` como props puras.
+- **Contrato Real do Checkout V1 & Adapter Fail-Closed:**
+  - Em `src/types.ts` e `src/services/adminOrderService.ts`:
+    - `customer.name`, `customer.phone`, `customer.type` são obrigatórios não-vazios; `customer.email`, `customer.document`, `customer.companyName` são opcionais (podem estar ausentes, null ou vazios sem falha de parsing).
+    - `shippingAddress.street` é obrigatória não-vazia; `number`, `complement`, `neighborhood`, `city`, `state`, `zipCode` são opcionais (podem estar ausentes, null ou vazios sem mascaramento ou invenção de dados como `'S/N'`).
+    - Validação Fail-Closed rigorosa contra objetos inválidos, strings obrigatórias ausentes, UUIDs incorretos, status ou pagamentos fora da allowlist e valores numéricos negativos ou NaN.
+    - Testes sem PII em `scripts/test-admin-orders-points.ts` validam sucesso com campos opcionais vazios/ausentes e rejeição fail-closed.
+- **Componente Read-Only (`OrderManager`):**
+  - Não possui segundo fluxo de busca autônomo, não importa Supabase diretamente e não consulta `useApp` para pedidos.
+  - O status é apresentado de forma puramente informativa via badges read-only na listagem/tabela e no modal de detalhes, acompanhado de nota técnica: *"Gestão de status será habilitada em uma etapa administrativa segura."*
+  - Zero mutações em memória, zero optimistic updates e zero chamadas a `.update()`.
+- **Ausência de Hard Delete:**
+  - Não há implementação de exclusão de pedidos (`.delete()`); os registros transacionais permanecem auditáveis.
+- **Governança de Migrations:**
+  - Zero novas migrations nesta etapa (zero migration 000014).
+  - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
+  - Nenhuma alteração em RLS, grants ou `manage_order_status`.
+- **Integração no CI & Gate de Qualidade:**
+  - Scripts `test:regression` e `check` configurados em `package.json` integrando todas as 7 suítes (687 testes no total).
+- **Evolução Planejada para ADMIN ORDERS V2:**
+  - A mutação segura de status e o cancelamento operacional de pedidos serão implementados na V2 através de Edge Function administrativa dedicada + RPC interna server-side com credenciais de `service_role`.
+
+---
+
+## 16. Engenharia / CI — Adoção ECC (2026-10-02)
+- **Gerenciador de Pacotes e Runtime:** Bun 1.4.2 fixado via `"packageManager": "bun@1.4.2"` no `package.json`.
+- **Gate de Qualidade Unificado (`bun run check`):**
+  - Executa sequencialmente: `bun run lint` (`tsc --noEmit`), `bun run build` (`vite build`) e `bun run test:regression`.
+  - O script `test:regression` encadeia todas as 7 suítes automatizadas do repositório (687 testes com 100% de aprovação).
+- **Pipeline de Integração Contínua (CI):**
+  - Workflow GitHub Actions em `.github/workflows/quality.yml`.
+  - Executado em cada pull request e push para a branch `main`.
+- **Princípio do Menor Privilégio no CI:**
+  - Configuração estrita de permissões de token: `permissions: contents: read`.
+  - Zero secrets e zero tokens de produção ou de banco de dados no ambiente de CI.
+- **Isolamento de Pipelines:**
+  - O workflow de qualidade (CI) é estritamente separado do pipeline de deploy do frontend no Cloudflare Workers e dos deploys de migrations no Supabase.
+- **Escopo Arquitetural:**
+  - A adoção do ECC refere-se exclusivamente às práticas de governança de código, gates de tipagem, build estático e suítes de regressão. O runtime ECC completo não faz parte do produto cliente.
+
+

@@ -180,20 +180,20 @@ export interface Order {
   sellerCode?: string;
   customer: {
     name: string;
-    document?: string; // CPF ou CNPJ
-    email: string;
     phone: string;
-    companyName?: string;
     type: 'PF' | 'PJ';
+    email?: string;
+    document?: string; // CPF ou CNPJ
+    companyName?: string;
   };
   shippingAddress: {
     street: string;
-    number: string;
+    number?: string;
     complement?: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-    zipCode: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
   };
   items: OrderItem[];
   subtotal: number;
@@ -206,6 +206,8 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   source: 'whatsapp' | 'web_checkout' | 'sales_rep';
+  shoppingMode?: 'retail' | 'wholesale';
+  deliveryMethod?: string;
 }
 
 export interface CartItem {
