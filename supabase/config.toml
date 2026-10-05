@@ -398,6 +398,12 @@ verify_jwt = false
 [functions.get-wholesale-catalog]
 verify_jwt = true
 
+[functions.manage-order-status]
+verify_jwt = true
+
+[functions.generate-admin-order-pdf]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

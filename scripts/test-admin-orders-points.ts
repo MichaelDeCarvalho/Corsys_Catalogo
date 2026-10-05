@@ -534,22 +534,40 @@ assert(
 
 assert(
   orderManagerContent.includes('getStatusBadge(order.status)'),
-  'Status na tabela é exibido como badge puramente read-only'
+  'Status na tabela é exibido como badge oficial'
 );
 
 assert(
   orderManagerContent.includes('getStatusBadge(selectedOrder.status)'),
-  'Status no modal de detalhes é exibido como badge puramente read-only'
+  'Status no modal de detalhes é exibido como badge oficial'
 );
 
 assert(
-  orderManagerContent.includes('Gestão de status será habilitada em uma etapa administrativa segura'),
-  'OrderManager inclui aviso informativo de que gestão de status virá em etapa futura'
+  orderManagerContent.includes('handleUpdateStatus') &&
+  orderManagerContent.includes('updateAdminOrderStatus'),
+  'OrderManager integra mutação de status server-side via updateAdminOrderStatus'
+);
+
+assert(
+  orderManagerContent.includes('handleGeneratePdf') &&
+  (orderManagerContent.includes('generateAdminOrderPdf') || orderManagerContent.includes('getOrderPdfDocument')),
+  'OrderManager integra geração de PDF administrativo via generateAdminOrderPdf'
+);
+
+assert(
+  orderManagerContent.includes('id="printable-order-slip"') &&
+  orderManagerContent.includes('handlePrintSlip'),
+  'OrderManager isola comprovante para impressão via #printable-order-slip'
+);
+
+assert(
+  orderManagerContent.includes('no-print'),
+  'OrderManager marca botões de controle e modal com classe no-print'
 );
 
 assert(
   !orderManagerContent.includes('.from(\'orders\').update') && !orderManagerContent.includes('.from("orders").update'),
-  'Zero chamada .from("orders").update() em OrderManager'
+  'Zero chamada .from("orders").update() em OrderManager (delegação exclusiva para Edge Function)'
 );
 
 assert(
@@ -595,19 +613,101 @@ assert(
 );
 
 // =========================================================================
-// 6. CONGELAMENTO DE MIGRATIONS & BANCO DE DADOS
+// 6. GOVERNANÇA DE MIGRATIONS & EDGE FUNCTION (ADMIN ORDERS V2)
 // =========================================================================
-console.log('\n6. Governança de Migrations (000001-000013 Congeladas, Zero Nova Migration)');
+console.log('\n6. Governança de Migrations & Edge Function V2');
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 13,
-  'Exatamente 13 migrations no workspace (NENHUMA migration 000014 criada)'
+  migrationFiles.length === 14,
+  'Exatamente 14 migrations no workspace (000001 a 000014)'
+);
+
+const migration14Path = 'supabase/migrations/20261005170000_000014_admin_order_management.sql';
+assert(
+  fs.existsSync(migration14Path),
+  'Migration 000014 (20261005170000_000014_admin_order_management.sql) existe no workspace'
+);
+
+const migrationVersions = migrationFiles.map(f => f.split('_')[0]);
+assert(
+  new Set(migrationVersions).size === migrationFiles.length,
+  'Prefixos de versão das migrations são estritamente únicos (sem colisão de versionamento)'
+);
+
+const migration14Content = fs.readFileSync(migration14Path, 'utf-8');
+assert(
+  migration14Content.includes('CREATE OR REPLACE FUNCTION public.manage_order_status_internal') &&
+  migration14Content.includes('p_actor_user_id UUID'),
+  'Migration 000014 cria RPC manage_order_status_internal com p_actor_user_id'
 );
 
 assert(
-  !fs.existsSync('supabase/migrations/20261002_000014_admin_orders.sql'),
-  'Migration 000014 não existe no workspace'
+  migration14Content.includes('SECURITY DEFINER') &&
+  migration14Content.includes("SET search_path = ''"),
+  'manage_order_status_internal utiliza SECURITY DEFINER e search_path limpo'
+);
+
+assert(
+  migration14Content.includes('REVOKE ALL ON FUNCTION public.manage_order_status_internal') &&
+  migration14Content.includes('GRANT EXECUTE ON FUNCTION public.manage_order_status_internal') &&
+  migration14Content.includes('TO service_role'),
+  'manage_order_status_internal é concedida EXCLUSIVAMENTE a service_role'
+);
+
+assert(
+  migration14Content.includes('REVOKE ALL ON FUNCTION public.manage_order_status(UUID, TEXT) FROM PUBLIC, anon, authenticated, service_role;'),
+  'Migration 000014 reafirma defensivamente bloqueio total da RPC legada manage_order_status'
+);
+
+// Auditoria da Edge Function manage-order-status
+const edgeFunctionPath = 'supabase/functions/manage-order-status/index.ts';
+assert(
+  fs.existsSync(edgeFunctionPath),
+  'Edge Function manage-order-status existe no workspace'
+);
+
+const edgeFunctionContent = fs.readFileSync(edgeFunctionPath, 'utf-8');
+assert(
+  edgeFunctionContent.includes('auth.getUser()') &&
+  edgeFunctionContent.includes('actorUserId'),
+  'Edge Function manage-order-status deriva ator server-side via auth.getUser()'
+);
+
+assert(
+  edgeFunctionContent.includes('manage_order_status_internal'),
+  'Edge Function manage-order-status delega mutação para RPC interna manage_order_status_internal'
+);
+
+// Auditoria da Edge Function dedicada generate-admin-order-pdf
+const generatePdfFunctionPath = 'supabase/functions/generate-admin-order-pdf/index.ts';
+assert(
+  fs.existsSync(generatePdfFunctionPath),
+  'Edge Function dedicada generate-admin-order-pdf existe no workspace'
+);
+
+const generatePdfFunctionContent = fs.readFileSync(generatePdfFunctionPath, 'utf-8');
+assert(
+  generatePdfFunctionContent.includes('generateOrderPdf') &&
+  generatePdfFunctionContent.includes("'order-documents'"),
+  'Edge Function generate-admin-order-pdf gera PDF server-side e grava no bucket order-documents'
+);
+
+// Auditoria do supabase/config.toml
+const configTomlContent = fs.readFileSync('supabase/config.toml', 'utf-8');
+assert(
+  configTomlContent.includes('[functions.manage-order-status]') &&
+  configTomlContent.includes('verify_jwt = true'),
+  'supabase/config.toml declara [functions.manage-order-status] com verify_jwt = true'
+);
+
+// Auditoria do CSS de impressão
+const indexCssContent = fs.readFileSync('src/index.css', 'utf-8');
+assert(
+  indexCssContent.includes('@media print') &&
+  indexCssContent.includes('#printable-order-slip') &&
+  indexCssContent.includes('.no-print'),
+  'src/index.css configura regras isoladas de impressão via @media print'
 );
 
 // =========================================================================

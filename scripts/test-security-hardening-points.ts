@@ -59,8 +59,8 @@ const expectedMigrations = [
 
 const actualMigrations = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql')).sort();
 assert(
-  actualMigrations.length === 13,
-  'Exatamente 13 migrations registradas no workspace'
+  actualMigrations.length >= 13,
+  'Ao menos 13 migrations registradas no workspace (000001 a 000013 congeladas)'
 );
 
 for (const m of expectedMigrations.slice(0, 12)) {

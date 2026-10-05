@@ -11,3 +11,60 @@
   --success: #16A34A;
   --text-muted: #475569;
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  /* Oculta toda a interface padrão da página durante a impressão */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Anula fundos de backdrop, modal overlays, sidebars e containers fixos */
+  header,
+  aside,
+  nav,
+  .fixed,
+  [role="dialog"] {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Exibe exclusivamente o comprovante do pedido selecionado */
+  #printable-order-slip,
+  #printable-order-slip * {
+    visibility: visible;
+  }
+
+  /* Posiciona o pedido limpo na folha A4 com fundo branco sem overlays de modal */
+  #printable-order-slip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Evita quebras de página desagradáveis em blocos e itens de pedidos */
+  .print-avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Remove botões de fechar, gerar PDF, imprimir e ações interativas no impresso */
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+}

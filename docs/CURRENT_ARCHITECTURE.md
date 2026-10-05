@@ -323,11 +323,11 @@
 
 ---
 
-## 15. Arquitetura de Gestão de Pedidos Administrativos (Admin Orders V1 — Read-Only)
-- **Status:** **IMPLEMENTADO NO WORKSPACE / READ-ONLY / PRE-SYNC**.
+## 15. Arquitetura de Gestão de Pedidos Administrativos (Admin Orders V2 — Status Server-Side, Estoque, Impressão e PDF)
+- **Status:** **IMPLEMENTADO NO WORKSPACE / PRE-SYNC**.
 - **Fonte de Dados Autoritativa:** O painel "Pedidos & Vendas" consome exclusivamente a tabela `public.orders` via Supabase Client autenticado, sob proteção rigorosa de RLS (`orders_select_tenant_admin` / `orders_select_stock_manager` / `orders_select_sales_rep` / `private.is_platform_admin()`).
 - **Desacoplamento Completo de Mocks:**
-  - O painel administrativo deixou de consumir `currentTenantOrders` do `AppContext`.
+  - O painel administrativo não consome `currentTenantOrders` do `AppContext`.
   - Mocks de demonstração (`INITIAL_ORDERS`, `PED-2025-0841`, `PED-2025-0842`) e `localStorage` estão estritamente segregados fora da superfície do `TenantDashboard` e do `OrderManager`.
 - **Fluxo Único de Dados:**
   - `TenantDashboard` resolve o UUID real do tenant via `resolveTargetTenantId()`.
@@ -340,21 +340,34 @@
     - `customer.name`, `customer.phone`, `customer.type` são obrigatórios não-vazios; `customer.email`, `customer.document`, `customer.companyName` são opcionais (podem estar ausentes, null ou vazios sem falha de parsing).
     - `shippingAddress.street` é obrigatória não-vazia; `number`, `complement`, `neighborhood`, `city`, `state`, `zipCode` são opcionais (podem estar ausentes, null ou vazios sem mascaramento ou invenção de dados como `'S/N'`).
     - Validação Fail-Closed rigorosa contra objetos inválidos, strings obrigatórias ausentes, UUIDs incorretos, status ou pagamentos fora da allowlist e valores numéricos negativos ou NaN.
-    - Testes sem PII em `scripts/test-admin-orders-points.ts` validam sucesso com campos opcionais vazios/ausentes e rejeição fail-closed.
-- **Componente Read-Only (`OrderManager`):**
-  - Não possui segundo fluxo de busca autônomo, não importa Supabase diretamente e não consulta `useApp` para pedidos.
-  - O status é apresentado de forma puramente informativa via badges read-only na listagem/tabela e no modal de detalhes, acompanhado de nota técnica: *"Gestão de status será habilitada em uma etapa administrativa segura."*
-  - Zero mutações em memória, zero optimistic updates e zero chamadas a `.update()`.
+- **Ciclo de Vida Server-Side & Controle de Estoque (Admin Orders V2):**
+  - **Migration 000014:** `supabase/migrations/20261005170000_000014_admin_order_management.sql` (Forward-only; 000001 a 000013 congeladas).
+  - Cria `public.manage_order_status_internal(p_order_id UUID, p_new_status TEXT, p_actor_user_id UUID)` com `SECURITY DEFINER`, `search_path = ''` e execução restrita exclusivamente a `service_role`.
+  - Reafirma bloqueio defensivo de `public.manage_order_status(UUID, TEXT)` sem permissão para nenhum papel.
+  - Trava pessimista `FOR UPDATE` na linha do pedido e autorização server-side do operador (`platform_admin` ou `tenant_admin`/`stock_manager` do mesmo tenant; `sales_rep` negado).
+  - Locks pessimistas de produtos ordenados por UUID evitam deadlock.
+  - Transição `pending -> approved` debita estoque atomicamente; transições `approved/preparing -> cancelled` restauram o estoque exatamente uma vez.
+  - Estados `delivered` e `cancelled` são terminais irreversíveis.
+- **Edge Functions Gateway Segregadas:**
+  - **`manage-order-status` (Responsabilidade Única de Ciclo de Vida):**
+    - Declarada com `verify_jwt = true` em `supabase/config.toml`.
+    - Body exato: `{ "orderId": string, "newStatus": string }` (máx 4 KB). Rejeita ações extras ou identificadores de usuário no corpo.
+    - Deriva `actorUserId` de forma autenticada via `auth.getUser()`.
+    - Muta status via RPC interna `manage_order_status_internal` com `service_role` e trata códigos de erro PostgreSQL de forma mapeada e segura.
+    - Retorno mínimo sem PII.
+  - **`generate-admin-order-pdf` (Geração Dedicada de Documento):**
+    - Declarada com `verify_jwt = true` em `supabase/config.toml`.
+    - Body exato: `{ "orderId": string }` (máx 4 KB).
+    - **Autorização RLS Contextual:** O pedido é consultado via client no contexto do JWT do operador. A RLS do PostgreSQL decide a autorização de leitura — permitindo que operadores autorizados (incluindo `sales_rep`) gerem o PDF.
+    - **Service Role estritamente pós-leitura autorizada:** Gera os bytes do PDF com `generateOrderPdf` (`_shared/orderPdf.ts`), faz upload com upsert no bucket privado `order-documents` (`<tenant_id>/orders/<order_id>/pedido-<order_number>.pdf`) e emite Signed URL com validade de **exatamente 600 segundos (10 minutos)**.
+    - Zero log de Signed URLs.
+- **Impressão Isolada & PDF Administrativo:**
+  - `@media print` no `src/index.css` isola o elemento `#printable-order-slip` com fundo branco, anula fundos de backdrop/sidebars e oculta controles de navegação e botões através da classe `.no-print`.
+  - Botão "Gerar PDF" no modal de detalhes consome `generateAdminOrderPdf(orderId)` e abre o arquivo oficial em nova aba.
 - **Ausência de Hard Delete:**
-  - Não há implementação de exclusão de pedidos (`.delete()`); os registros transacionais permanecem auditáveis.
-- **Governança de Migrations:**
-  - Zero novas migrations nesta etapa (zero migration 000014).
-  - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
-  - Nenhuma alteração em RLS, grants ou `manage_order_status`.
-- **Integração no CI & Gate de Qualidade:**
-  - Scripts `test:regression` e `check` configurados em `package.json` integrando todas as 7 suítes (687 testes no total).
-- **Evolução Planejada para ADMIN ORDERS V2:**
-  - A mutação segura de status e o cancelamento operacional de pedidos serão implementados na V2 através de Edge Function administrativa dedicada + RPC interna server-side com credenciais de `service_role`.
+  - Permanece expressamente proibida a exclusão de pedidos (`.delete()`); registros transacionais permanecem auditáveis.
+- **Gate de Qualidade Unificado:**
+  - 100% de aprovação nas 7 suítes de regressão (695 testes) via `bun run check`.
 
 ---
 

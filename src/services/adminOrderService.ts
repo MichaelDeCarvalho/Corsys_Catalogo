@@ -367,3 +367,107 @@ export async function fetchAdminOrders(tenantId: string): Promise<Order[]> {
 
   return (data as RawAdminOrderRow[]).map(adaptAdminOrder);
 }
+
+/**
+ * Atualiza o status do pedido de forma transacional e segura no servidor.
+ * Execução delegada estritamente para a Edge Function manage-order-status e RPC manage_order_status_internal.
+ */
+export async function updateAdminOrderStatus(
+  orderId: string,
+  newStatus: OrderStatus
+): Promise<{ id: string; orderNumber: string; status: OrderStatus; updatedAt: string }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase não configurado. Verifique as credenciais no ambiente.');
+  }
+
+  if (!orderId || !isValidUuid(orderId)) {
+    throw new Error('Identificador de pedido inválido.');
+  }
+
+  if (!ALLOWED_ORDER_STATUSES.includes(newStatus)) {
+    throw new Error(`Status de pedido inválido: "${newStatus}".`);
+  }
+
+  const { data, error } = await supabase.functions.invoke('manage-order-status', {
+    body: { orderId, newStatus }
+  });
+
+  if (error) {
+    console.error('[adminOrderService] Erro ao atualizar status via Edge Function:', error);
+    let errorMsg = error.message;
+    if (error && typeof error === 'object' && 'context' in error) {
+      try {
+        const ctx = error.context as Response;
+        if (ctx && typeof ctx.json === 'function') {
+          const body = await ctx.json();
+          if (body?.error) errorMsg = body.error;
+        }
+      } catch {
+        // ignora
+      }
+    }
+    throw new Error(errorMsg || 'Falha ao atualizar status do pedido.');
+  }
+
+  if (!data?.success || !data?.order) {
+    throw new Error(data?.error || 'Resposta inválida do servidor ao atualizar status.');
+  }
+
+  return {
+    id: data.order.id,
+    orderNumber: data.order.order_number,
+    status: data.order.status as OrderStatus,
+    updatedAt: data.order.updated_at
+  };
+}
+
+/**
+ * Solicita a geração/obtenção da Signed URL do PDF oficial do pedido a partir
+ * do bucket privado 'order-documents' via Edge Function dedicada generate-admin-order-pdf.
+ */
+export async function generateAdminOrderPdf(
+  orderId: string
+): Promise<{ documentUrl: string; orderNumber: string; expiresIn: number }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase não configurado. Verifique as credenciais no ambiente.');
+  }
+
+  if (!orderId || !isValidUuid(orderId)) {
+    throw new Error('Identificador de pedido inválido.');
+  }
+
+  const { data, error } = await supabase.functions.invoke('generate-admin-order-pdf', {
+    body: { orderId }
+  });
+
+  if (error) {
+    console.error('[adminOrderService] Erro ao obter PDF via Edge Function:', error);
+    let errorMsg = error.message;
+    if (error && typeof error === 'object' && 'context' in error) {
+      try {
+        const ctx = error.context as Response;
+        if (ctx && typeof ctx.json === 'function') {
+          const body = await ctx.json();
+          if (body?.error) errorMsg = body.error;
+        }
+      } catch {
+        // ignora
+      }
+    }
+    throw new Error(errorMsg || 'Falha ao gerar documento PDF do pedido.');
+  }
+
+  if (!data?.success || !data?.documentUrl || typeof data.documentUrl !== 'string') {
+    throw new Error(data?.error || 'Documento PDF não retornado pelo servidor.');
+  }
+
+  return {
+    documentUrl: data.documentUrl,
+    orderNumber: typeof data.orderNumber === 'string' ? data.orderNumber : '',
+    expiresIn: typeof data.expiresIn === 'number' ? data.expiresIn : 600
+  };
+}
+
+// Alias para compatibilidade
+export const getOrderPdfDocument = generateAdminOrderPdf;
+

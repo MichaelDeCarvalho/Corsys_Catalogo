@@ -15,11 +15,13 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Order, OrderStatus } from '../../types';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
+import { updateAdminOrderStatus, generateAdminOrderPdf } from '../../services/adminOrderService';
 
 export interface OrderManagerProps {
   orders: Order[];
@@ -34,12 +36,16 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   error,
   onReload
 }) => {
-  const { currentTenant } = useApp();
+  const { currentTenant, currentUser } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewLayout, setViewLayout] = useState<'kanban' | 'list'>('kanban');
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
@@ -113,6 +119,43 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
 
   const handlePrintSlip = () => {
     window.print();
+  };
+
+  const handleUpdateStatus = async (newStatus: OrderStatus) => {
+    if (!selectedOrder) return;
+    if (currentUser?.role === 'sales_rep') {
+      setStatusError('Operadores sales_rep não possuem permissão para alterar o status do pedido.');
+      return;
+    }
+    setIsUpdatingStatus(true);
+    setStatusError(null);
+    try {
+      const updated = await updateAdminOrderStatus(selectedOrder.id, newStatus);
+      setSelectedOrder(prev => prev ? { ...prev, status: updated.status, updatedAt: updated.updatedAt } : null);
+      onReload();
+    } catch (err: unknown) {
+      console.error('[OrderManager] Falha ao atualizar status:', err);
+      setStatusError(err instanceof Error ? err.message : 'Falha ao processar atualização de status.');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleGeneratePdf = async () => {
+    if (!selectedOrder) return;
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+    try {
+      const { documentUrl } = await generateAdminOrderPdf(selectedOrder.id);
+      if (documentUrl) {
+        window.open(documentUrl, '_blank');
+      }
+    } catch (err: unknown) {
+      console.error('[OrderManager] Falha ao gerar PDF administrativo:', err);
+      setPdfError(err instanceof Error ? err.message : 'Falha ao gerar documento PDF.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const kanbanColumns: { id: OrderStatus; title: string; color: string }[] = [
@@ -430,7 +473,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
       {/* Order Detail Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+          <div id="printable-order-slip" className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
             
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 rounded-t-2xl">
               <div>
@@ -444,7 +487,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 no-print">
                 <button
                   onClick={() => handleSendWhatsAppUpdate(selectedOrder)}
                   className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
@@ -452,7 +495,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                   <MessageSquare className="w-3.5 h-3.5" /> Notificar WhatsApp
                 </button>
                 <button
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={() => {
+                    setSelectedOrder(null);
+                    setStatusError(null);
+                    setPdfError(null);
+                  }}
                   className="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
                 >
                   <XCircle className="w-5 h-5" />
@@ -522,7 +569,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 </div>
                 <div className="space-y-2 border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                   {selectedOrder.items.map((item, idx) => (
-                    <div key={idx} className="p-3 flex items-center justify-between text-xs">
+                    <div key={idx} className="p-3 flex items-center justify-between text-xs print-avoid-break">
                       <div className="flex items-center gap-3">
                         <img
                           src={getSafeProductImage(item.productImage)}
@@ -563,7 +610,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
               )}
 
               {/* Total Calculation */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5 text-xs print-avoid-break">
                 <div className="flex justify-between text-slate-600">
                   <span>Subtotal:</span>
                   <span>R$ {selectedOrder.subtotal.toFixed(2).replace('.', ',')}</span>
@@ -588,33 +635,161 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                 </div>
               </div>
 
-              {/* Status Section (Read-Only) */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">Status do Pedido:</span>
-                  {getStatusBadge(selectedOrder.status)}
+              {/* Status Section with Server-Side Lifecycle Controls */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">Status do Pedido:</span>
+                    {getStatusBadge(selectedOrder.status)}
+                  </div>
+
+                  {statusError && (
+                    <div className="text-xs text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 flex items-center gap-1.5 no-print">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{statusError}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>Gestão de status será habilitada em uma etapa administrativa segura.</span>
+
+                {/* Controles de Transição de Status Transacionais */}
+                <div className="no-print pt-2 border-t border-slate-200/80">
+                  {currentUser?.role === 'sales_rep' ? (
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Operadores Representante (sales_rep) possuem permissão de apenas leitura ao status dos pedidos.</span>
+                    </div>
+                  ) : selectedOrder.status === 'delivered' || selectedOrder.status === 'cancelled' ? (
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>Pedido em estado terminal ({selectedOrder.status === 'delivered' ? 'Entregue' : 'Cancelado'}). Nenhuma nova transição permitida.</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-600">Ações disponíveis:</span>
+
+                      {selectedOrder.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleUpdateStatus('approved')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                            Aprovar Pedido (Debitar Estoque)
+                          </button>
+                          <button
+                            onClick={() => handleUpdateStatus('cancelled')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                            Cancelar
+                          </button>
+                        </>
+                      )}
+
+                      {selectedOrder.status === 'approved' && (
+                        <>
+                          <button
+                            onClick={() => handleUpdateStatus('preparing')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
+                            Iniciar Separação
+                          </button>
+                          <button
+                            onClick={() => handleUpdateStatus('cancelled')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                            Cancelar (Restaurar Estoque)
+                          </button>
+                        </>
+                      )}
+
+                      {selectedOrder.status === 'preparing' && (
+                        <>
+                          <button
+                            onClick={() => handleUpdateStatus('dispatched')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />}
+                            Despachar Pedido
+                          </button>
+                          <button
+                            onClick={() => handleUpdateStatus('cancelled')}
+                            disabled={isUpdatingStatus}
+                            className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                            Cancelar (Restaurar Estoque)
+                          </button>
+                        </>
+                      )}
+
+                      {selectedOrder.status === 'dispatched' && (
+                        <button
+                          onClick={() => handleUpdateStatus('delivered')}
+                          disabled={isUpdatingStatus}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isUpdatingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                          Confirmar Entrega (Concluir)
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Modal Footer Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  onClick={handlePrintSlip}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" /> Imprimir
-                </button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 no-print border-t border-slate-100">
+                {pdfError ? (
+                  <span className="text-xs text-rose-600 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {pdfError}
+                  </span>
+                ) : <div />}
 
-                <button
-                  onClick={() => setSelectedOrder(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
-                >
-                  Fechar
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleGeneratePdf}
+                    disabled={isGeneratingPdf}
+                    className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Gerar documento PDF administrativo oficial"
+                  >
+                    {isGeneratingPdf ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Gerando PDF...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3.5 h-3.5" /> Gerar PDF
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handlePrintSlip}
+                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    title="Imprimir comprovante do pedido"
+                  >
+                    <Printer className="w-3.5 h-3.5" /> Imprimir
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedOrder(null);
+                      setStatusError(null);
+                      setPdfError(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
 
             </div>

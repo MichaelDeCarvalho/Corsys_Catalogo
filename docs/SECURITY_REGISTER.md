@@ -152,3 +152,34 @@
     - Zero concessão para `service_role` nesta etapa por não existir gateway server-side ativo consumindo a RPC (menor privilégio estrito).
     - Função física preservada no banco para integridade e rollback; futura integração administrativa deverá estabelecer arquitetura server-side explícita antes de qualquer novo GRANT.
     - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por papéis de API.
+
+## 9. Gestão Administrativa de Pedidos V2 — Ciclo de Vida Server-Side, Transacionalidade de Estoque e PDF (Migration 000014 / ADR 009)
+- **Status:** **MIGRATION 000014 PREPARADA NO WORKSPACE (FORWARD-ONLY / PRE-SYNC) | EDGE FUNCTIONS VERIFICADAS EM TESTES AUTOMATIZADOS**
+- **Migration 000014 (Forward-Only):**
+  - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
+  - Reafirma defensivamente o bloqueio total da RPC legada `manage_order_status(UUID, TEXT)` sem execução para nenhum papel (`PUBLIC`, `anon`, `authenticated`, `service_role`).
+  - Cria `public.manage_order_status_internal(p_order_id UUID, p_new_status TEXT, p_actor_user_id UUID)` com `SECURITY DEFINER`, `SET search_path = ''`.
+  - Permissões restritas: `REVOKE ALL FROM PUBLIC, anon, authenticated; GRANT EXECUTE TO service_role;`.
+  - Trava pessimista `FOR UPDATE` na linha do pedido.
+  - Validação estrita do operador (`p_actor_user_id`): `platform_admin` ou `tenant_admin`/`stock_manager` do mesmo tenant. Operadores `sales_rep` e cross-tenant são expressamente rejeitados (erro `42501`).
+  - Trava pessimista de produtos ordenada por `productId UUID ASC` para prevenir deadlocks.
+  - Controle atômico de estoque: débito na aprovação (`pending -> approved`) e estorno controlado no cancelamento (`approved/preparing -> cancelled`).
+  - Retorno mínimo sanitizado sem PII: `{ id, order_number, status, updated_at }`.
+- **Edge Functions Gateway Segregadas (Responsabilidade Única):**
+  - **`manage-order-status`:**
+    - Declarada com `verify_jwt = true` em `supabase/config.toml`.
+    - Payload JSON rigorosamente restrito a `{ "orderId": string, "newStatus": string }` com limite de 4 KB (rejeita chaves extras, `action`, `role` ou identificadores de usuário).
+    - Validação de sessão e derivação estrita do `actorUserId` server-side via `auth.getUser()`.
+    - Chamada à RPC interna via client com credenciais `service_role`.
+    - Mapeamento e sanitização de erros PostgreSQL (400, 403, 404, 409, 500).
+  - **`generate-admin-order-pdf`:**
+    - Declarada com `verify_jwt = true` em `supabase/config.toml`.
+    - Payload JSON rigorosamente restrito a `{ "orderId": string }` com limite de 4 KB.
+    - **Autorização RLS Contextual:** Leitura do pedido executada exclusivamente via client autenticado com o token do usuário (`Authorization: Bearer <token>`). A RLS decide a autorização de leitura — permitindo que operadores autorizados pela RLS (incluindo `sales_rep`) gerem o PDF.
+    - Se a RLS não retornar a linha do pedido, responde com 404 sanitizado sem vazar metadados entre tenants.
+    - **Service Role estritamente pós-leitura:** Invocada apenas após leitura autorizada para renderizar os bytes via `generateOrderPdf`, gravar no bucket privado `order-documents` (`<tenant_id>/orders/<order_id>/pedido-<order_number>.pdf`) e emitir Signed URL temporária.
+    - **TTL de Signed URL:** Exatamente 600 segundos (10 minutos). Zero log de URLs assinadas.
+- **Frontend & Proibição de Hard Delete:**
+  - `src/services/adminOrderService.ts` isola as chamadas entre `updateAdminOrderStatus` e `generateAdminOrderPdf` sem envio de `action`.
+  - Zero métodos `.delete()` no frontend administrativo; registros transacionais de pedidos permanecem auditáveis e imutáveis contra deleção física.
+

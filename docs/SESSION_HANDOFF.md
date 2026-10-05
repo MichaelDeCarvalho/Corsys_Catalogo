@@ -358,34 +358,36 @@ Não deployado por esta adoção.
 
 ---
 
-## 7. Admin Orders V1 — Integração Real Read-Only (Supabase RLS)
-- **Status:** **CONCLUÍDO NO WORKSPACE / READ-ONLY / CI PASS**.
+## 7. Admin Orders V2 — Ciclo de Vida Server-Side, Controle de Estoque, Impressão e PDF
+- **Status:** **CONCLUÍDO NO WORKSPACE / CI PASS / PRE-SYNC**.
 - **Contexto Operacional:**
   - O checkout real persiste pedidos em `public.orders` (ex: `PED-20260930-000001`, `PED-20260930-000002`, `PED-20261001-000003`).
-  - O painel administrativo anterior usava `AppContext` com `localStorage` e `INITIAL_ORDERS` (`PED-2025-0841`, `PED-2025-0842`).
-- **Arquitetura Implementada:**
-  - O painel agora lê EXCLUSIVAMENTE `public.orders` via Supabase Client autenticado sob proteção de RLS (`orders_select_tenant_admin` / `platform_admin`).
+  - Mocks continuam 100% segregados fora do painel administrativo.
   - `TenantDashboard` resolve o UUID real do tenant (`resolveTargetTenantId`) e executa `fetchAdminOrders(tenantId)`.
-  - Mocks deixam de alimentar a superfície administrativa e permanecem estritamente isolados.
   - O único *source of truth* para KPIs e listagem é `adminOrders` no `TenantDashboard`.
-  - `OrderManager` é puramente props-driven (`orders`, `loading`, `error`, `onReload`).
-  - Status administrativo permanece **estritamente read-only** nesta etapa (sem optimistic updates, sem mutação em memória e sem `.update()`).
-  - Hard delete não existe; pedidos reais permanecem 100% auditáveis e preservados.
-- **Contrato Real do Checkout V1 & Adapter Fail-Closed:**
-  - Em `src/types.ts` e `src/services/adminOrderService.ts`, o contrato reflete fielmente o schema do Checkout V1:
-    - `customer.name`, `customer.phone`, `customer.type` são obrigatórios não-vazios; `customer.email`, `customer.document`, `customer.companyName` são opcionais (podem estar ausentes, null ou vazios sem quebrar o parsing).
-    - `shippingAddress.street` é obrigatória não-vazia; `number`, `complement`, `neighborhood`, `city`, `state`, `zipCode` são opcionais (podem estar ausentes, null ou vazios sem mascaramento ou invenção de dados como `'S/N'`).
-    - Validação Fail-Closed preservada para objetos nulos/não-objeto, strings obrigatórias ausentes, UUIDs inválidos, status/meio de pagamento inválidos e valores financeiros negativos/NaN.
-    - Testes dedicados sem PII em `scripts/test-admin-orders-points.ts` cobrem os novos contratos e casos de rejeição (total de 85 testes).
-- **Integração no CI (Gate Remoto de Qualidade):**
-  - Scripts `test:regression` e `check` configurados em `package.json` encadeando todas as 7 suítes.
-  - Execução validada com `bun run check` retornando exit code 0.
-- **Governança de Migrations:**
-  - Nenhuma migration nova criada (zero 000014).
-  - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
-  - RLS, grants e `manage_order_status` permanecem intocados.
-- **Transição para ADMIN ORDERS V2:**
-  - A mutação segura de status e o cancelamento operacional de pedidos ficam explicitamente pendentes para ADMIN ORDERS V2 via Edge Function administrativa + RPC interna server-side com credenciais de `service_role`.
-  - Nenhum ADR 008 criado nesta etapa (será registrado na V2 com a arquitetura server-side de mutação).
+  - `OrderManager` é props-driven (`orders`, `loading`, `error`, `onReload`).
+- **Arquitetura Implementada (V2):**
+  - **Migration 000014:** `supabase/migrations/20261005170000_000014_admin_order_management.sql`.
+    - RPC `public.manage_order_status_internal(p_order_id UUID, p_new_status TEXT, p_actor_user_id UUID)` com `SECURITY DEFINER` e execução restrita exclusivamente a `service_role`.
+    - Reafirmação de bloqueio da RPC legada `public.manage_order_status(UUID, TEXT)`.
+    - Trava pessimista `FOR UPDATE` na linha do pedido e autorização server-side do operador (`platform_admin` ou `tenant_admin`/`stock_manager` do mesmo tenant; `sales_rep` negado).
+    - Locks pessimistas de produtos ordenados por UUID evitam deadlock.
+    - Transição `pending -> approved` debita estoque atomicamente; transições `approved/preparing -> cancelled` restauram o estoque uma única vez.
+    - Estados `delivered` e `cancelled` são terminais irreversíveis.
+  - **Edge Functions Gateway Segregadas:**
+    - `supabase/functions/manage-order-status/index.ts`: Responsabilidade única de ciclo de vida. Payload exato `{ orderId, newStatus }`. Deriva ator server-side via `auth.getUser()` e delega para RPC interna com `service_role`.
+    - `supabase/functions/generate-admin-order-pdf/index.ts`: Função dedicada com payload exato `{ orderId }`. Autorização de leitura via RLS no contexto do JWT do operador (permite `sales_rep`). Service role estritamente pós-leitura para persistir no bucket `order-documents` e emitir Signed URL com TTL de **exatamente 600 segundos**.
+    - Ambas declaradas com `verify_jwt = true` em `supabase/config.toml`.
+  - **Impressão Isolada & PDF Administrativo:**
+    - Estilos `@media print` no `src/index.css` isolam `#printable-order-slip`, anulam fundos de backdrop/sidebars e ocultam botões e controles via `.no-print`.
+    - Botão "Gerar PDF" no `OrderManager` consome `generateAdminOrderPdf` e abre o documento em nova aba.
+  - **Serviços & Contrato:**
+    - `updateAdminOrderStatus` e `generateAdminOrderPdf` exportados em `src/services/adminOrderService.ts`.
+    - Proibição absoluta de hard delete (`.delete()`) mantida.
+- **Governança & Gate de Qualidade:**
+  - Registrado no ADR 009 (`docs/adr/ADR_009_ADMIN_ORDERS_V2_LIFECYCLE_AND_STOCK.md`).
+  - 14 migrations rastreadas com prefixos de versão estritamente únicos.
+  - `bun run check` (lint + build + 7 suítes de teste de regressão, totalizando 695 testes) validado com exit code 0.
+
 
 

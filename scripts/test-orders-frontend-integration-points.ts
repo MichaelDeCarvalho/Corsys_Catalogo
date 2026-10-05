@@ -912,7 +912,7 @@ assert(
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 13 &&
+  migrationFiles.length >= 13 &&
   fs.existsSync('supabase/migrations/20260928_000010_orders_checkout_v1.sql') &&
   fs.existsSync('supabase/migrations/20260929_000011_orders_checkout_hardening.sql') &&
   fs.existsSync('supabase/migrations/20260930_000012_order_documents_storage.sql') &&
