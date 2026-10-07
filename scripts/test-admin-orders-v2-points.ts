@@ -503,9 +503,9 @@ assert(
 );
 
 assert(
-  orderManagerCode.includes('onReload()') &&
-  orderManagerCode.includes('updateAdminOrderStatus'),
-  'OrderManager dispara recarga autoritativa onReload() após sucesso de status'
+  orderManagerCode.includes('updateAdminOrderStatus') &&
+  (orderManagerCode.includes('onStatusChanged') || orderManagerCode.includes('onReload')),
+  'OrderManager dispara recarga autoritativa após sucesso de status'
 );
 
 assert(
@@ -521,55 +521,158 @@ assert(
 );
 
 // =========================================================================
-// 8. PRINT MEDIA AUDIT
+// 8. PRINT PORTAL & DOCUMENT AUDIT
 // =========================================================================
-console.log('\n8. Auditoria de Impressão e Estilos @media print');
+console.log('\n8. Auditoria de Impressão (OrderPrintDocument & Portal Fora do Modal)');
+
+const printDocPath = 'src/components/tenantadmin/OrderPrintDocument.tsx';
+assert(fs.existsSync(printDocPath), 'OrderPrintDocument.tsx existe');
+const printDocCode = fs.readFileSync(printDocPath, 'utf-8');
+
+assert(
+  orderManagerCode.includes('createPortal') &&
+  orderManagerCode.includes("from 'react-dom'"),
+  'OrderManager importa createPortal de react-dom'
+);
+
+assert(
+  orderManagerCode.includes('OrderPrintDocument'),
+  'OrderManager importa OrderPrintDocument'
+);
+
+assert(
+  orderManagerCode.includes('createPortal(') &&
+  orderManagerCode.includes('document.body'),
+  'createPortal renderiza diretamente em document.body'
+);
+
+assert(
+  orderManagerCode.includes('id="order-print-root"'),
+  'Elemento container com id="order-print-root" existe'
+);
+
+assert(
+  !orderManagerCode.includes('id="printable-order-slip"'),
+  '#order-print-root não está dentro do modal (antigo printable-order-slip removido do modal)'
+);
 
 const indexCssPath = 'src/index.css';
 assert(fs.existsSync(indexCssPath), 'src/index.css existe');
 const indexCss = fs.readFileSync(indexCssPath, 'utf-8');
 
 assert(
-  orderManagerCode.includes('id="printable-order-slip"'),
-  'Elemento com id="printable-order-slip" existe no OrderManager'
+  !indexCss.includes('body *') || !indexCss.includes('visibility: hidden'),
+  'Antiga estratégia body * { visibility: hidden } foi removida do src/index.css'
 );
 
 assert(
-  indexCss.includes('@media print'),
-  '@media print declarado no src/index.css'
-);
-
-assert(
-  indexCss.includes('body *') &&
-  indexCss.includes('visibility: hidden'),
-  'Interface administrativa padrão escondida em @media print'
-);
-
-assert(
-  indexCss.includes('size: A4'),
-  'Tamanho A4 configurado para impressão'
-);
-
-assert(
-  indexCss.includes('margin: 15mm'),
-  '@page margin explícita configurada'
-);
-
-assert(
-  indexCss.includes('break-inside: avoid') ||
-  indexCss.includes('page-break-inside: avoid'),
-  'break-inside: avoid configurado para blocos de impressão'
-);
-
-assert(
-  indexCss.includes('.no-print') &&
+  indexCss.includes('body > #root') &&
   indexCss.includes('display: none !important'),
-  'Botões e controles interativos ocultados via .no-print'
+  'body > #root configurado com display: none !important em @media print'
 );
 
 assert(
-  !orderManagerCode.includes('dangerouslySetInnerHTML'),
-  'Zero uso de dangerouslySetInnerHTML no OrderManager'
+  indexCss.includes('#order-print-root') &&
+  indexCss.includes('display: block !important'),
+  '#order-print-root configurado com display: block !important em @media print'
+);
+
+assert(
+  indexCss.includes('position: static !important'),
+  '#order-print-root utiliza position: static !important na impressão'
+);
+
+assert(
+  indexCss.includes('size: A4 portrait'),
+  '@page configurado com size: A4 portrait'
+);
+
+assert(
+  indexCss.includes('@page') &&
+  indexCss.includes('margin: 10mm'),
+  '@page configurado com margem explícita de 10mm'
+);
+
+assert(
+  indexCss.includes('break-inside: avoid !important') ||
+  indexCss.includes('page-break-inside: avoid !important'),
+  'break-inside: avoid !important configurado para quebra de página controlada'
+);
+
+assert(
+  !orderManagerCode.includes('dangerouslySetInnerHTML') &&
+  !printDocCode.includes('dangerouslySetInnerHTML'),
+  'Zero uso de dangerouslySetInnerHTML em OrderManager e OrderPrintDocument'
+);
+
+// =========================================================================
+// 9. DATA FRESHNESS & AUTO-REFRESH AUDIT
+// =========================================================================
+console.log('\n9. Auditoria de Frescor de Dados & Auto-Refresh');
+
+const tenantDashboardPath = 'src/components/tenantadmin/TenantDashboard.tsx';
+assert(fs.existsSync(tenantDashboardPath), 'TenantDashboard.tsx existe');
+const tenantDashboardCode = fs.readFileSync(tenantDashboardPath, 'utf-8');
+
+assert(
+  tenantDashboardCode.includes('handleOrderStatusChanged') &&
+  tenantDashboardCode.includes('loadAdminOrders') &&
+  tenantDashboardCode.includes('loadAdminProducts'),
+  'TenantDashboard possui callback handleOrderStatusChanged recarregando orders e products'
+);
+
+assert(
+  tenantDashboardCode.includes('onStatusChanged={handleOrderStatusChanged}') &&
+  orderManagerCode.includes('onStatusChanged'),
+  'OrderManager recebe callback pós-status onStatusChanged'
+);
+
+assert(
+  orderManagerCode.includes('updateAdminOrderStatus') &&
+  orderManagerCode.includes('onStatusChanged'),
+  'Recarga ocorre após confirmação de sucesso de updateAdminOrderStatus pelo servidor'
+);
+
+assert(
+  tenantDashboardCode.includes("window.addEventListener('focus'") ||
+  tenantDashboardCode.includes('addEventListener("focus"'),
+  'Listener de window focus implementado para auto-refresh'
+);
+
+assert(
+  tenantDashboardCode.includes("document.addEventListener('visibilitychange'") ||
+  tenantDashboardCode.includes('addEventListener("visibilitychange"'),
+  'Listener de document visibilitychange implementado para auto-refresh'
+);
+
+assert(
+  tenantDashboardCode.includes("window.removeEventListener('focus'") &&
+  tenantDashboardCode.includes("document.removeEventListener('visibilitychange'"),
+  'Cleanup obrigatório remove listeners de focus e visibilitychange'
+);
+
+assert(
+  tenantDashboardCode.includes('lastRefreshAtRef') &&
+  (tenantDashboardCode.includes('800') || tenantDashboardCode.includes('500') || tenantDashboardCode.includes('1000')),
+  'Guarda anti-refresh duplicado (throttle timestamp) implementada'
+);
+
+assert(
+  !tenantDashboardCode.includes('setInterval(') &&
+  !orderManagerCode.includes('setInterval('),
+  'Ausência total de setInterval (sem polling ineficiente)'
+);
+
+assert(
+  !tenantDashboardCode.includes('supabase.channel') &&
+  !orderManagerCode.includes('supabase.channel'),
+  'Ausência de supabase.channel nesta fase'
+);
+
+assert(
+  !tenantDashboardCode.includes('postgres_changes') &&
+  !orderManagerCode.includes('postgres_changes'),
+  'Ausência de postgres_changes nesta fase'
 );
 
 // =========================================================================

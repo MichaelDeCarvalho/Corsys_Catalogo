@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Building2, 
   Package, 
@@ -44,6 +44,9 @@ export const TenantDashboard: React.FC = () => {
   const [adminOrders, setAdminOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState<boolean>(true);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+
+  // Timestamp de guarda anti-duplicação de refresh (focus + visibilitychange concorrentes)
+  const lastRefreshAtRef = useRef<number>(0);
 
   /**
    * Resolução segura de Tenant UUID Administrativo:
@@ -123,10 +126,61 @@ export const TenantDashboard: React.FC = () => {
     }
   }, [resolveTargetTenantId]);
 
+  /**
+   * Recarga unificada de dados administrativos (pedidos e catálogo/estoque).
+   * Utiliza throttle de 800ms para evitar requisições duplicadas.
+   */
+  const refreshAdminData = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastRefreshAtRef.current < 800) {
+      return;
+    }
+    lastRefreshAtRef.current = now;
+    await Promise.all([
+      loadAdminProducts(),
+      loadAdminOrders()
+    ]);
+  }, [loadAdminProducts, loadAdminOrders]);
+
+  /**
+   * Callback disparado após alteração autoritativa de status de pedido.
+   * Recarrega concorrentemente pedidos e estoque para manter dados frescos.
+   */
+  const handleOrderStatusChanged = useCallback(async () => {
+    await Promise.all([
+      loadAdminOrders(),
+      loadAdminProducts()
+    ]);
+  }, [loadAdminOrders, loadAdminProducts]);
+
   useEffect(() => {
     loadAdminProducts();
     loadAdminOrders();
   }, [loadAdminProducts, loadAdminOrders]);
+
+  /**
+   * Auto-refresh por foco da janela e mudança de visibilidade da aba.
+   * Mantém o estoque e pedidos atualizados mesmo com alterações em outras abas.
+   */
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshAdminData();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAdminData();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshAdminData]);
 
   const displayTenantName = authTenant?.name || currentTenant.name;
   const displayTenantSlug = authTenant?.slug || currentTenant.slug;
@@ -371,6 +425,7 @@ export const TenantDashboard: React.FC = () => {
             loading={ordersLoading}
             error={ordersError}
             onReload={loadAdminOrders}
+            onStatusChanged={handleOrderStatusChanged}
           />
         )}
         {activeTab === 'wholesale_customers' && <WholesaleCustomerManager />}

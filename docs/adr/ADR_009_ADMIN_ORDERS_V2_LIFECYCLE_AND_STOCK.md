@@ -62,11 +62,23 @@ Desafios e Requisitos da V2:
   - **Uso de service_role estritamente pós-leitura:** Renderiza bytes via `generateOrderPdf`, armazena com upsert em `order-documents` no path `<tenant_id>/orders/<order_id>/pedido-<order_number>.pdf` e emite Signed URL com TTL de **exatamente 600 segundos (10 minutos)**.
   - Zero log de Signed URLs.
 
-### 4. Correção de Impressão via CSS (`@media print`)
-- Em `src/index.css`, regras isolam `#printable-order-slip` com fundo branco limpo e anulam fundos de backdrop, modal overlays, sidebars e cabeçalhos.
-- Todos os controles interativos (fechar, notificar, transições de status e rodapé) recebem `.no-print`.
+### 4. Arquitetura de Impressão Isolada (Portal Fora do DOM da Aplicação)
+- Em `src/components/tenantadmin/OrderPrintDocument.tsx`: componente estritamente dedicado ao documento de impressão (sem modal, sem overlay, sem fixed/absolute posicional, sem handlers/botões e sem `dangerouslySetInnerHTML`).
+- Em `src/components/tenantadmin/OrderManager.tsx`: renderizado via `createPortal(<div id="order-print-root"><OrderPrintDocument ... /></div>, document.body)` fora de `#root` e de containers `.fixed`.
+- Em `src/index.css`:
+  - Removida a estratégia legada `body * { visibility: hidden }`.
+  - Screen: `#order-print-root { display: none; }`.
+  - `@media print`: `body > #root { display: none !important; }`, `#order-print-root { display: block !important; position: static !important; }`, `@page { size: A4 portrait; margin: 10mm; }`, `.print-avoid-break { break-inside: avoid !important; }`.
 
-### 5. Frontend & Serviços
+### 5. Frescor de Dados e Auto-Refresh de Estoque & Pedidos
+- `src/components/tenantadmin/TenantDashboard.tsx`:
+  - Callback `handleOrderStatusChanged`: recarrega atomicamente `loadAdminOrders()` e `loadAdminProducts()`.
+  - Passado via prop `onStatusChanged` para `OrderManager`.
+  - Auto-refresh de janela/aba com listeners em `window.addEventListener('focus')` e `document.addEventListener('visibilitychange')`.
+  - Guarda anti-duplicação via `lastRefreshAtRef` (throttle de 800ms) e cleanup obrigatório em desmontagem.
+  - Zero polling (`setInterval`), zero `supabase.channel` e zero `postgres_changes`.
+
+### 6. Frontend & Serviços
 - `src/services/adminOrderService.ts`:
   - `updateAdminOrderStatus(orderId, newStatus)`: invoca exclusivamente `manage-order-status` com validação fail-closed.
   - `generateAdminOrderPdf(orderId)`: invoca exclusivamente `generate-admin-order-pdf` com validação fail-closed.
@@ -76,15 +88,23 @@ Desafios e Requisitos da V2:
   - Botões contextuais de transição de status para estados válidos.
   - Indicador de estado terminal para pedidos entregues ou cancelados.
   - Botão oficial "Gerar PDF" integrado com download/abertura em nova aba.
-  - Botão "Imprimir" isolando o slip.
+  - Botão "Imprimir" aciona `window.print()` renderizando o portal dedicado.
   - Proibição contínua de hard delete (zero chamadas a `.delete()`).
 
-## Consequências
-- **Positivas:**
-  - Fluxo ponta a ponta de ciclo de vida de pedidos operacional, seguro e idempotente.
-  - Integridade de estoque garantida a nível transacional no banco com proteção contra race conditions.
-  - Bucket `order-documents` permanece 100% privado com zero client policies.
-  - Documentos e impressões de pedidos com visual limpo e profissional.
-- **Governança:**
-  - 14 migrations rastreadas e versionadas com prefixos únicos.
-  - Suite de regressão completa (7 suítes, 695 testes) aprovada com 100% de sucesso no `bun run check`.
+## Validação de Runtime e Governança
+- **Status da Migration 000014:** APLICADA / FROZEN.
+- **Edge Functions:**
+  - `manage-order-status`: ACTIVE v1 / `verify_jwt = true`.
+  - `generate-admin-order-pdf`: ACTIVE v1 / `verify_jwt = true`.
+- **Runtime Evidenciado em Produção/Hosted:**
+  - Controles de status: PASS.
+  - Débito transacional de estoque (`pending -> approved`): PASS.
+  - Cancelamento de pedido (`approved -> cancelled`): PASS.
+  - Restauração de estoque (`approved -> cancelled`): PASS.
+  - Emissão e download de PDF oficial: PASS.
+- **Itens do Hotfix de Impressão e Frescor:**
+  - Impressão isolada em página única via Portal (`OrderPrintDocument`): **PENDING RUNTIME REVALIDATION**.
+  - Refresh de estoque na mesma sessão pós-status: **PENDING RUNTIME REVALIDATION**.
+  - Auto-refresh em outra aba via focus/visibilitychange: **PENDING RUNTIME REVALIDATION**.
+- **Regressão Automatizada:**
+  - 8 suítes de regressão (793 testes) aprovadas com 100% de sucesso no `bun run check`.

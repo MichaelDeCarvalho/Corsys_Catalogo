@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ShoppingCart, 
   Search, 
@@ -22,19 +23,22 @@ import { useApp } from '../../context/AppContext';
 import { Order, OrderStatus } from '../../types';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import { updateAdminOrderStatus, generateAdminOrderPdf } from '../../services/adminOrderService';
+import { OrderPrintDocument } from './OrderPrintDocument';
 
 export interface OrderManagerProps {
   orders: Order[];
   loading: boolean;
   error: string | null;
   onReload: () => void;
+  onStatusChanged?: () => void | Promise<void>;
 }
 
 export const OrderManager: React.FC<OrderManagerProps> = ({
   orders,
   loading,
   error,
-  onReload
+  onReload,
+  onStatusChanged
 }) => {
   const { currentTenant, currentUser } = useApp();
 
@@ -132,7 +136,11 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
     try {
       const updated = await updateAdminOrderStatus(selectedOrder.id, newStatus);
       setSelectedOrder(prev => prev ? { ...prev, status: updated.status, updatedAt: updated.updatedAt } : null);
-      onReload();
+      if (onStatusChanged) {
+        await onStatusChanged();
+      } else {
+        onReload();
+      }
     } catch (err: unknown) {
       console.error('[OrderManager] Falha ao atualizar status:', err);
       setStatusError(err instanceof Error ? err.message : 'Falha ao processar atualização de status.');
@@ -473,7 +481,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
       {/* Order Detail Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
-          <div id="printable-order-slip" className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
             
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 rounded-t-2xl">
               <div>
@@ -796,6 +804,17 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
 
           </div>
         </div>
+      )}
+
+      {/* Print Document Portal - Renderizado fora de #root e de containers fixed */}
+      {selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div id="order-print-root">
+          <OrderPrintDocument
+            order={selectedOrder}
+            storeName={currentTenant?.name || 'OmniCatálogo'}
+          />
+        </div>,
+        document.body
       )}
 
     </div>

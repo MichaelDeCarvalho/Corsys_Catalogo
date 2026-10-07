@@ -123,29 +123,37 @@
   - `TenantDashboard` resolve o UUID real do tenant via `resolveTargetTenantId()` e invoca `fetchAdminOrders(tenantId)`. KPIs de faturamento, total de pedidos e novos pedidos pendentes derivam 100% dos dados reais do banco.
   - `OrderManager` é componente props-driven (`orders`, `loading`, `error`, `onReload`).
   - Contrato real fail-closed com campos opcionais seguros (`number`, `complement`, `neighborhood`, `city`, `state`, `zipCode`, `email`, `document`, `companyName`).
-- **Admin Orders V2:** **PRE-SYNC**.
-  - **Migration 000014:** `supabase/migrations/20261005170000_000014_admin_order_management.sql` = **PRE-SYNC / NOT APPLIED**.
+- **Admin Orders V2:** **PUBLICADO / RUNTIME VALIDATED / HOTFIX CONSOLIDADO**.
+  - **Migration 000014:** `supabase/migrations/20261005170000_000014_admin_order_management.sql` = **APLICADA / CONGELADA NO SUPABASE HOSTED**.
   - **RPC Interna Segura:** `public.manage_order_status_internal(p_order_id, p_new_status, p_actor_user_id)` com `SECURITY DEFINER`, `search_path = ''` e privilégios concedidos exclusivamente a `service_role`.
   - Reafirmação defensiva de revogação da RPC legada `manage_order_status` para `PUBLIC`, `anon`, `authenticated` e `service_role`.
   - **Controle Transacional de Estoque:** Locks pessimistas ordenados por UUID em produtos para débito atômico na aprovação (`pending -> approved`) e estorno no cancelamento (`approved/preparing -> cancelled`).
   - Estados `delivered` e `cancelled` são terminais irreversíveis.
-  - **Edge Function `manage-order-status`:** **NOVA EDGE AUTENTICADA PRE-SYNC**.
+  - **Edge Function `manage-order-status`:** **ACTIVE v1 / verify_jwt = true**.
     - Declarada com `verify_jwt = true` em `supabase/config.toml`.
     - Responsabilidade única de ciclo de vida: payload exato `{ orderId, newStatus }` (<= 4 KB).
     - Derivação do operador server-side via `auth.getUser()`.
     - Invocação da RPC interna com credenciais `service_role` e retorno mínimo sem PII.
-  - **Edge Function `generate-admin-order-pdf`:** **NOVA EDGE AUTENTICADA PRE-SYNC**.
+  - **Edge Function `generate-admin-order-pdf`:** **ACTIVE v1 / verify_jwt = true**.
     - Declarada com `verify_jwt = true` em `supabase/config.toml`.
     - Payload exato `{ orderId }` (<= 4 KB).
     - **Autorização de Leitura via RLS:** Pedido consultado primeiro no contexto do JWT do operador; RLS autoriza (permitindo que `sales_rep` gere o PDF).
     - `service_role` executada estritamente pós-leitura autorizada para salvar no bucket `order-documents` e gerar Signed URL com **validade de exatamente 600 segundos**.
     - Zero logging de Signed URLs.
-  - **Impressão Isolada:**
-    - Estilos `@media print` no `src/index.css` isolando `#printable-order-slip` em folha A4 com fundo limpo.
-    - Ocultação completa de cabeçalhos, sidebars, modais backdrop e botões de ação com `.no-print`.
+  - **Validação de Runtime Hosted:**
+    - Controles de status: PASS.
+    - Débito transacional de estoque: PASS.
+    - Cancelamento e estorno de estoque: PASS.
+    - Emissão e download de PDF oficial: PASS.
+  - **Hotfix de Impressão e Frescor de Dados:**
+    - Portal de impressão isolado fora da hierarquia React/Modal (`OrderPrintDocument` + `createPortal` para `document.body` com `#order-print-root`). PENDING RUNTIME REVALIDATION.
+    - Ocultação de `#root` na impressão (`body > #root { display: none !important }`) e regras `@media print` com A4 portrait.
+    - Callback `handleOrderStatusChanged` recarregando concorrentemente pedidos e produtos após mutação de status. PENDING RUNTIME REVALIDATION.
+    - Auto-refresh de janela/aba via `focus` e `visibilitychange` com throttle de 800ms (`lastRefreshAtRef`). PENDING RUNTIME REVALIDATION.
+    - Proibição de `setInterval` e Realtime (`supabase.channel`, `postgres_changes`).
   - **Hard Delete Proibido:** Permanece estritamente vedada a exclusão física de pedidos (`.delete()`); histórico transacional auditável.
   - **Gate de Qualidade CI:**
-    - `bun run test:regression` e `bun run check` encadeando 8 suítes com 100% de aprovação. Registrado no ADR 009.
+    - `bun run test:regression` e `bun run check` encadeando 8 suítes (793 testes) com 100% de aprovação. Registrado no ADR 009.
 
 ## 9. Governança de Engenharia — ECC (2026-10-02)
 - **Gerenciador de Pacotes:** `bun@1.4.2` especificado no `package.json`.

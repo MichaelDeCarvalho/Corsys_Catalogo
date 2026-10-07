@@ -361,13 +361,19 @@
     - **Autorização RLS Contextual:** O pedido é consultado via client no contexto do JWT do operador. A RLS do PostgreSQL decide a autorização de leitura — permitindo que operadores autorizados (incluindo `sales_rep`) gerem o PDF.
     - **Service Role estritamente pós-leitura autorizada:** Gera os bytes do PDF com `generateOrderPdf` (`_shared/orderPdf.ts`), faz upload com upsert no bucket privado `order-documents` (`<tenant_id>/orders/<order_id>/pedido-<order_number>.pdf`) e emite Signed URL com validade de **exatamente 600 segundos (10 minutos)**.
     - Zero log de Signed URLs.
-- **Impressão Isolada & PDF Administrativo:**
-  - `@media print` no `src/index.css` isola o elemento `#printable-order-slip` com fundo branco, anula fundos de backdrop/sidebars e oculta controles de navegação e botões através da classe `.no-print`.
-  - Botão "Gerar PDF" no modal de detalhes consome `generateAdminOrderPdf(orderId)` e abre o arquivo oficial em nova aba.
+- **Impressão Isolada (Portal Fora do DOM da Aplicação):**
+  - Componente dedicado `src/components/tenantadmin/OrderPrintDocument.tsx` renderizado via `createPortal(<div id="order-print-root"><OrderPrintDocument ... /></div>, document.body)` em `src/components/tenantadmin/OrderManager.tsx`.
+  - `@media print` no `src/index.css` oculta a árvore padrão da aplicação (`body > #root { display: none !important }`) e exibe exclusivamente `#order-print-root` com `position: static !important` e `@page { size: A4 portrait; margin: 10mm; }`.
+  - Quebras de página controladas via `break-inside: avoid !important` para cada bloco/item.
+- **Frescor de Dados & Auto-Refresh (Estoque e Pedidos):**
+  - Callback `handleOrderStatusChanged` em `TenantDashboard.tsx` recarrega atomicamente `loadAdminOrders()` e `loadAdminProducts()`, passado para `OrderManager`.
+  - Auto-refresh de janela/aba com listeners em `window.addEventListener('focus')` e `document.addEventListener('visibilitychange')`.
+  - Proteção anti-duplicação de refresh via throttle de 800ms (`lastRefreshAtRef`) e cleanup completo de listeners.
+  - Zero polling (`setInterval`), zero `supabase.channel` e zero `postgres_changes`.
 - **Ausência de Hard Delete:**
   - Permanece expressamente proibida a exclusão de pedidos (`.delete()`); registros transacionais permanecem auditáveis.
 - **Gate de Qualidade Unificado:**
-  - 100% de aprovação nas 7 suítes de regressão (695 testes) via `bun run check`.
+  - 100% de aprovação nas 8 suítes de regressão (793 testes) via `bun run check`.
 
 ---
 

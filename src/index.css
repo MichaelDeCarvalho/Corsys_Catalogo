@@ -12,48 +12,39 @@
   --text-muted: #475569;
 }
 
+/* Default / Screen: esconde o root de impressão */
+#order-print-root {
+  display: none;
+}
+
 @media print {
   @page {
-    size: A4;
-    margin: 15mm;
+    size: A4 portrait;
+    margin: 10mm;
   }
 
-  /* Oculta toda a interface padrão da página durante a impressão */
-  body * {
-    visibility: hidden;
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
   }
 
-  /* Anula fundos de backdrop, modal overlays, sidebars e containers fixos */
-  header,
-  aside,
-  nav,
-  .fixed,
-  [role="dialog"] {
-    background: transparent !important;
-    backdrop-filter: none !important;
-    box-shadow: none !important;
+  /* Oculta toda a aplicação React no #root durante a impressão */
+  body > #root {
+    display: none !important;
   }
 
-  /* Exibe exclusivamente o comprovante do pedido selecionado */
-  #printable-order-slip,
-  #printable-order-slip * {
-    visibility: visible;
-  }
-
-  /* Posiciona o pedido limpo na folha A4 com fundo branco sem overlays de modal */
-  #printable-order-slip {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    background: #ffffff !important;
-    color: #0f172a !important;
-    box-shadow: none !important;
-    border: none !important;
+  /* Exibe exclusivamente o portal de impressão fora do #root e fora de modals */
+  #order-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
-    max-height: none !important;
+    background: white !important;
   }
 
   /* Evita quebras de página desagradáveis em blocos e itens de pedidos */
@@ -62,7 +53,7 @@
     page-break-inside: avoid !important;
   }
 
-  /* Remove botões de fechar, gerar PDF, imprimir e ações interativas no impresso */
+  /* Remove botões e elementos interativos no impresso */
   .no-print,
   .no-print * {
     display: none !important;

@@ -555,9 +555,9 @@ assert(
 );
 
 assert(
-  orderManagerContent.includes('id="printable-order-slip"') &&
+  (orderManagerContent.includes('id="order-print-root"') || orderManagerContent.includes('id="printable-order-slip"')) &&
   orderManagerContent.includes('handlePrintSlip'),
-  'OrderManager isola comprovante para impressão via #printable-order-slip'
+  'OrderManager isola comprovante para impressão via #order-print-root'
 );
 
 assert(
@@ -705,7 +705,7 @@ assert(
 const indexCssContent = fs.readFileSync('src/index.css', 'utf-8');
 assert(
   indexCssContent.includes('@media print') &&
-  indexCssContent.includes('#printable-order-slip') &&
+  (indexCssContent.includes('#order-print-root') || indexCssContent.includes('#printable-order-slip')) &&
   indexCssContent.includes('.no-print'),
   'src/index.css configura regras isoladas de impressão via @media print'
 );

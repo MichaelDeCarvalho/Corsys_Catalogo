@@ -378,8 +378,12 @@ Não deployado por esta adoção.
     - `supabase/functions/manage-order-status/index.ts`: Responsabilidade única de ciclo de vida. Payload exato `{ orderId, newStatus }`. Deriva ator server-side via `auth.getUser()` e delega para RPC interna com `service_role`.
     - `supabase/functions/generate-admin-order-pdf/index.ts`: Função dedicada com payload exato `{ orderId }`. Autorização de leitura via RLS no contexto do JWT do operador (permite `sales_rep`). Service role estritamente pós-leitura para persistir no bucket `order-documents` e emitir Signed URL com TTL de **exatamente 600 segundos**.
     - Ambas declaradas com `verify_jwt = true` em `supabase/config.toml`.
-  - **Impressão Isolada & PDF Administrativo:**
-    - Estilos `@media print` no `src/index.css` isolam `#printable-order-slip`, anulam fundos de backdrop/sidebars e ocultam botões e controles via `.no-print`.
+  - **Impressão Isolada & Frescor de Dados:**
+    - `src/components/tenantadmin/OrderPrintDocument.tsx` renderizado via `createPortal` em `document.body` com `#order-print-root`.
+    - `src/index.css` oculta a árvore padrão com `body > #root { display: none !important }` e exibe exclusivamente `#order-print-root` em `@media print` com `@page { size: A4 portrait; margin: 10mm; }`.
+    - Callback `handleOrderStatusChanged` em `TenantDashboard.tsx` recarrega `loadAdminOrders` e `loadAdminProducts` atomicamente.
+    - Auto-refresh de janela/aba via `focus` e `visibilitychange` com throttle de 800ms (`lastRefreshAtRef`) e cleanup de listeners.
+    - Ausência de `setInterval`, `supabase.channel` e `postgres_changes`.
     - Botão "Gerar PDF" no `OrderManager` consome `generateAdminOrderPdf` e abre o documento em nova aba.
   - **Serviços & Contrato:**
     - `updateAdminOrderStatus` e `generateAdminOrderPdf` exportados em `src/services/adminOrderService.ts`.
@@ -387,7 +391,7 @@ Não deployado por esta adoção.
 - **Governança & Gate de Qualidade:**
   - Registrado no ADR 009 (`docs/adr/ADR_009_ADMIN_ORDERS_V2_LIFECYCLE_AND_STOCK.md`).
   - 14 migrations rastreadas com prefixos de versão estritamente únicos.
-  - `bun run check` (lint + build + 7 suítes de teste de regressão, totalizando 695 testes) validado com exit code 0.
+  - `bun run check` (lint + build + 8 suítes de teste de regressão, totalizando 793 testes) validado com exit code 0.
 
 
 
