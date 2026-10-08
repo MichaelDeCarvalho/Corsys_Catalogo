@@ -35,6 +35,8 @@ import {
   isValidBrazilianDocument 
 } from '../src/utils/brDocument';
 import { PaymentMethod } from '../src/types';
+import { buildOrderWhatsAppMessage } from '../src/utils/orderWhatsAppMessage';
+import type { CheckoutOrderReceipt } from '../src/services/orderService';
 
 let passed = 0;
 let failed = 0;
@@ -58,6 +60,7 @@ const wholesaleContextCode = fs.readFileSync('src/context/WholesaleAccessContext
 const cartDrawerCode = fs.readFileSync('src/components/storefront/CartDrawer.tsx', 'utf-8');
 const storefrontViewCode = fs.readFileSync('src/components/storefront/StorefrontView.tsx', 'utf-8');
 const orderServiceCode = fs.readFileSync('src/services/orderService.ts', 'utf-8');
+const orderWhatsAppMessageCode = fs.readFileSync('src/utils/orderWhatsAppMessage.ts', 'utf-8');
 const typesCode = fs.readFileSync('src/types.ts', 'utf-8');
 const catalogServiceCode = fs.readFileSync('src/services/catalogService.ts', 'utf-8');
 const b2bSwitchModalCode = fs.readFileSync('src/components/storefront/B2BSwitchModeConfirmModal.tsx', 'utf-8');
@@ -497,10 +500,10 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('receipt.subtotal') &&
-  cartDrawerCode.includes('receipt.orderNumber') &&
-  cartDrawerCode.includes('receipt.documentUrl'),
-  '74. Handoff de WhatsApp consome exclusivamente o recibo validado do servidor'
+  cartDrawerCode.includes('buildOrderWhatsAppMessage') &&
+  cartDrawerCode.includes('receipt') &&
+  !cartDrawerCode.includes('receipt.documentUrl'),
+  '74. Handoff de WhatsApp consome exclusivamente o helper buildOrderWhatsAppMessage com receipt do servidor sem link PDF'
 );
 
 assert(
@@ -537,8 +540,8 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('Pagamento ainda não realizado.') &&
-  cartDrawerCode.includes('Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp.'),
+  (cartDrawerCode.includes('Pagamento ainda não realizado.') || orderWhatsAppMessageCode.includes('Pagamento ainda não realizado.')) &&
+  (cartDrawerCode.includes('Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp.') || orderWhatsAppMessageCode.includes('Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp.')),
   '81. Aviso claro "Pagamento ainda não realizado" e dependência de confirmação da loja exibidos na mensagem do WhatsApp'
 );
 
@@ -681,10 +684,10 @@ assert(
 
 assert(
   cartDrawerCode.includes('<span>Enviar pedido pelo WhatsApp</span>') &&
-  cartDrawerCode.includes('receipt.orderNumber') &&
-  cartDrawerCode.includes('receipt.subtotal') &&
-  cartDrawerCode.includes('receipt.documentUrl'),
-  '81v. WhatsApp usa dados financeiros do receipt validado do servidor e anexa link para documento PDF oficial'
+  cartDrawerCode.includes('buildOrderWhatsAppMessage') &&
+  orderWhatsAppMessageCode.includes('receipt.items') &&
+  orderWhatsAppMessageCode.includes('receipt.subtotal'),
+  '81v. WhatsApp usa dados financeiros e lista textual de itens do receipt validado do servidor via buildOrderWhatsAppMessage'
 );
 
 // =========================================================================
@@ -850,8 +853,9 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes("receipt.shippingFee === 0 ? 'A combinar / Calculado pela loja'") &&
-  !cartDrawerCode.includes("receipt.shippingFee === 0 ? 'Frete grátis'"),
+  (cartDrawerCode.includes("A combinar / Calculado pela loja") || orderWhatsAppMessageCode.includes("A combinar / Calculado pela loja")) &&
+  !cartDrawerCode.includes("Frete grátis") &&
+  !orderWhatsAppMessageCode.includes("Frete grátis"),
   'A15. shippingFee 0 não é apresentado como frete grátis nem total definitivo'
 );
 
@@ -1733,26 +1737,243 @@ async function runBehavioralSimulations() {
     'S54d. resetCheckoutLifecycle limpa confirmedCustomerSnapshot para null'
   );
 
-  // S55: Formatação da mensagem do WhatsApp usa valores do receipt do servidor e CPF/CNPJ do snapshot
-  const mockReceiptForWa = {
-    orderNumber: 'PED-2026-9999',
-    subtotal: 500,
-    total: 500,
-    shippingFee: 0,
-    paymentMethod: 'pix' as PaymentMethod,
-    deliveryMethod: 'entrega',
-    items: [{ productName: 'Furadeira', quantity: 2, unit: 'un', unitPrice: 250, totalPrice: 500 }]
-  };
-  const waCustomerDoc = confirmedSnapshotState.type === 'PJ' ? `CNPJ: ${confirmedSnapshotState.document}` : `CPF: ${confirmedSnapshotState.document}`;
-  const waText = `PEDIDO #${mockReceiptForWa.orderNumber} - Cliente: ${confirmedSnapshotState.name} - ${waCustomerDoc} - Total: R$ ${mockReceiptForWa.total}`;
+  // S55: Formatação da mensagem textual do WhatsApp usa valores do receipt do servidor sem expor dados sensíveis
+  const waMsgResult = buildOrderWhatsAppMessage({
+    receipt: {
+      orderNumber: 'PED-2026-9999',
+      subtotal: 500,
+      discount: 0,
+      total: 500,
+      shippingFee: 0,
+      paymentMethod: 'pix' as PaymentMethod,
+      deliveryMethod: 'entrega',
+      items: [{ productId: '11111111-1111-4111-8111-111111111111', productName: 'Furadeira', productSku: 'FUR-01', quantity: 2, unit: 'UN', unitPrice: 250, totalPrice: 500, selectedVariant: null }]
+    },
+    customerDisplay: 'Maria Silva',
+    paymentMethodLabel: 'PIX',
+    deliveryMethodLabel: 'Entrega Padrão'
+  });
   assert(
-    waText.includes('PED-2026-9999') &&
-    waText.includes('Maria Silva') &&
-    waText.includes('CPF: 52998224725') &&
-    waText.includes('Total: R$ 500'),
-    'S55. Mensagem do WhatsApp integra itens/totais do receipt e documento do snapshot'
+    waMsgResult.includes('PED-2026-9999') &&
+    waMsgResult.includes('Maria Silva') &&
+    waMsgResult.includes('Furadeira') &&
+    !waMsgResult.includes('CPF') &&
+    !waMsgResult.includes('52998224725'),
+    'S55. Mensagem do WhatsApp integra itens/totais do receipt sem vazar CPF/CNPJ de PII'
   );
 }
+
+// =========================================================================
+// 12. TESTES COMPORTAMENTAIS DO HELPER (buildOrderWhatsAppMessage)
+// =========================================================================
+console.log('\n12. Testes Comportamentais de Mensagem WhatsApp (Item 2)');
+
+const realisticReceiptWithDoc: CheckoutOrderReceipt = {
+  orderNumber: 'PED-2026-0001',
+  subtotal: 100.00,
+  discount: 10.00,
+  shippingFee: 15.00,
+  total: 105.00,
+  paymentMethod: 'pix' as PaymentMethod,
+  deliveryMethod: 'entrega',
+  documentUrl: 'https://storage.example.com/order-documents/tenant/orders/1/pedido.pdf?token=secret',
+  documentExpiresAt: '2026-10-14T12:00:00Z',
+  items: [
+    {
+      productId: 'a0000000-0000-4000-8000-000000000001',
+      productName: 'Chave de Fenda Pro',
+      productSku: 'SKU-CHAVE-01',
+      selectedVariant: '150mm',
+      quantity: 2,
+      unit: 'UN',
+      unitPrice: 25.00,
+      totalPrice: 50.00
+    },
+    {
+      productId: 'a0000000-0000-4000-8000-000000000002',
+      productName: 'Martelo Aço Forjado',
+      productSku: 'SKU-MART-02',
+      selectedVariant: null,
+      quantity: 1,
+      unit: 'PC',
+      unitPrice: 50.00,
+      totalPrice: 50.00
+    }
+  ]
+};
+
+const msgWithDoc = buildOrderWhatsAppMessage({
+  receipt: realisticReceiptWithDoc,
+  customerDisplay: 'Empresa Alpha Ltda',
+  paymentMethodLabel: 'PIX',
+  deliveryMethodLabel: 'Transportadora Especial'
+});
+
+const realisticReceiptNoDoc: CheckoutOrderReceipt = {
+  ...realisticReceiptWithDoc,
+  documentUrl: undefined,
+  documentExpiresAt: undefined,
+  discount: 0,
+  shippingFee: 0,
+  total: 100.00
+};
+
+const msgNoDoc = buildOrderWhatsAppMessage({
+  receipt: realisticReceiptNoDoc,
+  customerDisplay: 'Empresa Alpha Ltda',
+  paymentMethodLabel: 'PIX',
+  deliveryMethodLabel: 'Retirada no Balcão'
+});
+
+// 1. receipt com documentUrl: mensagem não contém documentUrl
+assert(
+  !msgWithDoc.includes('storage.example.com') && !msgWithDoc.includes('.pdf'),
+  'W1. receipt com documentUrl: mensagem não contém documentUrl'
+);
+
+// 2. receipt com documentUrl: mensagem não contém "PDF"
+assert(
+  !msgWithDoc.includes('PDF') && !msgWithDoc.includes('pdf'),
+  'W2. receipt com documentUrl: mensagem não contém "PDF"'
+);
+
+// 3. mesmo receipt com documentUrl = null: produtos e totais continuam iguais
+assert(
+  msgNoDoc.includes('Chave de Fenda Pro') && msgNoDoc.includes('Martelo Aço Forjado'),
+  'W3. receipt com documentUrl ausente: produtos e totais continuam iguais'
+);
+
+// 4. contém orderNumber
+assert(
+  msgWithDoc.includes('PED-2026-0001'),
+  'W4. Mensagem contém orderNumber'
+);
+
+// 5. contém customerDisplay
+assert(
+  msgWithDoc.includes('Empresa Alpha Ltda'),
+  'W5. Mensagem contém customerDisplay'
+);
+
+// 6. contém todos os produtos
+assert(
+  msgWithDoc.includes('Chave de Fenda Pro') && msgWithDoc.includes('Martelo Aço Forjado'),
+  'W6. Mensagem contém todos os produtos'
+);
+
+// 7. contém productSku
+assert(
+  msgWithDoc.includes('SKU-CHAVE-01') && msgWithDoc.includes('SKU-MART-02'),
+  'W7. Mensagem contém productSku'
+);
+
+// 8. contém quantity
+assert(
+  msgWithDoc.includes('2x Chave de Fenda Pro') && msgWithDoc.includes('1x Martelo Aço Forjado'),
+  'W8. Mensagem contém quantity'
+);
+
+// 9. contém unit
+assert(
+  msgWithDoc.includes('Unidade: UN') && msgWithDoc.includes('Unidade: PC'),
+  'W9. Mensagem contém unit'
+);
+
+// 10. contém unitPrice formatado
+assert(
+  msgWithDoc.includes('Unitário: R$ 25,00') || msgWithDoc.includes('Unitário: R$ 25,00'),
+  'W10. Mensagem contém unitPrice formatado'
+);
+
+// 11. contém totalPrice formatado
+assert(
+  msgWithDoc.includes('Total: R$ 50,00') || msgWithDoc.includes('Total: R$ 50,00'),
+  'W11. Mensagem contém totalPrice formatado'
+);
+
+// 12. selectedVariant preenchido: aparece
+assert(
+  msgWithDoc.includes('Variante: 150mm'),
+  'W12. selectedVariant preenchido: aparece'
+);
+
+// 13. selectedVariant null: não imprime "Variante: null", "Variante: undefined" nem linha vazia
+assert(
+  !msgWithDoc.includes('Variante: null') &&
+  !msgWithDoc.includes('Variante: undefined') &&
+  !msgWithDoc.includes('Variante:  '),
+  'W13. selectedVariant null: não imprime "Variante: null", "Variante: undefined" nem linha vazia'
+);
+
+// 14. subtotal aparece
+assert(
+  msgWithDoc.includes('Subtotal:* R$ 100,00'),
+  'W14. subtotal aparece'
+);
+
+// 15. discount > 0: desconto aparece
+assert(
+  msgWithDoc.includes('Desconto:* R$ 10,00'),
+  'W15. discount > 0: desconto aparece'
+);
+
+// 16. discount = 0: linha de desconto é omitida
+assert(
+  !msgNoDoc.includes('Desconto:'),
+  'W16. discount = 0: linha de desconto é omitida'
+);
+
+// 17. shippingFee > 0: valor aparece
+assert(
+  msgWithDoc.includes('Frete:* R$ 15,00'),
+  'W17. shippingFee > 0: valor aparece'
+);
+
+// 18. shippingFee = 0: usa "A combinar / Calculado pela loja"
+assert(
+  msgNoDoc.includes('Frete:* A combinar / Calculado pela loja'),
+  'W18. shippingFee = 0: usa "A combinar / Calculado pela loja"'
+);
+
+// 19. shippingFee = 0: não usa "Grátis"
+assert(
+  !msgNoDoc.includes('Grátis') && !msgNoDoc.includes('grátis'),
+  'W19. shippingFee = 0: não usa "Grátis"'
+);
+
+// 20. total aparece
+assert(
+  msgWithDoc.includes('Total:* R$ 105,00'),
+  'W20. total aparece'
+);
+
+// 21. paymentMethodLabel aparece
+assert(
+  msgWithDoc.includes('Forma de Pagamento Pretendida:* PIX'),
+  'W21. paymentMethodLabel aparece'
+);
+
+// 22. deliveryMethodLabel aparece
+assert(
+  msgWithDoc.includes('Método de Entrega:* Transportadora Especial'),
+  'W22. deliveryMethodLabel aparece'
+);
+
+// 23. texto "Pagamento ainda não realizado." aparece
+assert(
+  msgWithDoc.includes('Pagamento ainda não realizado.') &&
+  msgWithDoc.includes('Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp.'),
+  'W23. texto "Pagamento ainda não realizado." aparece'
+);
+
+// 24. sem CPF/CNPJ/endereço/e-mail do snapshot
+assert(
+  !msgWithDoc.includes('CPF:') &&
+  !msgWithDoc.includes('CNPJ:') &&
+  !msgWithDoc.includes('Rua ') &&
+  !msgWithDoc.includes('@'),
+  'W24. sem CPF/CNPJ/endereço/e-mail do snapshot'
+);
 
 runBehavioralSimulations().then(() => {
   console.log('\n======================================================');

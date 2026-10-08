@@ -98,9 +98,12 @@
   - Pré-abertura de aba síncrona contra bloqueio de pop-up.
   - Geração de PDF profissional server-side via `pdf-lib` (1.17.1) no bucket privado `order-documents` (zero client policies; browser consome exclusivamente signed URL temporária de 7 dias).
   - Signed URL com validade de 7 dias (604.800 s).
-  - Mensagem curta no WhatsApp com link para o documento, minimizando exposição de PII.
-  - Graceful fallback textual caso a geração/assinatura do PDF falhe.
   - Preços e pagamentos continuam com autoridade do servidor e status pendente.
+- **Handoff de WhatsApp 100% Textual (Item 2 — ADR 010):**
+  - **Status:** **IMPLEMENTADO / PENDING RUNTIME VALIDATION** até teste real após publicação.
+  - O handoff final para o WhatsApp consome exclusivamente os dados do servidor (`CheckoutOrderReceipt`) via helper puro `buildOrderWhatsAppMessage`.
+  - Mensagem sempre textual com todos os produtos, quantidades, SKU, variantes, unidade e valores.
+  - Link de PDF removido do WhatsApp. PDF server-side permanece intacto para auditoria e emissão administrativa.
 - **B2B:**
   - Tenant público canônico reconciliado com `PUBLIC_TENANT_SLUG`.
   - `purchaseMode` e `shoppingMode` sincronizados com fallback fail-closed.
@@ -123,7 +126,7 @@
   - `TenantDashboard` resolve o UUID real do tenant via `resolveTargetTenantId()` e invoca `fetchAdminOrders(tenantId)`. KPIs de faturamento, total de pedidos e novos pedidos pendentes derivam 100% dos dados reais do banco.
   - `OrderManager` é componente props-driven (`orders`, `loading`, `error`, `onReload`).
   - Contrato real fail-closed com campos opcionais seguros (`number`, `complement`, `neighborhood`, `city`, `state`, `zipCode`, `email`, `document`, `companyName`).
-- **Admin Orders V2:** **PUBLICADO / RUNTIME VALIDATED / HOTFIX CONSOLIDADO**.
+- **Admin Orders V2:** **PUBLICADO / RUNTIME PASS / CLOSED**.
   - **Migration 000014:** `supabase/migrations/20261005170000_000014_admin_order_management.sql` = **APLICADA / CONGELADA NO SUPABASE HOSTED**.
   - **RPC Interna Segura:** `public.manage_order_status_internal(p_order_id, p_new_status, p_actor_user_id)` com `SECURITY DEFINER`, `search_path = ''` e privilégios concedidos exclusivamente a `service_role`.
   - Reafirmação defensiva de revogação da RPC legada `manage_order_status` para `PUBLIC`, `anon`, `authenticated` e `service_role`.
@@ -146,14 +149,14 @@
     - Cancelamento e estorno de estoque: PASS.
     - Emissão e download de PDF oficial: PASS.
   - **Hotfix de Impressão e Frescor de Dados:**
-    - Portal de impressão isolado fora da hierarquia React/Modal (`OrderPrintDocument` + `createPortal` para `document.body` com `#order-print-root`). PENDING RUNTIME REVALIDATION.
-    - Ocultação de `#root` na impressão (`body > #root { display: none !important }`) e regras `@media print` com A4 portrait.
-    - Callback `handleOrderStatusChanged` recarregando concorrentemente pedidos e produtos após mutação de status. PENDING RUNTIME REVALIDATION.
-    - Auto-refresh de janela/aba via `focus` e `visibilitychange` com throttle de 800ms (`lastRefreshAtRef`). PENDING RUNTIME REVALIDATION.
+    - Portal de impressão isolado fora da hierarquia React/Modal (`OrderPrintDocument` + `createPortal` para `document.body` com `#order-print-root`): **PASS / CLOSED**.
+    - Ocultação de `#root` na impressão (`body > #root { display: none !important }`) e regras `@media print` com A4 portrait: **PASS / CLOSED**.
+    - Callback `handleOrderStatusChanged` recarregando concorrentemente pedidos e produtos após mutação de status: **PASS / CLOSED**.
+    - Auto-refresh de janela/aba via `focus` e `visibilitychange` com throttle de 800ms (`lastRefreshAtRef`): **PASS / CLOSED**.
     - Proibição de `setInterval` e Realtime (`supabase.channel`, `postgres_changes`).
   - **Hard Delete Proibido:** Permanece estritamente vedada a exclusão física de pedidos (`.delete()`); histórico transacional auditável.
   - **Gate de Qualidade CI:**
-    - `bun run test:regression` e `bun run check` encadeando 8 suítes (793 testes) com 100% de aprovação. Registrado no ADR 009.
+    - `bun run test:regression` e `bun run check` encadeando 8 suítes com 100% de aprovação. Registrado no ADR 009.
 
 ## 9. Governança de Engenharia — ECC (2026-10-02)
 - **Gerenciador de Pacotes:** `bun@1.4.2` especificado no `package.json`.

@@ -275,11 +275,16 @@
 
 ---
 
-## 13. Arquitetura de Documentos de Pedido (PDF) e Handoff WhatsApp com CTA Único (Checkout V1.2 & ADR 006)
+## 13. Arquitetura de Documentos de Pedido (PDF) e Handoff WhatsApp Textual (Checkout V1.2 & ADR 006 / ADR 010)
 - **Fluxo do Carrinho Otimizado (Single Final CTA):**
   - O fluxo simplificado evoluiu de `cart -> details -> review -> success -> WhatsApp` para `cart -> details -> review -> WhatsApp`.
   - Na etapa `review`, existe um único CTA final: **"Enviar pedido pelo WhatsApp"**.
-  - O clique revalida os dados, checa o número de WhatsApp cadastrado (fail-closed antes de chamar a rede), pré-abre uma janela neutra para contornar bloqueadores de pop-up, submete o pedido ao backend, gera o PDF oficial assinado e redireciona para a conversa com mensagem concisa.
+  - O clique revalida os dados, checa o número de WhatsApp cadastrado (fail-closed antes de chamar a rede), pré-abre uma janela neutra para contornar bloqueadores de pop-up, submete o pedido ao backend, gera o PDF oficial assinado no Storage privado para auditoria e redireciona para a conversa com mensagem textual completa baseada nos dados autoritativos do servidor.
+- **Handoff WhatsApp 100% Textual (ADR 010):**
+  - O handoff consome exclusivamente `CheckoutOrderReceipt` retornado e validado pelo backend (`orderNumber`, `items`, `subtotal`, `discount`, `shippingFee`, `total`, `paymentMethod`, `deliveryMethod`).
+  - Helper puro `buildOrderWhatsAppMessage` (`src/utils/orderWhatsAppMessage.ts`) monta a mensagem com itens, SKU, quantidades, variantes, unidades e totais.
+  - Zero link de PDF na mensagem do WhatsApp.
+  - Ausência de PII sensível (CPF, CNPJ, endereços completos, e-mail) no corpo da mensagem.
 - **Storage Privado de Pedidos (Migration 000012):**
   - Bucket `order-documents` (`public = false`, 5 MiB, MIME `application/pdf`).
   - Nenhuma permissão para `anon` ou uploads pelo browser.
@@ -289,9 +294,7 @@
   - Gera PDF profissional através de `pdf-lib` (`npm:pdf-lib@1.17.1`).
   - Autoridade de preços, itens e status estritamente derivada de `orderResult` e snapshots validados pelo banco de dados.
   - Paginação dinâmica com cabeçalho repetido e numeração de páginas em documentos com até 200 itens.
-  - Resiliente: se a geração de PDF ou upload falhar, o pedido já criado não é abortado e o frontend cai para mensagem textual com dados do recibo (Graceful Fallback).
-- **Proteção de PII:**
-  - A mensagem curta no WhatsApp não expõe CPF/CNPJ completo, e-mail ou endereço completo; esses dados residem de forma segura dentro do PDF assinado no storage privado.
+  - PDF server-side é preservado para auditoria e impressão/emissão administrativa.
 
 ---
 
@@ -324,7 +327,7 @@
 ---
 
 ## 15. Arquitetura de Gestão de Pedidos Administrativos (Admin Orders V2 — Status Server-Side, Estoque, Impressão e PDF)
-- **Status:** **IMPLEMENTADO NO WORKSPACE / PRE-SYNC**.
+- **Status:** **PUBLICADO / RUNTIME PASS / CLOSED**.
 - **Fonte de Dados Autoritativa:** O painel "Pedidos & Vendas" consome exclusivamente a tabela `public.orders` via Supabase Client autenticado, sob proteção rigorosa de RLS (`orders_select_tenant_admin` / `orders_select_stock_manager` / `orders_select_sales_rep` / `private.is_platform_admin()`).
 - **Desacoplamento Completo de Mocks:**
   - O painel administrativo não consome `currentTenantOrders` do `AppContext`.

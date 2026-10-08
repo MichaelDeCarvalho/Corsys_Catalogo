@@ -1,3 +1,26 @@
+# SESSION HANDOFF — ITEM 2: WHATSAPP TEXTUAL HANDOFF & ADMIN ORDERS V2 CLOSEOUT
+
+## Data
+2026-10-07
+
+## Objetivo
+Implementar o handoff 100% textual para WhatsApp no Checkout (Item 2 — ADR 010), eliminando links de PDF da mensagem e preservando a infraestrutura de PDF server-side intacta, e consolidar o fechamento de Admin Orders V2 (RUNTIME PASS / CLOSED).
+
+## Status Operacional Atual
+- **Admin Orders V2:** **RUNTIME PASS / CLOSED** (Controles de status, débito/estorno atômico de estoque, portal isolado de impressão `#order-print-root` e auto-refresh de frescor de dados validados).
+- **Item 2 — WhatsApp Textual Handoff (ADR 010):** **IMPLEMENTADO / PENDING RUNTIME VALIDATION** (helper puro `buildOrderWhatsAppMessage` criado, CartDrawer consome exclusivamente dados autoritativos do servidor, bifurcação removida, link de PDF eliminado da mensagem do WhatsApp).
+
+## Concluído nesta Etapa
+- `src/utils/orderWhatsAppMessage.ts` criado com helper puro `buildOrderWhatsAppMessage`.
+- `src/components/storefront/CartDrawer.tsx` refatorado para consumir exclusivamente o helper sem bifurcação de PDF.
+- `scripts/test-orders-frontend-integration-points.ts` atualizado com 24 asserções comportamentais do helper (236/236 testes aprovados).
+- `docs/adr/ADR_010_WHATSAPP_TEXTUAL_ORDER_HANDOFF.md` criado.
+- `docs/PROJECT_CONTEXT.md` e `docs/CURRENT_ARCHITECTURE.md` atualizados.
+- As 8 suítes de teste de regressão aprovadas (236 + 100 + 153 + 34 + 35 + 63 + 100 + 96 = 817 testes / 0 falhas).
+- `bun run lint`, `bun run build` e `bun run check` validados com sucesso.
+
+---
+
 # SESSION HANDOFF — ECC ADOPTION
 
 ## Data

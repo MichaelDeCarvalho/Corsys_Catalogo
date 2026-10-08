@@ -38,6 +38,7 @@ import {
   isValidCPF, 
   isValidCNPJ 
 } from '../../utils/brDocument';
+import { buildOrderWhatsAppMessage } from '../../utils/orderWhatsAppMessage';
 
 interface CartItemQuantityControlProps {
   quantity: number;
@@ -620,7 +621,7 @@ export const CartDrawer: React.FC<{
         receipt = await submitOrderCheckout(draft);
       }
 
-      // 7. Preparação do WhatsApp Handoff
+      // 7. Preparação do WhatsApp Handoff (Mensagem Textual Completa com Itens do Recibo Servidor)
       setSubmittingStateText('Preparando WhatsApp...');
 
       const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
@@ -628,37 +629,12 @@ export const CartDrawer: React.FC<{
         ? (wholesaleCompany?.tradeName || wholesaleCompany?.legalName || 'Cliente Atacadista')
         : (pendingCustomerSnapshot.name || 'Cliente');
 
-      let message = '';
-      if (receipt.documentUrl) {
-        // Mensagem curta profissional com link do documento PDF oficial
-        message = 
-          `Olá! Gostaria de enviar o pedido *${receipt.orderNumber}*.\n\n` +
-          `*Cliente:* ${customerDisplay}\n` +
-          `*Total dos produtos:* R$ ${receipt.subtotal.toFixed(2).replace('.', ',')}\n` +
-          `*Forma de pagamento pretendida:* ${getPaymentMethodLabel(receipt.paymentMethod)}\n` +
-          `*Entrega:* ${getDeliveryMethodLabel(receipt.deliveryMethod)}\n\n` +
-          `📄 *Pedido completo em PDF:*\n` +
-          `${receipt.documentUrl}\n\n` +
-          `_Pagamento ainda não realizado._\n` +
-          `_Aguardo as instruções/link de pagamento e a confirmação de disponibilidade/frete por este WhatsApp._`;
-      } else {
-        // Fallback textual compacto com itens e totais exclusivos do receipt
-        const itemsText = receipt.items.map(i => 
-          `• *${i.quantity}x ${i.productName}* (${i.unit}) - R$ ${i.totalPrice.toFixed(2).replace('.', ',')}`
-        ).join('\n');
-
-        message = 
-          `Olá! Gostaria de enviar o pedido *${receipt.orderNumber}*.\n\n` +
-          `*Cliente:* ${customerDisplay}\n\n` +
-          `📦 *ITENS DO PEDIDO:*\n${itemsText}\n\n` +
-          `💵 *Subtotal:* R$ ${receipt.subtotal.toFixed(2).replace('.', ',')}\n` +
-          `🚚 *Frete:* ${receipt.shippingFee === 0 ? 'A combinar / Calculado pela loja' : `R$ ${receipt.shippingFee.toFixed(2).replace('.', ',')}`}\n` +
-          `💰 *Total:* R$ ${receipt.total.toFixed(2).replace('.', ',')}\n` +
-          `💳 *Forma de Pagamento Pretendida:* ${getPaymentMethodLabel(receipt.paymentMethod)}\n` +
-          `🚚 *Método de Entrega:* ${getDeliveryMethodLabel(receipt.deliveryMethod)}\n\n` +
-          `_Aviso: Não foi possível gerar o documento PDF automaticamente._\n` +
-          `_Pagamento ainda não realizado. Aguardo instruções e confirmação da loja._`;
-      }
+      const message = buildOrderWhatsAppMessage({
+        receipt,
+        customerDisplay,
+        paymentMethodLabel: getPaymentMethodLabel(receipt.paymentMethod),
+        deliveryMethodLabel: getDeliveryMethodLabel(receipt.deliveryMethod),
+      });
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
