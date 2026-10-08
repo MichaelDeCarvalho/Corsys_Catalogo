@@ -381,7 +381,7 @@
 ---
 
 ## 17. Meus Pedidos / Customer Order Tracking V1 (ADR 011 — 2026-10-08)
-- **Status da Feature:** **MIGRATION 000015 APLICADA / FROZEN NO HOSTED; EDGE FUNCTIONS ACTIVE V1 NO BASELINE PRÉ-HOTFIX; MIGRATION 000016 RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION**.
+- **Status da Feature:** **MIGRATIONS 000015–000016 APLICADAS / FROZEN NO HOSTED; TRACKING EDGES ACTIVE V2; MIGRATION 000017 CHECKOUT DELIVERY COMPAT RELEASE CANDIDATE / PENDING POST-MERGE**.
 - **Objetivo:** Acompanhamento seguro de pedidos pelo cliente sem expor consultas por CPF, e-mail, telefone ou order_number sequencial.
 - **Varejo Anônimo (Secure Retail Token):**
   - Token aleatório de 256 bits (64 hex lowercase) gerado no checkout server-side.
@@ -400,6 +400,9 @@
     - `track_order_by_token_internal(p_tenant_slug TEXT, p_tracking_token_hash TEXT)`: consulta isolada por tenant e hash SHA-256 sem exigir `t.status = 'active'`, com projeção limpa sem PII (sem `id`, sem `customerName`, sem `shippingAddress`).
     - `list_my_customer_orders_internal(p_tenant_slug TEXT, p_buyer_user_id UUID, p_limit INT, p_offset INT)`: listagem paginada B2B autorizada server-side com mesma projeção sanitizada.
   - Declaração explícita de `[functions.track-order-by-token]` (`verify_jwt = false`) e `[functions.list-my-customer-orders]` (`verify_jwt = true`) em `supabase/config.toml`.
+- **Checkout Delivery Methods Compatibility (Migration 000017):**
+  - Hotfix forward-only em `create_order_checkout_internal` para aceitar o formato persistido atual `delivery_methods = ["retirada", "entrega", ...]` e também o formato estruturado futuro `[{ "id": "retirada", "active": true }]`.
+  - Corrige rejeição indevida com SQLSTATE `22000` antes da persistência do pedido; nenhuma mudança em pricing, estoque, idempotência, tracking token ou WhatsApp.
 - **Frontend & UI:**
   - Componente `CustomerOrderTrackingView.tsx` sob `viewMode = 'my_orders'`.
   - Botão "Meus Pedidos" acessível no cabeçalho e menu de usuário.

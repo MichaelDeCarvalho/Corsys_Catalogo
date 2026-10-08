@@ -57,6 +57,10 @@ const migration10Sql = fs.readFileSync(migration10Path, 'utf-8');
 const migration11Sql = fs.readFileSync(migration11Path, 'utf-8');
 const migration12Sql = fs.readFileSync(migration12Path, 'utf-8');
 
+const migration17Path = 'supabase/migrations/20261009010000_000017_checkout_delivery_methods_compat.sql';
+assert(fs.existsSync(migration17Path), 'Migration 000017 de compatibilidade de métodos de entrega existe no workspace');
+const migration17Sql = fs.readFileSync(migration17Path, 'utf-8');
+
 // Verifica preservação de 000001-000013 no contexto de checkout
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
@@ -72,6 +76,27 @@ const migrationVersions = migrationFiles.map(f => f.split('_')[0]);
 assert(
   new Set(migrationVersions).size === migrationFiles.length,
   'Prefixos de versão das migrations são estritamente únicos (sem colisão de versionamento)'
+);
+
+assert(
+  migration17Sql.includes('CREATE OR REPLACE FUNCTION public.create_order_checkout_internal') &&
+  migration17Sql.includes("jsonb_typeof(dm) = 'string'") &&
+  migration17Sql.includes("(dm #>> '{}') = trim(p_delivery_method)"),
+  'Migration 000017 restaura compatibilidade com delivery_methods no formato array JSONB de strings'
+);
+
+assert(
+  migration17Sql.includes("jsonb_typeof(dm) = 'object'") &&
+  migration17Sql.includes("dm->>'id' = trim(p_delivery_method)") &&
+  migration17Sql.includes("COALESCE((dm->>'active')::boolean, true) = true"),
+  'Migration 000017 preserva compatibilidade forward com delivery_methods estruturados { id, active }'
+);
+
+assert(
+  migration17Sql.includes('REVOKE ALL ON FUNCTION public.create_order_checkout_internal') &&
+  migration17Sql.includes('GRANT EXECUTE ON FUNCTION public.create_order_checkout_internal') &&
+  migration17Sql.includes('TO service_role'),
+  'Migration 000017 reafirma EXECUTE de create_order_checkout_internal somente para service_role'
 );
 
 // Verifica integridade da 000012 (Private Order Documents Storage)

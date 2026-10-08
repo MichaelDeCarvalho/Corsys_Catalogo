@@ -36,8 +36,8 @@ const migrationFiles = fs.readdirSync('supabase/migrations')
   .sort();
 
 assert(
-  migrationFiles.length === 16,
-  `Total de migrations no workspace é exatamente 16 (encontradas: ${migrationFiles.length})`
+  migrationFiles.length === 17,
+  `Total de migrations no workspace é exatamente 17 (encontradas: ${migrationFiles.length})`
 );
 
 const migration14File = '20261005170000_000014_admin_order_management.sql';
@@ -57,6 +57,12 @@ const migration16Path = path.join('supabase/migrations', '20261009000000_000016_
 assert(
   fs.existsSync(migration16Path),
   'Migration 000016 existe no caminho canônico'
+);
+
+const migration17Path = path.join('supabase/migrations', '20261009010000_000017_checkout_delivery_methods_compat.sql');
+assert(
+  fs.existsSync(migration17Path),
+  'Migration 000017 existe no caminho canônico'
 );
 
 const prefixes = migrationFiles.map(f => f.split('_')[0]);

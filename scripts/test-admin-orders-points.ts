@@ -619,8 +619,8 @@ console.log('\n6. Governança de Migrations & Edge Function V2');
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 16,
-  'Exatamente 16 migrations no workspace (000001 a 000016 registradas)'
+  migrationFiles.length === 17,
+  'Exatamente 17 migrations no workspace (000001 a 000017 registradas)'
 );
 
 const migration14Path = 'supabase/migrations/20261005170000_000014_admin_order_management.sql';
@@ -639,6 +639,12 @@ const migration16Path = 'supabase/migrations/20261009000000_000016_customer_orde
 assert(
   fs.existsSync(migration16Path),
   'Migration 000016 (20261009000000_000016_customer_order_tracking_hardening.sql) existe no workspace'
+);
+
+const migration17Path = 'supabase/migrations/20261009010000_000017_checkout_delivery_methods_compat.sql';
+assert(
+  fs.existsSync(migration17Path),
+  'Migration 000017 (20261009010000_000017_checkout_delivery_methods_compat.sql) existe no workspace'
 );
 
 const migrationVersions = migrationFiles.map(f => f.split('_')[0]);
