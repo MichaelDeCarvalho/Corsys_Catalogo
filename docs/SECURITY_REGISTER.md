@@ -154,7 +154,7 @@
     - Elimina o achado de segurança de execução direta de RPC `SECURITY DEFINER` por papéis de API.
 
 ## 9. Gestão Administrativa de Pedidos V2 — Ciclo de Vida Server-Side, Transacionalidade de Estoque e PDF (Migration 000014 / ADR 009)
-- **Status:** **MIGRATION 000014 PREPARADA NO WORKSPACE (FORWARD-ONLY / PRE-SYNC) | EDGE FUNCTIONS VERIFICADAS EM TESTES AUTOMATIZADOS**
+- **Status:** **MIGRATION 000014 APLICADA / FROZEN NO SUPABASE HOSTED | EDGE FUNCTIONS VERIFICADAS EM TESTES AUTOMATIZADOS**
 - **Migration 000014 (Forward-Only):**
   - Migrations 000001 a 000013 permanecem aplicadas e congeladas.
   - Reafirma defensivamente o bloqueio total da RPC legada `manage_order_status(UUID, TEXT)` sem execução para nenhum papel (`PUBLIC`, `anon`, `authenticated`, `service_role`).
@@ -182,4 +182,24 @@
 - **Frontend & Proibição de Hard Delete:**
   - `src/services/adminOrderService.ts` isola as chamadas entre `updateAdminOrderStatus` e `generateAdminOrderPdf` sem envio de `action`.
   - Zero métodos `.delete()` no frontend administrativo; registros transacionais de pedidos permanecem auditáveis e imutáveis contra deleção física.
+
+## 10. Acompanhamento de Pedidos pelo Cliente (Customer Order Tracking V1 / ADR 011 / Migrations 000015–000016)
+- **Status da Feature:** **MIGRATION 000015 APLICADA / FROZEN NO SUPABASE HOSTED; MIGRATION 000016 RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION**
+- **Risco Registrado:**
+  - O Retail Tracking Token armazenado em `localStorage` opera como uma credencial de posse (*bearer credential*).
+- **Mitigações Estruturais Implementadas:**
+  1. **Alta Entropia Criptográfica:** Geração server-side via CSPRNG de 256 bits (64 hex lowercase). Impossibilita ataques de adivinhação, enumeração ou força bruta.
+  2. **Persistência Exclusiva de Hash (Hash-Only):** Somente o hash SHA-256 é armazenado em `public.orders.tracking_token_hash`. O token em claro nunca reside no banco de dados.
+  3. **Token Fora de URLs:** O token nunca trafega em *query strings*, URLs ou links compartilháveis. Trafega exclusivamente no body POST HTTPS e no cabeçalho do recibo imediato.
+  4. **Zero Logging de Tokens ou Hashes:** O token em claro e seu hash nunca são logados nos consoles das Edge Functions.
+  5. **Storage Local Sem PII:** O storage do navegador armazena estritamente `{ orderNumber, trackingToken, createdAt }`. Zero PII (nome, telefone, CPF, e-mail ou endereço) no storage local.
+  6. **Isolamento de Chaves por Tenant:** Storage chaveado estritamente por tenant (`corsys_order_tracking_v1:<slug>`), impedindo vazamento de tokens entre lojas.
+  7. **Escopo Mínimo de Acesso:** O token concede leitura restrita a exatamente um pedido de varejo vinculado ao tenant do slug.
+  8. **Resposta de Tracking sem Endereço / PII:** A RPC e a Edge Function retornam exclusivamente dados operacionais de status e itens (`orderNumber`, `status`, `shoppingMode`, `deliveryMethod`, `paymentMethod`, `items`, `subtotal`, `discount`, `shippingFee`, `total`, `createdAt`, `updatedAt`). `customer`, `customerName` e `shippingAddress` foram totalmente removidos da resposta.
+  9. **Impossibilidade de Lookup por PII ou Order Number:** O gateway rejeita qualquer consulta por `order_number`, CPF, CNPJ, telefone ou e-mail.
+- **Risco Residual:**
+  - Vulnerabilidades de Cross-Site Scripting (XSS) no navegador podem permitir a exfiltração do bearer token salvo em `localStorage`.
+- **Status do Risco:**
+  - **MITIGATED / RESIDUAL** (NÃO ELIMINATED).
+
 

@@ -293,8 +293,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTenantMemberships([]);
     showToast('Sessão encerrada com sucesso.');
 
-    // Se estiver em telas restritas, redireciona para a vitrine pública
-    if (viewMode === 'superadmin' || viewMode === 'tenant_admin') {
+    // Se estiver em telas restritas ou tela de Meus Pedidos, redireciona para a vitrine pública
+    if (viewMode === 'superadmin' || viewMode === 'tenant_admin' || viewMode === 'my_orders') {
       setViewMode('storefront');
     }
   };

@@ -1,29 +1,30 @@
-# SESSION HANDOFF — ITEM 3: MEUS PEDIDOS / CUSTOMER ORDER TRACKING V1
+# SESSION HANDOFF — ITEM 3: CUSTOMER ORDER TRACKING V1 — PRODUCTION HARDENING HOTFIX
 
 ## Data
 2026-10-08
 
 ## Objetivo
-Implementar o acompanhamento seguro de pedidos pelo cliente (Item 3 — ADR 011), utilizando Secure Retail Token (256 bits criptográficos com persistência de hash SHA-256) e histórico B2B autenticado por JWT, sem expor consultas abertas por CPF, telefone, e-mail ou order_number.
+Aplicar hotfix e hardening de produção no Customer Order Tracking V1 (Item 3 — ADR 011), garantindo conformidade estrita de privacidade: remoção total de PII (`shippingAddress`, `customerName`) e IDs internos das projeções e da UI, isolamento de localStorage por tenant (`corsys_order_tracking_v1:<slug>`), remoção de busca manual por token, isolamento de modalidade de compra nas RPCs (`shopping_mode = 'retail'` e `shopping_mode = 'wholesale'`), suporte a histórico de lojas desativadas e governança estrita de migrations (000015 congelada e 000016 forward-only).
 
 ## Status Operacional Atual
-- **Item 3 — Customer Order Tracking V1 (ADR 011):** **IMPLEMENTADO / PENDING HOSTED MIGRATION & EDGE FUNCTIONS DEPLOY**
-- **Admin Orders V2:** **RUNTIME PASS / CLOSED**
+- **Item 3 — Customer Order Tracking Hardening (000016):** **RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION**
+- **Migration 000015 & Edge Functions:** **APLICADA / FROZEN NO SUPABASE HOSTED (track-order-by-token ACTIVE v1, list-my-customer-orders ACTIVE v1)**
+- **Admin Orders V2 (000014):** **APLICADA / FROZEN NO SUPABASE HOSTED / RUNTIME PASS / CLOSED**
 - **Item 2 — WhatsApp Textual Handoff (ADR 010):** **RUNTIME PASS / CLOSED**
 
 ## Concluído nesta Etapa
-- `supabase/migrations/20261008_000015_customer_order_tracking.sql` criada e auditada adicionando `buyer_user_id`, `tracking_token_hash`, constraints, índices e as RPCs internas `create_order_checkout_internal`, `set_order_tracking_token_internal`, `track_order_by_token_internal` e `list_my_customer_orders_internal` (service_role only).
-- `supabase/config.toml` atualizado com declaração explícita de `[functions.track-order-by-token]` (`verify_jwt = false`) e `[functions.list-my-customer-orders]` (`verify_jwt = true`).
-- `supabase/functions/track-order-by-token/index.ts` criada para consulta de varejo com validação de token e cálculo de SHA-256 server-side.
-- `supabase/functions/list-my-customer-orders/index.ts` criada para consulta paginada de atacado B2B validada por JWT.
-- `supabase/functions/submit-order-checkout/index.ts` atualizada para gerar token de 256 bits para varejo, vincular o hash via RPC `set_order_tracking_token_internal` (zero DML direto) e retornar `trackingToken` no recibo.
-- `src/services/customerTrackingService.ts` criado para gerenciar consultas e persistência de pares `{ orderNumber, trackingToken }` no localStorage.
-- `src/components/storefront/CustomerOrderTrackingView.tsx` criado fornecendo visualização de status, detalhes de itens e busca por código de rastreamento.
-- `src/components/layout/Header.tsx` atualizado com o botão "Meus Pedidos".
-- `src/App.tsx` e `src/context/AppContext.tsx` atualizados para suportar o `viewMode = 'my_orders'`.
-- `scripts/test-customer-order-tracking-points.ts` atualizado para 25 asserções (25/25 aprovadas).
-- `docs/adr/ADR_011_CUSTOMER_ORDER_TRACKING_AND_RETAIL_TOKEN.md` criado e atualizado.
-- As 9 suítes de teste de regressão aprovadas (236 + 100 + 153 + 34 + 35 + 63 + 100 + 96 + 25 = 842 testes / 0 falhas).
+- `supabase/migrations/20261008020000_000016_customer_order_tracking_hardening.sql` criada forward-only sem alterar 000001–000015, recriando as RPCs `track_order_by_token_internal` e `list_my_customer_orders_internal` com projeções sanitizadas sem PII (`shippingAddress`, `customerName`, `id`, `tenant_id`, etc.), shopping_mode estrito e sem exigência de `t.status = 'active'`.
+- `supabase/functions/track-order-by-token/index.ts` atualizada com allowlist exata de body (`tenantSlug`, `trackingToken`), sanitização defensiva explícita de saída e 404 genérico sem mensagens SQL internas.
+- `supabase/functions/list-my-customer-orders/index.ts` atualizada com allowlist estrita de chaves (`tenantSlug`, `limit`, `offset`), rejeição de chaves proibidas (`userId`, etc.), extração server-side de `buyerUserId` e sanitização de cada item de saída.
+- `src/services/customerTrackingService.ts` atualizado com tipo `CustomerTrackedOrder` livre de PII/IDs, validador fail-closed em runtime, storage isolado por tenant (`corsys_order_tracking_v1:<slug>`), registros sem `tenantSlug` interno (`{ orderNumber, trackingToken, createdAt }`) e migração segura client-side da chave legada.
+- `src/components/storefront/CustomerOrderTrackingView.tsx` atualizado: remoção total de busca manual por token, remoção completa de "Endereço de Entrega" e PII da interface, identificação de pedidos por `orderNumber` (sem dependência de UUID), isolamento de tenant no carregamento com `Promise.allSettled`, e limpeza de pedidos B2B no logout.
+- `src/components/storefront/CartDrawer.tsx` atualizado para invocar `storeRetailOrderTracking(settings.slug, ...)` com escopo de tenant.
+- `src/context/AuthContext.tsx` atualizado para redirecionar `viewMode = 'my_orders'` para `'storefront'` ao executar `signOut()`.
+- `scripts/test-admin-orders-points.ts` e `scripts/test-admin-orders-v2-points.ts` atualizados para validar exatamente 16 migrations (sem `>=`).
+- `scripts/test-customer-order-tracking-points.ts` atualizado com suíte completa de privacidade e hardening (37 asserções aprovadas).
+- `docs/SECURITY_REGISTER.md` atualizado com registro de risco do Retail Tracking Token como bearer credential em localStorage (mitigações e risco residual MITIGATED / RESIDUAL).
+- `docs/adr/ADR_011_CUSTOMER_ORDER_TRACKING_AND_RETAIL_TOKEN.md`, `docs/CURRENT_ARCHITECTURE.md` e `docs/PROJECT_CONTEXT.md` atualizados.
+- As 9 suítes de teste de regressão aprovadas (236 + 100 + 153 + 34 + 35 + 63 + 102 + 98 + 40 = 861 testes / 0 falhas).
 - `bun run check` (lint + build + test:regression) validado com 100% PASS.
 
 ---

@@ -1,22 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Package, 
-  Search, 
   Clock, 
   CheckCircle2, 
   Truck, 
   AlertCircle, 
   ArrowLeft, 
-  ExternalLink, 
   RefreshCw,
   ShoppingBag,
-  ShieldCheck,
-  Building2,
   Calendar,
-  CreditCard,
-  MapPin,
-  ChevronRight,
-  Hash
+  CreditCard
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -42,41 +35,32 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.
 
 export const CustomerOrderTrackingView: React.FC = () => {
   const { currentTenant, setViewMode } = useApp();
-  const { session, user } = useAuth();
+  const { session } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'b2b' | 'retail'>(session ? 'b2b' : 'retail');
   const [b2bOrders, setB2bOrders] = useState<CustomerTrackedOrder[]>([]);
   const [retailOrders, setRetailOrders] = useState<CustomerTrackedOrder[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<CustomerTrackedOrder | null>(null);
+  const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Input de busca de token avulso
-  const [tokenInput, setTokenInput] = useState('');
-  const [isSearchingToken, setIsSearchingToken] = useState(false);
-
-  // Sincroniza tab padrão se status de login mudar
+  // Sincronização e privacidade de sessão (Logout Privacy)
   useEffect(() => {
-    if (session) {
+    if (!session) {
+      setB2bOrders([]);
+      setActiveTab('retail');
+      setSelectedOrderNumber((current) => {
+        // Se o pedido selecionado for atacado, desseleciona
+        const currentSelected = b2bOrders.find((o) => o.orderNumber === current);
+        return currentSelected ? null : current;
+      });
+    } else {
       setActiveTab('b2b');
     }
   }, [session]);
 
-  // Carrega pedidos B2B se autenticado
-  useEffect(() => {
-    if (session && activeTab === 'b2b') {
-      loadB2bOrders();
-    }
-  }, [session, activeTab, currentTenant.slug]);
-
-  // Carrega pedidos de varejo salvos localmente
-  useEffect(() => {
-    if (activeTab === 'retail') {
-      loadStoredRetailOrders();
-    }
-  }, [activeTab, currentTenant.slug]);
-
-  const loadB2bOrders = async () => {
+  const loadB2bOrders = useCallback(async () => {
+    if (!session || !currentTenant.slug) return;
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -88,10 +72,11 @@ export const CustomerOrderTrackingView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [session, currentTenant.slug]);
 
-  const loadStoredRetailOrders = async () => {
-    const trackings = getStoredRetailTrackings();
+  const loadStoredRetailOrders = useCallback(async () => {
+    if (!currentTenant.slug) return;
+    const trackings = getStoredRetailTrackings(currentTenant.slug);
     if (trackings.length === 0) {
       setRetailOrders([]);
       return;
@@ -99,45 +84,39 @@ export const CustomerOrderTrackingView: React.FC = () => {
 
     setIsLoading(true);
     setErrorMsg(null);
-    const fetched: CustomerTrackedOrder[] = [];
 
-    for (const item of trackings) {
-      try {
-        const ord = await trackOrderByToken(item.tenantSlug || currentTenant.slug, item.trackingToken);
-        fetched.push(ord);
-      } catch {
-        // Pedido pode não pertencer a este tenant ou expirado
+    // Consulta concorrente e isolada com Promise.allSettled exclusivamente para o tenant atual
+    const results = await Promise.allSettled(
+      trackings.map((item) => trackOrderByToken(currentTenant.slug, item.trackingToken))
+    );
+
+    const fetched: CustomerTrackedOrder[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        fetched.push(r.value);
       }
     }
 
     setRetailOrders(fetched);
     setIsLoading(false);
-  };
+  }, [currentTenant.slug]);
 
-  const handleSearchByToken = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanToken = tokenInput.trim();
-    if (!cleanToken) return;
-
-    if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
-      setErrorMsg('O token de rastreamento deve ter 64 caracteres hexadecimais.');
-      return;
+  // Carrega pedidos B2B se autenticado
+  useEffect(() => {
+    if (session && activeTab === 'b2b') {
+      loadB2bOrders();
     }
+  }, [session, activeTab, loadB2bOrders]);
 
-    setIsSearchingToken(true);
-    setErrorMsg(null);
-
-    try {
-      const ord = await trackOrderByToken(currentTenant.slug, cleanToken);
-      setSelectedOrder(ord);
-      setTokenInput('');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Pedido não encontrado para este código de rastreamento.';
-      setErrorMsg(msg);
-    } finally {
-      setIsSearchingToken(false);
+  // Carrega pedidos de varejo salvos localmente
+  useEffect(() => {
+    if (activeTab === 'retail') {
+      loadStoredRetailOrders();
     }
-  };
+  }, [activeTab, loadStoredRetailOrders]);
+
+  const currentList = activeTab === 'b2b' ? b2bOrders : retailOrders;
+  const selectedOrder = currentList.find((o) => o.orderNumber === selectedOrderNumber) || null;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -164,7 +143,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
         <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl self-start sm:self-auto">
           {session && (
             <button
-              onClick={() => { setActiveTab('b2b'); setSelectedOrder(null); setErrorMsg(null); }}
+              onClick={() => { setActiveTab('b2b'); setSelectedOrderNumber(null); setErrorMsg(null); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 activeTab === 'b2b' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
@@ -173,12 +152,12 @@ export const CustomerOrderTrackingView: React.FC = () => {
             </button>
           )}
           <button
-            onClick={() => { setActiveTab('retail'); setSelectedOrder(null); setErrorMsg(null); }}
+            onClick={() => { setActiveTab('retail'); setSelectedOrderNumber(null); setErrorMsg(null); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               activeTab === 'retail' ? 'bg-[#FF5A00] text-white' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Pedidos Recentes de Varejo
+            Pedidos Recentes de Varejo ({retailOrders.length})
           </button>
         </div>
       </div>
@@ -188,40 +167,10 @@ export const CustomerOrderTrackingView: React.FC = () => {
         
         {/* Left / List Column */}
         <div className="lg:col-span-1 space-y-4">
-          
-          {/* Caixa de Rastreamento por Token Avulso */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-200 mb-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Rastrear por Código Seguro
-            </div>
-            <p className="text-[11px] text-slate-400 mb-3">
-              Insira o código de rastreamento de 64 caracteres gerado na finalização do seu pedido:
-            </p>
-            <form onSubmit={handleSearchByToken} className="space-y-2">
-              <input
-                type="text"
-                placeholder="Ex: a1b2c3d4... (64 hex)"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#FF5A00] font-mono"
-              />
-              <button
-                type="submit"
-                disabled={isSearchingToken || !tokenInput.trim()}
-                className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white text-xs font-semibold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {isSearchingToken ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                Consultar Pedido
-              </button>
-            </form>
-          </div>
-
-          {/* Listagem */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                {activeTab === 'b2b' ? 'Histórico de Atacado' : 'Pedidos Neste Dispositivo'}
+                {activeTab === 'b2b' ? 'Histórico de Atacado' : 'Pedidos Neste Navegador'}
               </h2>
               <button
                 onClick={activeTab === 'b2b' ? loadB2bOrders : loadStoredRetailOrders}
@@ -247,20 +196,26 @@ export const CustomerOrderTrackingView: React.FC = () => {
             )}
 
             {!isLoading && activeTab === 'retail' && retailOrders.length === 0 && (
-              <div className="py-8 text-center text-xs text-slate-400">
-                Nenhum pedido recente salvo neste navegador.
+              <div className="py-8 px-2 text-center text-xs text-slate-400 space-y-2">
+                <Package className="w-8 h-8 text-slate-600 mx-auto" />
+                <p className="font-medium text-slate-300">
+                  Seus novos pedidos feitos neste navegador aparecerão aqui.
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Para pedidos sem conta, o acompanhamento fica vinculado a este navegador.
+                </p>
               </div>
             )}
 
             {!isLoading && (
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                {(activeTab === 'b2b' ? b2bOrders : retailOrders).map((ord) => {
+                {currentList.map((ord) => {
                   const statusConf = STATUS_LABELS[ord.status] || STATUS_LABELS.pending;
-                  const isSelected = selectedOrder?.id === ord.id;
+                  const isSelected = selectedOrderNumber === ord.orderNumber;
                   return (
                     <button
-                      key={ord.id}
-                      onClick={() => setSelectedOrder(ord)}
+                      key={ord.orderNumber}
+                      onClick={() => setSelectedOrderNumber(ord.orderNumber)}
                       className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
                         isSelected 
                           ? 'bg-slate-800 border-[#FF5A00] shadow-sm' 
@@ -333,7 +288,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
                 </h3>
                 <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-950/50">
                   {selectedOrder.items.map((it, idx) => (
-                    <div key={idx} className="p-3 flex items-center justify-between text-xs gap-3">
+                    <div key={`${it.productId}-${idx}`} className="p-3 flex items-center justify-between text-xs gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         {it.productImage && (
                           <img 
@@ -382,38 +337,21 @@ export const CustomerOrderTrackingView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Delivery and Customer Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-300 mb-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                    Endereço de Entrega
-                  </div>
-                  <p className="text-slate-300">
-                    {selectedOrder.shippingAddress.street}
-                    {selectedOrder.shippingAddress.number ? `, ${selectedOrder.shippingAddress.number}` : ''}
-                  </p>
-                  {selectedOrder.shippingAddress.neighborhood && (
-                    <p className="text-slate-400">{selectedOrder.shippingAddress.neighborhood}</p>
-                  )}
-                  {selectedOrder.shippingAddress.city && (
-                    <p className="text-slate-400">
-                      {selectedOrder.shippingAddress.city} - {selectedOrder.shippingAddress.state}
-                    </p>
-                  )}
+              {/* Delivery and Payment Details (Zero PII / Sem Endereço) */}
+              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-slate-300">
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                  Detalhes de Entrega e Pagamento
                 </div>
-
-                <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-300 mb-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                    Forma de Pagamento Pretendida
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-400 pt-1">
+                  <div>
+                    <span className="text-slate-500">Forma de Pagamento: </span>
+                    <span className="text-slate-300 uppercase font-semibold">{selectedOrder.paymentMethod}</span>
                   </div>
-                  <p className="text-slate-300 uppercase font-semibold">
-                    {selectedOrder.paymentMethod}
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Método de entrega: {selectedOrder.deliveryMethod}
-                  </p>
+                  <div>
+                    <span className="text-slate-500">Método de Entrega: </span>
+                    <span className="text-slate-300 font-semibold">{selectedOrder.deliveryMethod}</span>
+                  </div>
                 </div>
               </div>
 
@@ -423,7 +361,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
               <ShoppingBag className="w-12 h-12 text-slate-700 mb-3" />
               <h3 className="font-semibold text-slate-300 text-sm">Nenhum pedido selecionado</h3>
               <p className="text-xs text-slate-500 max-w-sm mt-1">
-                Selecione um pedido na lista ao lado ou digite seu código de rastreamento de 64 caracteres.
+                Selecione um pedido na lista ao lado para visualizar os detalhes.
               </p>
             </div>
           )}

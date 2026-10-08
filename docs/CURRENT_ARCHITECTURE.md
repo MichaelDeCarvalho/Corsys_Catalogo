@@ -381,24 +381,29 @@
 ---
 
 ## 17. Meus Pedidos / Customer Order Tracking V1 (ADR 011 — 2026-10-08)
+- **Status da Feature:** **MIGRATION 000015 APLICADA / FROZEN NO HOSTED; EDGE FUNCTIONS ACTIVE V1 NO BASELINE PRÉ-HOTFIX; MIGRATION 000016 RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION**.
 - **Objetivo:** Acompanhamento seguro de pedidos pelo cliente sem expor consultas por CPF, e-mail, telefone ou order_number sequencial.
 - **Varejo Anônimo (Secure Retail Token):**
   - Token aleatório de 256 bits (64 hex lowercase) gerado no checkout server-side.
   - Armazenamento no banco exclusivamente do hash SHA-256 em `public.orders.tracking_token_hash`.
-  - Token raw devolvido no recibo e mantido no navegador do cliente em `localStorage` (`{ orderNumber, trackingToken, tenantSlug, createdAt }`).
+  - Token raw devolvido no recibo e mantido no navegador do cliente em `localStorage` sob chave isolada por tenant (`corsys_order_tracking_v1:<slug>`).
+  - Registro local armazena exclusivamente `{ orderNumber, trackingToken, createdAt }` (sem `tenantSlug` interno e zero PII).
   - Consulta via Edge Function `track-order-by-token` delegando para a RPC interna `track_order_by_token_internal` (service_role only).
+  - Consulta automática apenas por pedidos locais salvos. Zero busca manual por token digitado.
 - **Atacado B2B Autenticado:**
   - `buyer_user_id` associado a `auth.users(id)` persistido em `public.orders` exclusivamente para modalidade wholesale.
-  - Consulta paginada via Edge Function `list-my-customer-orders` validando JWT e delegando para a RPC `list_my_customer_orders_internal` (service_role only).
-- **Menor Privilégio e Segurança:**
+  - Consulta paginada via Edge Function `list-my-customer-orders` validando JWT e delegando para a RPC `list_my_customer_orders_internal` (service_role only), restrita a `shopping_mode = 'wholesale'`.
+- **Menor Privilégio e Segurança (Migration 000016):**
   - RLS de `public.orders` permanece restrita a gestores e corretores do tenant (zero SELECT para anon).
   - RPCs internas possuem `SECURITY DEFINER`, `search_path = ''` e execução restrita exclusivamente a `service_role`:
     - `set_order_tracking_token_internal(p_order_id UUID, p_idempotency_key UUID, p_tracking_token_hash TEXT)`: vinculação segura do hash no checkout com lock pessimista `FOR UPDATE` e checagem de `shopping_mode = 'retail'`. Zero DML direto de tabela no Edge.
-    - `track_order_by_token_internal(p_tenant_slug TEXT, p_tracking_token_hash TEXT)`: consulta isolada por tenant e hash SHA-256 com projeção limpa sem PII.
-    - `list_my_customer_orders_internal(p_tenant_slug TEXT, p_buyer_user_id UUID, p_limit INT, p_offset INT)`: listagem paginada B2B autorizada server-side.
+    - `track_order_by_token_internal(p_tenant_slug TEXT, p_tracking_token_hash TEXT)`: consulta isolada por tenant e hash SHA-256 sem exigir `t.status = 'active'`, com projeção limpa sem PII (sem `id`, sem `customerName`, sem `shippingAddress`).
+    - `list_my_customer_orders_internal(p_tenant_slug TEXT, p_buyer_user_id UUID, p_limit INT, p_offset INT)`: listagem paginada B2B autorizada server-side com mesma projeção sanitizada.
   - Declaração explícita de `[functions.track-order-by-token]` (`verify_jwt = false`) e `[functions.list-my-customer-orders]` (`verify_jwt = true`) em `supabase/config.toml`.
 - **Frontend & UI:**
   - Componente `CustomerOrderTrackingView.tsx` sob `viewMode = 'my_orders'`.
   - Botão "Meus Pedidos" acessível no cabeçalho e menu de usuário.
+  - Interface livre de PII ou endereço de entrega (exibe exclusivamente método de entrega e forma de pagamento).
+  - Ao deslogar (logout), estado B2B é descarregado e o usuário é redirecionado para a vitrine pública se estiver em `my_orders`.
 
 

@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const HEX_64_REGEX = /^[a-f0-9]{64}$/i;
+const HEX_64_REGEX = /^[a-f0-9]{64}$/;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -55,6 +55,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Validação estrita de allowlist de chaves (defense-in-depth)
+    const allowedKeys = ["tenantSlug", "trackingToken"];
+    const payloadKeys = Object.keys(payload);
+    const hasForbiddenKeys = payloadKeys.some((k) => !allowedKeys.includes(k)) || payloadKeys.length !== 2;
+    if (hasForbiddenKeys) {
+      return new Response(
+        JSON.stringify({ error: "Corpo da requisição deve conter exclusivamente tenantSlug e trackingToken." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { tenantSlug, trackingToken } = payload;
 
     if (typeof tenantSlug !== "string" || !tenantSlug.trim() || tenantSlug.trim().length > 120) {
@@ -64,14 +75,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (typeof trackingToken !== "string" || !HEX_64_REGEX.test(trackingToken.trim())) {
+    if (typeof trackingToken !== "string" || !HEX_64_REGEX.test(trackingToken.trim().toLowerCase())) {
       return new Response(
         JSON.stringify({ error: "Token de rastreamento inválido (deve possuir 64 caracteres hexadecimais)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Calcula o SHA-256 do token recebido
+    // Calcula o SHA-256 do token recebido (sem logging de token raw ou hash)
     const cleanToken = trackingToken.trim().toLowerCase();
     const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cleanToken));
     const tokenHashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -114,23 +125,39 @@ Deno.serve(async (req: Request) => {
     );
 
     if (rpcError) {
-      const errorCode = rpcError.code || "";
-      if (errorCode === "P0002") {
-        return new Response(
-          JSON.stringify({ error: "Pedido não encontrado para este token de rastreamento." }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       return new Response(
-        JSON.stringify({ error: rpcError.message || "Erro ao consultar rastreamento." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Pedido não encontrado." }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    if (!orderData) {
+      return new Response(
+        JSON.stringify({ error: "Pedido não encontrado." }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Sanitização defensiva explícita (allowlist de campos públicos)
+    const sanitizedOrder = {
+      orderNumber: orderData.orderNumber,
+      status: orderData.status,
+      shoppingMode: orderData.shoppingMode,
+      deliveryMethod: orderData.deliveryMethod,
+      paymentMethod: orderData.paymentMethod,
+      items: orderData.items,
+      subtotal: orderData.subtotal,
+      discount: orderData.discount,
+      shippingFee: orderData.shippingFee,
+      total: orderData.total,
+      createdAt: orderData.createdAt,
+      updatedAt: orderData.updatedAt,
+    };
 
     return new Response(
       JSON.stringify({
         success: true,
-        order: orderData,
+        order: sanitizedOrder,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

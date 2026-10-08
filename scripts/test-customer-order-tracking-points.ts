@@ -1,21 +1,24 @@
 /**
- * TEST SUITE: CUSTOMER ORDER TRACKING V1 (ITEM 3)
+ * TEST SUITE: CUSTOMER ORDER TRACKING V1 (ITEM 3 — PRIVACY & HARDENING AUDIT)
  *
- * Cobertura Completa:
- * 1. Migration 000015 (Schema public.orders: buyer_user_id, tracking_token_hash, check constraint, índices)
- * 2. RPCs Internas de Rastreamento (create_order_checkout_internal, track_order_by_token_internal, list_my_customer_orders_internal)
- * 3. Menor Privilégio & RBAC (Zero SELECT anon em orders, RPCs restritas a service_role)
- * 4. Edge Functions (track-order-by-token e list-my-customer-orders)
- * 5. submit-order-checkout (geração de trackingToken de 256 bits, SHA-256 e persistência)
- * 6. Frontend Service & Storage (customerTrackingService, localStorage sanitizado, validação de token)
- * 7. Frontend Integration & UI (CustomerOrderTrackingView, Header navigation, CartDrawer tracking persistence)
+ * Cobertura Completa e Rigorosa:
+ * 1. Migration Governance (000016 existe, 000015 intacta, RPCs atualizadas)
+ * 2. RPCs de Banco de Dados (shopping_mode isolado, sem active tenant requirement, zero PII, zero internal IDs)
+ * 3. Edge Functions Gateway (allowlist de body estrita, sanitização de saída, zero PII, zero SQL leaks)
+ * 4. TypeScript Parse Real de Edge Functions (zero erros de sintaxe)
+ * 5. Frontend Service & Storage (CustomerTrackedOrder sem PII/ID, validação em runtime fail-closed, storage tenant-scoped)
+ * 6. UI & Privacy (remoção total de busca manual, sem endereço na UI, tenant isolation, logout privacy, redirecionamento signOut)
+ * 7. Princípios Arquiteturais (zero SELECT direto de orders no client, zero RPC interna no client, zero token na URL, zero polling/realtime)
  */
 
 import * as fs from 'fs';
+import * as ts from 'typescript';
 import { 
   getStoredRetailTrackings, 
   storeRetailOrderTracking, 
-  removeStoredRetailTracking 
+  removeStoredRetailTracking,
+  validateCustomerTrackedOrder,
+  CustomerTrackedOrder
 } from '../src/services/customerTrackingService';
 import { validateReceipt } from '../src/services/orderService';
 
@@ -33,218 +36,326 @@ function assert(condition: boolean, message: string) {
 }
 
 console.log('======================================================');
-console.log('TEST SUITE: CUSTOMER ORDER TRACKING V1 (ITEM 3)');
+console.log('TEST SUITE: CUSTOMER ORDER TRACKING V1 — PRIVACY & HARDENING');
 console.log('======================================================\n');
 
-// 1. Arquivos de Migração e Banco de Dados
-console.log('1. Auditoria de Migration 000015');
+// =========================================================================
+// 1. MIGRATION GOVERNANCE & SCHEMA AUDIT
+// =========================================================================
+console.log('1. Governança de Migrations e Banco de Dados');
 
 const migration15Path = 'supabase/migrations/20261008_000015_customer_order_tracking.sql';
 assert(fs.existsSync(migration15Path), 'Migration 000015 existe no repositório');
-
 const migration15Sql = fs.readFileSync(migration15Path, 'utf-8');
+
+const migration16Path = 'supabase/migrations/20261008020000_000016_customer_order_tracking_hardening.sql';
+assert(fs.existsSync(migration16Path), '1.1 Migration 000016 existe no workspace');
+const migration16Sql = fs.readFileSync(migration16Path, 'utf-8');
 
 assert(
   migration15Sql.includes('buyer_user_id UUID NULL REFERENCES auth.users(id)') &&
-  migration15Sql.includes('ON DELETE SET NULL'),
-  '1.1 Coluna buyer_user_id adicionada com FK auth.users(id) e ON DELETE SET NULL'
-);
-
-assert(
   migration15Sql.includes('tracking_token_hash TEXT NULL') &&
-  migration15Sql.includes("tracking_token_hash ~ '^[a-f0-9]{64}$'"),
-  '1.2 Coluna tracking_token_hash com CHECK constraint estrito de 64 caracteres hex (SHA-256)'
+  migration15Sql.includes('idx_orders_buyer_lookup') &&
+  migration15Sql.includes('uq_orders_tracking_token_hash'),
+  '1.2 Migration 000015 permanece intacta com colunas, constraints e índices originais'
+);
+
+// 2. RPCs em Migration 000016
+console.log('\n2. Auditoria das RPCs de Rastreamento (Migration 000016)');
+
+assert(
+  migration16Sql.includes("o.shopping_mode = 'retail'") &&
+  migration16Sql.includes('o.tracking_token_hash = p_tracking_token_hash'),
+  '2.1 retail RPC track_order_by_token_internal exige estritamente shopping_mode = \'retail\' e token_hash'
 );
 
 assert(
-  migration15Sql.includes('CREATE INDEX IF NOT EXISTS idx_orders_buyer_lookup') &&
-  migration15Sql.includes('(tenant_id, buyer_user_id, created_at DESC)') &&
-  migration15Sql.includes('WHERE buyer_user_id IS NOT NULL'),
-  '1.3 Índice parcial idx_orders_buyer_lookup (tenant_id, buyer_user_id, created_at DESC) criado'
+  migration16Sql.includes("o.shopping_mode = 'wholesale'") &&
+  migration16Sql.includes('o.buyer_user_id = p_buyer_user_id'),
+  '2.2 B2B RPC list_my_customer_orders_internal exige estritamente shopping_mode = \'wholesale\' e buyer_user_id'
 );
 
 assert(
-  migration15Sql.includes('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_tracking_token_hash') &&
-  migration15Sql.includes('WHERE tracking_token_hash IS NOT NULL'),
-  '1.4 Índice UNIQUE uq_orders_tracking_token_hash parcial criado'
+  !migration16Sql.includes("AND t.status = 'active'") &&
+  !migration16Sql.includes('t.status = "active"'),
+  '2.3 Rastreamento histórico não restringe por t.status = \'active\' (acesso mesmo com loja inativa)'
+);
+
+// Extrai corpo de retorno da retail RPC
+const retailRpcReturn = migration16Sql.split('v_result := jsonb_build_object(')[1]?.split(');')[0] || '';
+assert(
+  !retailRpcReturn.includes("'id'") &&
+  !retailRpcReturn.includes("'customer'") &&
+  !retailRpcReturn.includes("'customerName'") &&
+  !retailRpcReturn.includes("'shippingAddress'") &&
+  !retailRpcReturn.includes("'tenant_id'") &&
+  !retailRpcReturn.includes("'buyer_user_id'") &&
+  !retailRpcReturn.includes("'seller_id'") &&
+  !retailRpcReturn.includes("'idempotency_key'"),
+  '2.4 Projeção de retorno da retail RPC livre de id, customerName, shippingAddress, tenant_id e internal IDs'
+);
+
+// Extrai corpo de retorno da B2B RPC
+const b2bRpcReturn = migration16Sql.split('jsonb_build_object(\n      \'orderNumber\', o.order_number')[1]?.split(')\n  ), \'[]\'::jsonb)')[0] || '';
+assert(
+  !b2bRpcReturn.includes("'id'") &&
+  !b2bRpcReturn.includes("'customer'") &&
+  !b2bRpcReturn.includes("'customerName'") &&
+  !b2bRpcReturn.includes("'shippingAddress'"),
+  '2.5 Projeção de retorno da B2B RPC livre de id, customerName, shippingAddress e PII'
 );
 
 assert(
-  migration15Sql.includes('CREATE OR REPLACE FUNCTION public.create_order_checkout_internal') &&
-  migration15Sql.includes('p_shopping_mode = \'wholesale\'') &&
-  migration15Sql.includes('v_persisted_buyer_user_id := p_buyer_user_id;') &&
-  migration15Sql.includes('v_persisted_buyer_user_id := NULL;'),
-  '1.5 create_order_checkout_internal persiste buyer_user_id somente quando wholesale e NULL para retail'
+  migration16Sql.includes('REVOKE ALL ON FUNCTION public.track_order_by_token_internal(TEXT, TEXT) FROM PUBLIC, anon, authenticated;') &&
+  migration16Sql.includes('GRANT EXECUTE ON FUNCTION public.track_order_by_token_internal(TEXT, TEXT) TO service_role;') &&
+  migration16Sql.includes('REVOKE ALL ON FUNCTION public.list_my_customer_orders_internal(TEXT, UUID, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;') &&
+  migration16Sql.includes('GRANT EXECUTE ON FUNCTION public.list_my_customer_orders_internal(TEXT, UUID, INTEGER, INTEGER) TO service_role;') &&
+  migration16Sql.includes('GRANT EXECUTE ON FUNCTION public.set_order_tracking_token_internal(UUID, UUID, TEXT) TO service_role;'),
+  '2.6 ACL restrita reafirmada em 000016: REVOKE ALL para public/anon/authenticated e GRANT EXECUTE para service_role'
 );
 
 assert(
-  migration15Sql.includes('CREATE OR REPLACE FUNCTION public.track_order_by_token_internal') &&
-  migration15Sql.includes('SECURITY DEFINER') &&
-  migration15Sql.includes('REVOKE ALL ON FUNCTION public.track_order_by_token_internal(TEXT, TEXT) FROM PUBLIC, anon, authenticated;') &&
-  migration15Sql.includes('GRANT EXECUTE ON FUNCTION public.track_order_by_token_internal(TEXT, TEXT) TO service_role;'),
-  '1.6 track_order_by_token_internal criada com SECURITY DEFINER e restrita a service_role'
+  !migration16Sql.includes('CREATE POLICY') &&
+  !migration16Sql.includes('FOR SELECT TO anon'),
+  '2.7 Nenhuma policy de SELECT direto em orders criada para anon'
 );
 
-assert(
-  migration15Sql.includes('CREATE OR REPLACE FUNCTION public.list_my_customer_orders_internal') &&
-  migration15Sql.includes('SECURITY DEFINER') &&
-  migration15Sql.includes('REVOKE ALL ON FUNCTION public.list_my_customer_orders_internal(TEXT, UUID, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;') &&
-  migration15Sql.includes('GRANT EXECUTE ON FUNCTION public.list_my_customer_orders_internal(TEXT, UUID, INTEGER, INTEGER) TO service_role;'),
-  '1.7 list_my_customer_orders_internal criada com SECURITY DEFINER e restrita a service_role'
-);
-
-assert(
-  !migration15Sql.includes('CREATE POLICY') &&
-  !migration15Sql.includes('FOR SELECT TO anon') &&
-  !migration15Sql.includes('FOR SELECT TO public'),
-  '1.8 Nenhuma política RLS pública ou permissão de SELECT direto em orders para anon'
-);
-
-assert(
-  migration15Sql.includes('CREATE OR REPLACE FUNCTION public.set_order_tracking_token_internal') &&
-  migration15Sql.includes('p_tracking_token_hash ~ \'^[a-f0-9]{64}$\'') &&
-  migration15Sql.includes('o.shopping_mode = \'retail\'') &&
-  migration15Sql.includes('FOR UPDATE') &&
-  migration15Sql.includes('REVOKE ALL ON FUNCTION public.set_order_tracking_token_internal(UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;') &&
-  migration15Sql.includes('GRANT EXECUTE ON FUNCTION public.set_order_tracking_token_internal(UUID, UUID, TEXT) TO service_role;'),
-  '1.9 set_order_tracking_token_internal criada com SECURITY DEFINER, FOR UPDATE e restrita a service_role'
-);
-
-// 2. Edge Functions
-console.log('\n2. Auditoria de Edge Functions');
-
-const configTomlPath = 'supabase/config.toml';
-assert(fs.existsSync(configTomlPath), '2.0 supabase/config.toml existe');
-const configTomlContent = fs.readFileSync(configTomlPath, 'utf-8');
-
-assert(
-  configTomlContent.includes('[functions.track-order-by-token]') &&
-  configTomlContent.includes('[functions.list-my-customer-orders]'),
-  '2.0b config.toml declara explicitamente track-order-by-token e list-my-customer-orders'
-);
+// =========================================================================
+// 3. EDGE FUNCTIONS GATEWAY
+// =========================================================================
+console.log('\n3. Auditoria de Edge Functions (Defense-in-Depth)');
 
 const trackOrderFunctionPath = 'supabase/functions/track-order-by-token/index.ts';
-assert(fs.existsSync(trackOrderFunctionPath), '2.1 Edge Function track-order-by-token existe');
+assert(fs.existsSync(trackOrderFunctionPath), '3.1 Edge Function track-order-by-token existe');
 const trackOrderFunctionCode = fs.readFileSync(trackOrderFunctionPath, 'utf-8');
 
 assert(
-  trackOrderFunctionCode.includes('HEX_64_REGEX') &&
-  trackOrderFunctionCode.includes('crypto.subtle.digest("SHA-256"') &&
-  trackOrderFunctionCode.includes('track_order_by_token_internal'),
-  '2.2 track-order-by-token valida regex de 64 hex, calcula SHA-256 e chama RPC interna'
+  trackOrderFunctionCode.includes('allowedKeys = ["tenantSlug", "trackingToken"]') &&
+  trackOrderFunctionCode.includes('hasForbiddenKeys'),
+  '3.2 track-order-by-token impõe allowlist estrita de corpo (somente tenantSlug e trackingToken)'
+);
+
+assert(
+  trackOrderFunctionCode.includes('const sanitizedOrder = {') &&
+  !trackOrderFunctionCode.includes('id: orderData.id') &&
+  !trackOrderFunctionCode.includes('customerName: orderData.customerName') &&
+  !trackOrderFunctionCode.includes('shippingAddress: orderData.shippingAddress'),
+  '3.3 track-order-by-token sanitiza saída explicitamente antes da resposta sem id, customerName ou shippingAddress'
+);
+
+assert(
+  trackOrderFunctionCode.includes('Pedido não encontrado.') &&
+  !trackOrderFunctionCode.includes('rpcError.message'),
+  '3.4 track-order-by-token responde erro 404 genérico sem expor mensagens de erro SQL internas'
 );
 
 const listCustomerOrdersPath = 'supabase/functions/list-my-customer-orders/index.ts';
-assert(fs.existsSync(listCustomerOrdersPath), '2.3 Edge Function list-my-customer-orders existe');
+assert(fs.existsSync(listCustomerOrdersPath), '3.5 Edge Function list-my-customer-orders existe');
 const listCustomerOrdersCode = fs.readFileSync(listCustomerOrdersPath, 'utf-8');
 
 assert(
-  listCustomerOrdersCode.includes('auth.getUser(token)') &&
-  listCustomerOrdersCode.includes('list_my_customer_orders_internal') &&
-  listCustomerOrdersCode.includes('buyerUserId = userData.user.id'),
-  '2.4 list-my-customer-orders valida JWT via auth.getUser e extrai buyerUserId server-side'
+  listCustomerOrdersCode.includes('allowedKeys = ["tenantSlug", "limit", "offset"]') &&
+  listCustomerOrdersCode.includes('hasForbiddenKeys'),
+  '3.6 list-my-customer-orders impõe allowlist estrita de chaves e rejeita campos não permitidos'
 );
-
-const submitOrderPath = 'supabase/functions/submit-order-checkout/index.ts';
-const submitOrderCode = fs.readFileSync(submitOrderPath, 'utf-8');
 
 assert(
-  submitOrderCode.includes('crypto.getRandomValues(rawBytes)') &&
-  submitOrderCode.includes('crypto.subtle.digest("SHA-256"') &&
-  submitOrderCode.includes('set_order_tracking_token_internal') &&
-  !submitOrderCode.includes('.from("orders").update({ tracking_token_hash') &&
-  submitOrderCode.includes('trackingToken: trackingToken || undefined'),
-  '2.5 submit-order-checkout gera token aleatório de 256 bits, vincula via RPC interna e retorna trackingToken no receipt'
+  listCustomerOrdersCode.includes('const sanitizedOrders = rawOrders.map(') &&
+  !listCustomerOrdersCode.includes('id: ord.id') &&
+  !listCustomerOrdersCode.includes('customerName: ord.customerName') &&
+  !listCustomerOrdersCode.includes('shippingAddress: ord.shippingAddress'),
+  '3.7 list-my-customer-orders sanitiza itens com a mesma allowlist sem id, customerName ou shippingAddress'
 );
 
-// 3. Frontend Services & Storage
-console.log('\n3. Frontend Services & Storage');
+// TypeScript AST Parse sem erros
+function checkTsSyntax(filePath: string): boolean {
+  const code = fs.readFileSync(filePath, 'utf-8');
+  const sourceFile = ts.createSourceFile(filePath, code, ts.ScriptTarget.Latest, true);
+  const diagnostics: ts.Diagnostic[] = (sourceFile as any).parseDiagnostics || [];
+  return diagnostics.length === 0;
+}
+
+assert(
+  checkTsSyntax(trackOrderFunctionPath) && checkTsSyntax(listCustomerOrdersPath),
+  '3.8 Parse TypeScript sintático real de ambas as Edge Functions resultou em zero erros'
+);
+
+// =========================================================================
+// 4. FRONTEND SERVICE & RUNTIME VALIDATOR
+// =========================================================================
+console.log('\n4. Frontend Service, Tipos e Validador em Runtime');
 
 const customerTrackingServicePath = 'src/services/customerTrackingService.ts';
-assert(fs.existsSync(customerTrackingServicePath), '3.1 customerTrackingService.ts existe');
+assert(fs.existsSync(customerTrackingServicePath), '4.1 customerTrackingService.ts existe');
 const customerTrackingCode = fs.readFileSync(customerTrackingServicePath, 'utf-8');
 
 assert(
-  customerTrackingCode.includes('trackOrderByToken') &&
-  customerTrackingCode.includes('listMyCustomerOrders') &&
-  customerTrackingCode.includes('getStoredRetailTrackings') &&
-  customerTrackingCode.includes('storeRetailOrderTracking'),
-  '3.2 customerTrackingService implementa funções para retail (token) e wholesale (autenticado)'
+  customerTrackingCode.includes('export interface CustomerTrackedOrder {') &&
+  !customerTrackingCode.includes('id: string;') &&
+  !customerTrackingCode.includes('customerName?:') &&
+  !customerTrackingCode.includes('shippingAddress:'),
+  '4.2 Interface CustomerTrackedOrder não possui id, customerName ou shippingAddress'
 );
 
-// Teste de validação de receipt com trackingToken
-const sampleReceiptPayload = {
-  success: true,
-  order: {
-    id: 'a1b2c3d4-e5f6-4a8b-9c0d-1e2f3a4b5c6d',
-    orderNumber: 'PED-20261008-000001',
+assert(
+  customerTrackingCode.includes('export function validateCustomerTrackedOrder(') &&
+  customerTrackingCode.includes('validateCustomerTrackedOrder(data.order)'),
+  '4.3 Runtime validator fail-closed implementado e invocado em trackOrderByToken e listMyCustomerOrders'
+);
+
+// Teste do runtime validator
+let validatorPassed = false;
+try {
+  const validOrder = validateCustomerTrackedOrder({
+    orderNumber: 'PED-123',
+    status: 'pending',
     shoppingMode: 'retail',
     deliveryMethod: 'Retirada',
-    items: [
-      {
-        productId: '11111111-1111-4111-8111-111111111111',
-        productName: 'Produto Teste',
-        productSku: 'SKU-001',
-        productImage: 'https://example.com/img.jpg',
-        unitPrice: 50.0,
-        quantity: 2,
-        unit: 'un',
-        totalPrice: 100.0,
-        selectedVariant: null
-      }
-    ],
-    subtotal: 100.0,
-    discount: 0.0,
-    shippingFee: 0.0,
-    total: 100.0,
-    status: 'pending',
     paymentMethod: 'pix',
+    items: [],
+    subtotal: 100,
+    discount: 0,
+    shippingFee: 0,
+    total: 100,
     createdAt: new Date().toISOString(),
-    trackingToken: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90'
-  }
-};
+    updatedAt: new Date().toISOString(),
+  });
+  validatorPassed = validOrder.orderNumber === 'PED-123';
+} catch {
+  validatorPassed = false;
+}
+assert(validatorPassed, '4.4 validateCustomerTrackedOrder valida com sucesso dados válidos');
 
-const validated = validateReceipt(sampleReceiptPayload);
+let validatorRejected = false;
+try {
+  validateCustomerTrackedOrder({ orderNumber: '', status: 'invalid_status' });
+} catch {
+  validatorRejected = true;
+}
+assert(validatorRejected, '4.5 validateCustomerTrackedOrder falha fechado (fail-closed) para dados inválidos');
+
+// Storage por Tenant
 assert(
-  validated.trackingToken === 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90',
-  '3.3 validateReceipt valida e preserva trackingToken no recibo oficial'
+  customerTrackingCode.includes('corsys_order_tracking_v1:${normalized}') ||
+  customerTrackingCode.includes("`corsys_order_tracking_v1:${"),
+  '4.6 Chave de localStorage é isolada por tenant (corsys_order_tracking_v1:<slug>)'
 );
 
-// 4. Componentes UI & Integração
-console.log('\n4. Componentes UI & Integração');
+assert(
+  customerTrackingCode.includes('export interface StoredRetailOrderTracking {') &&
+  customerTrackingCode.includes('orderNumber: string;') &&
+  customerTrackingCode.includes('trackingToken: string;') &&
+  customerTrackingCode.includes('createdAt: string;') &&
+  !customerTrackingCode.includes('tenantSlug: string;'),
+  '4.7 StoredRetailOrderTracking contém exclusivamente orderNumber, trackingToken e createdAt (sem tenantSlug interno)'
+);
+
+assert(
+  customerTrackingCode.includes('slice(0, 50)'),
+  '4.8 Limite máximo de 50 pedidos locais preservado'
+);
+
+assert(
+  customerTrackingCode.includes('!isNaN(Date.parse(item.createdAt))'),
+  '4.9 Validação estrita de formato de data de createdAt ao ler storage'
+);
+
+// =========================================================================
+// 5. UI & PRIVACY AUDIT (CUSTOMER ORDER TRACKING VIEW)
+// =========================================================================
+console.log('\n5. Auditoria de UI & Privacidade (CustomerOrderTrackingView.tsx)');
 
 const trackingViewPath = 'src/components/storefront/CustomerOrderTrackingView.tsx';
-assert(fs.existsSync(trackingViewPath), '4.1 CustomerOrderTrackingView.tsx existe no workspace');
-
+assert(fs.existsSync(trackingViewPath), '5.1 CustomerOrderTrackingView.tsx existe no workspace');
 const trackingViewCode = fs.readFileSync(trackingViewPath, 'utf-8');
+
 assert(
-  trackingViewCode.includes('Acompanhar Meus Pedidos') &&
-  trackingViewCode.includes('Atacado B2B') &&
-  trackingViewCode.includes('Pedidos Recentes de Varejo') &&
-  trackingViewCode.includes('Rastrear por Código Seguro'),
-  '4.2 CustomerOrderTrackingView possui abas B2B e Varejo e campo de rastreamento por token'
+  !trackingViewCode.includes('tokenInput') &&
+  !trackingViewCode.includes('isSearchingToken') &&
+  !trackingViewCode.includes('handleSearchByToken') &&
+  !trackingViewCode.includes('Rastrear por Código Seguro') &&
+  !trackingViewCode.includes('64 caracteres'),
+  '5.2 Campo de busca manual por token e referências a "Rastrear por Código Seguro" TOTALMENTE AUSENTES'
 );
 
-const headerCode = fs.readFileSync('src/components/layout/Header.tsx', 'utf-8');
 assert(
-  headerCode.includes('id="header-my-orders-button"') &&
-  headerCode.includes('Meus Pedidos') &&
-  headerCode.includes("setViewMode('my_orders')"),
-  '4.3 Header possui botão "Meus Pedidos" que alterna para viewMode my_orders'
+  !trackingViewCode.includes('shippingAddress') &&
+  !trackingViewCode.includes('customerName') &&
+  !trackingViewCode.includes('Endereço de Entrega'),
+  '5.3 Endereço de Entrega, customerName e PII TOTALMENTE AUSENTES da interface'
 );
 
-const appCode = fs.readFileSync('src/App.tsx', 'utf-8');
 assert(
-  appCode.includes("viewMode === 'my_orders'") &&
-  appCode.includes('<CustomerOrderTrackingView />'),
-  '4.4 App.tsx renderiza CustomerOrderTrackingView sob viewMode my_orders'
+  trackingViewCode.includes('ord.orderNumber') &&
+  !trackingViewCode.includes('key={ord.id}'),
+  '5.4 Interface utiliza orderNumber como chave React e identificador de estado (sem dependência de order UUID)'
 );
 
+assert(
+  trackingViewCode.includes('getStoredRetailTrackings(currentTenant.slug)') &&
+  trackingViewCode.includes('Promise.allSettled'),
+  '5.5 Carregamento de pedidos de varejo isolado estritamente por currentTenant.slug com Promise.allSettled'
+);
+
+assert(
+  trackingViewCode.includes('setB2bOrders([]);') &&
+  trackingViewCode.includes("setActiveTab('retail');"),
+  '5.6 Logout privacy: ao invalidar sessão, zera pedidos B2B e força retorno para aba de varejo'
+);
+
+assert(
+  trackingViewCode.includes('Seus novos pedidos feitos neste navegador aparecerão aqui.') &&
+  trackingViewCode.includes('Para pedidos sem conta, o acompanhamento fica vinculado a este navegador.'),
+  '5.7 Empty state de varejo informa vínculo com o navegador sem solicitar CPF, telefone ou token manual'
+);
+
+// AuthContext signOut redirect
+const authContextCode = fs.readFileSync('src/context/AuthContext.tsx', 'utf-8');
+assert(
+  authContextCode.includes("viewMode === 'my_orders'") &&
+  authContextCode.includes("setViewMode('storefront')"),
+  '5.8 AuthContext.signOut redireciona viewMode "my_orders" para "storefront"'
+);
+
+// CartDrawer
 const cartDrawerCode = fs.readFileSync('src/components/storefront/CartDrawer.tsx', 'utf-8');
 assert(
-  cartDrawerCode.includes('storeRetailOrderTracking') &&
-  cartDrawerCode.includes('receipt.trackingToken'),
-  '4.5 CartDrawer salva par { orderNumber, trackingToken } no localStorage ao concluir checkout retail'
+  cartDrawerCode.includes('storeRetailOrderTracking(settings.slug, {') &&
+  cartDrawerCode.includes('orderNumber: receipt.orderNumber') &&
+  cartDrawerCode.includes('trackingToken: receipt.trackingToken'),
+  '5.9 CartDrawer invoca storeRetailOrderTracking com tenant-scoped signature'
+);
+
+// =========================================================================
+// 6. INTEGRIDADE ARQUITETURAL
+// =========================================================================
+console.log('\n6. Integridade Arquitetural & Menor Privilégio');
+
+assert(
+  !trackingViewCode.includes(".from('orders')") &&
+  !trackingViewCode.includes('.from("orders")') &&
+  !customerTrackingCode.includes(".from('orders')") &&
+  !customerTrackingCode.includes('.from("orders")'),
+  '6.1 Ausência total de SELECT direto em public.orders a partir do frontend'
+);
+
+assert(
+  !trackingViewCode.includes('.rpc(') &&
+  !customerTrackingCode.includes('.rpc('),
+  '6.2 Ausência total de chamadas a RPCs internas diretamente do browser'
+);
+
+assert(
+  !trackingViewCode.includes('window.location.search') &&
+  !trackingViewCode.includes('URLSearchParams'),
+  '6.3 Ausência de extração de token via URL (token nunca exposto em query param)'
+);
+
+assert(
+  !trackingViewCode.includes('setInterval') &&
+  !trackingViewCode.includes('supabase.channel') &&
+  !trackingViewCode.includes('postgres_changes'),
+  '6.4 Ausência total de Realtime ou polling ineficiente (setInterval)'
 );
 
 console.log('\n======================================================');

@@ -69,6 +69,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Allowlist estrita de chaves de requisição (rejeita expressamente userId, buyerUserId, tenantId, email, role, etc)
+    const allowedKeys = ["tenantSlug", "limit", "offset"];
+    const payloadKeys = Object.keys(payload);
+    const hasForbiddenKeys = payloadKeys.some((k) => !allowedKeys.includes(k));
+    if (hasForbiddenKeys) {
+      return new Response(
+        JSON.stringify({ error: "Corpo da requisição contém campos não permitidos." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { tenantSlug } = payload;
     if (typeof tenantSlug !== "string" || !tenantSlug.trim() || tenantSlug.trim().length > 120) {
       return new Response(
@@ -114,7 +125,7 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // 2. Validação rigorosa do token do comprador
+    // 2. Validação rigorosa do token do comprador e extração server-side do buyerUserId
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !userData?.user?.id) {
       return new Response(
@@ -140,21 +151,38 @@ Deno.serve(async (req: Request) => {
       const errorCode = rpcError.code || "";
       if (errorCode === "P0002") {
         return new Response(
-          JSON.stringify({ error: "Loja não encontrada ou inativa." }),
+          JSON.stringify({ error: "Loja não encontrada." }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       return new Response(
-        JSON.stringify({ error: rpcError.message || "Erro ao consultar histórico de pedidos." }),
+        JSON.stringify({ error: "Erro ao consultar histórico de pedidos." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // 4. Sanitização defensiva explícita para cada item retornado
+    const rawOrders = Array.isArray(listResult?.orders) ? listResult.orders : [];
+    const sanitizedOrders = rawOrders.map((ord: Record<string, unknown>) => ({
+      orderNumber: ord.orderNumber,
+      status: ord.status,
+      shoppingMode: ord.shoppingMode,
+      deliveryMethod: ord.deliveryMethod,
+      paymentMethod: ord.paymentMethod,
+      items: ord.items,
+      subtotal: ord.subtotal,
+      discount: ord.discount,
+      shippingFee: ord.shippingFee,
+      total: ord.total,
+      createdAt: ord.createdAt,
+      updatedAt: ord.updatedAt,
+    }));
+
     return new Response(
       JSON.stringify({
         success: true,
-        orders: listResult?.orders || [],
-        total: listResult?.total || 0,
+        orders: sanitizedOrders,
+        total: typeof listResult?.total === "number" ? listResult.total : sanitizedOrders.length,
         limit,
         offset,
       }),
@@ -163,7 +191,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     console.error("[list-my-customer-orders] Erro inesperado:", err);
     return new Response(
-      JSON.stringify({ error: "Erro interno no servidor ao consultar histórico de pedidos." }),
+      JSON.stringify({ error: "Erro interno no servidor ao consultar o histórico." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

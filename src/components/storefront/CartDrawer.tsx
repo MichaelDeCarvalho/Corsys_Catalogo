@@ -639,12 +639,11 @@ export const CartDrawer: React.FC<{
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
-      // 8. Armazenamento seguro de token de rastreamento de varejo no cliente
+      // 8. Armazenamento seguro de token de rastreamento de varejo no cliente (isolado por tenant)
       if (!isWholesale && receipt.trackingToken) {
-        storeRetailOrderTracking({
+        storeRetailOrderTracking(settings.slug, {
           orderNumber: receipt.orderNumber,
           trackingToken: receipt.trackingToken,
-          tenantSlug: settings.slug,
           createdAt: receipt.createdAt
         });
       }
