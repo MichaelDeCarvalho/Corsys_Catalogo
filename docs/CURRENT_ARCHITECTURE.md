@@ -403,6 +403,9 @@
 - **Checkout Delivery Methods Compatibility (Migration 000017):**
   - Hotfix forward-only em `create_order_checkout_internal` para aceitar o formato persistido atual `delivery_methods = ["retirada", "entrega", ...]` e também o formato estruturado futuro `[{ "id": "retirada", "active": true }]`.
   - Corrige rejeição indevida com SQLSTATE `22000` antes da persistência do pedido; nenhuma mudança em pricing, estoque, idempotência, tracking token ou WhatsApp.
+- **Canonical Tenant Slug no Tracking (hotfix runtime 2026-10-08):**
+  - `CustomerOrderTrackingView` usa `PUBLIC_TENANT_SLUG`, a mesma identidade pública canônica usada pelo Storefront/Checkout, para `listMyCustomerOrders`, storage varejo e `trackOrderByToken`.
+  - O slug legado de `currentTenant` permanece apenas como metadado visual do AppContext e não participa de chamadas de tracking.
 - **Frontend & UI:**
   - Componente `CustomerOrderTrackingView.tsx` sob `viewMode = 'my_orders'`.
   - Botão "Meus Pedidos" acessível no cabeçalho e menu de usuário.

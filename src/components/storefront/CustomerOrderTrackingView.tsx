@@ -12,6 +12,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { PUBLIC_TENANT_SLUG } from '../../config/tenant';
 import { useAuth } from '../../context/AuthContext';
 import { 
   CustomerTrackedOrder, 
@@ -60,11 +61,11 @@ export const CustomerOrderTrackingView: React.FC = () => {
   }, [session]);
 
   const loadB2bOrders = useCallback(async () => {
-    if (!session || !currentTenant.slug) return;
+    if (!session) return;
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const res = await listMyCustomerOrders(currentTenant.slug);
+      const res = await listMyCustomerOrders(PUBLIC_TENANT_SLUG);
       setB2bOrders(res.orders);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar pedidos.';
@@ -72,11 +73,10 @@ export const CustomerOrderTrackingView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [session, currentTenant.slug]);
+  }, [session]);
 
   const loadStoredRetailOrders = useCallback(async () => {
-    if (!currentTenant.slug) return;
-    const trackings = getStoredRetailTrackings(currentTenant.slug);
+    const trackings = getStoredRetailTrackings(PUBLIC_TENANT_SLUG);
     if (trackings.length === 0) {
       setRetailOrders([]);
       return;
@@ -85,9 +85,10 @@ export const CustomerOrderTrackingView: React.FC = () => {
     setIsLoading(true);
     setErrorMsg(null);
 
-    // Consulta concorrente e isolada com Promise.allSettled exclusivamente para o tenant atual
+    // O tracking usa o mesmo slug público canônico do Storefront/Checkout.
+    // Não usar currentTenant.slug aqui: ele pertence ao estado legado/mock do AppContext.
     const results = await Promise.allSettled(
-      trackings.map((item) => trackOrderByToken(currentTenant.slug, item.trackingToken))
+      trackings.map((item) => trackOrderByToken(PUBLIC_TENANT_SLUG, item.trackingToken))
     );
 
     const fetched: CustomerTrackedOrder[] = [];
@@ -99,7 +100,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
 
     setRetailOrders(fetched);
     setIsLoading(false);
-  }, [currentTenant.slug]);
+  }, []);
 
   // Carrega pedidos B2B se autenticado
   useEffect(() => {

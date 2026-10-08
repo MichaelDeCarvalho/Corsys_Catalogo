@@ -292,9 +292,14 @@ assert(
 );
 
 assert(
-  trackingViewCode.includes('getStoredRetailTrackings(currentTenant.slug)') &&
+  trackingViewCode.includes("import { PUBLIC_TENANT_SLUG } from '../../config/tenant';") &&
+  trackingViewCode.includes('getStoredRetailTrackings(PUBLIC_TENANT_SLUG)') &&
+  trackingViewCode.includes('trackOrderByToken(PUBLIC_TENANT_SLUG, item.trackingToken)') &&
+  trackingViewCode.includes('listMyCustomerOrders(PUBLIC_TENANT_SLUG)') &&
+  !trackingViewCode.includes('getStoredRetailTrackings(currentTenant.slug)') &&
+  !trackingViewCode.includes('listMyCustomerOrders(currentTenant.slug)') &&
   trackingViewCode.includes('Promise.allSettled'),
-  '5.5 Carregamento de pedidos de varejo isolado estritamente por currentTenant.slug com Promise.allSettled'
+  '5.5 Meus Pedidos usa o slug público canônico do Storefront/Checkout para B2B e varejo, sem depender do slug legado do AppContext'
 );
 
 assert(
