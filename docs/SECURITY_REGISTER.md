@@ -203,3 +203,13 @@
   - **MITIGATED / RESIDUAL** (NÃO ELIMINATED).
 
 
+
+## Item 4 — Controle de campos por tenant / ADR 012
+- CHECK estrito proíbe campos desconhecidos, valores não booleanos e required em campo oculto; quatro campos essenciais permanecem obrigatórios.
+- Nova coluna pública contém apenas regras do formulário, sem PII. Grant UPDATE por coluna + RLS já existente: same-tenant tenant_admin ou platform_admin; vendedores/estoque/anon negados.
+- Checkout lê política no banco, elimina campos ocultos e impõe required antes da persistência. ACL service-role-only e search_path vazio preservados.
+- Identidade B2B é derivada de cadastro aprovado; ocultar razão social de varejo não permite adulterar identidade B2B. E-mail oculto não vaza via fallback B2B.
+- Pedidos idempotentes/históricos permanecem imutáveis. Catálogo com política antiga pode receber 400 após mudança administrativa: recarregar e corrigir, sem pedido parcial.
+- Concorrência administrativa usa UPDATE condicional; conflito exige recarregar. Sem secrets, PII em docs, campos livres ou expansão de políticas.
+- Auditoria de configuração não adiciona log por operador nesta versão; updated_at existente registra a alteração. Risco residual: atribuição individual depende de logs existentes; não declarada como implementada.
+- Testes de papéis reais e Hosted registrados no handoff após execução; até lá NOT EVALUATED.

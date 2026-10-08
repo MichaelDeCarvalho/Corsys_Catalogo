@@ -411,8 +411,8 @@ assert(
 
 assert(
   cartDrawerCode.includes('const customerPayload = isWholesale') &&
-  cartDrawerCode.includes('email: customerData.email.trim() || undefined') &&
-  cartDrawerCode.includes('phone: customerData.phone.trim() || undefined'),
+  cartDrawerCode.includes('email: formValues.email.trim() || undefined') &&
+  cartDrawerCode.includes('phone: formValues.phone.trim() || undefined'),
   '62. Wholesale envia apenas campos operacionais, preservando autoridade do backend'
 );
 
@@ -424,7 +424,7 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes("!customerData.street.trim()") &&
+  cartDrawerCode.includes("!formValues.street.trim()") &&
   orderServiceCode.includes("!draft.shippingAddress || !draft.shippingAddress.street"),
   '64. street (logradouro) permanece obrigatória para qualquer modalidade e entrega'
 );
@@ -595,9 +595,9 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes('!customerData.name.trim()') &&
-  cartDrawerCode.includes('!customerData.phone.trim()') &&
-  cartDrawerCode.includes('!customerData.street.trim()'),
+  cartDrawerCode.includes('!formValues.name.trim()') &&
+  cartDrawerCode.includes('!formValues.phone.trim()') &&
+  cartDrawerCode.includes('!formValues.street.trim()'),
   '81j. Guard 10: campos obrigatórios do formulário são revalidados imediatamente antes do submit'
 );
 
