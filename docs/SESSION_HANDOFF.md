@@ -478,3 +478,11 @@ Não deployado por esta adoção.
 - Bloqueio anterior RESOLVIDO. Histórico alinhado ao arquivo forward-only; testes do Hosted previamente aprovados permanecem pertinentes (somente metadado mudou).
 - Quality run 37839821291: SUCCESS no commit documental f0fae4a. Preview Netlify SUCCESS na mesma revisão.
 - Publicação Cloudflare e validação administrativa continuam pendentes de execução, a registrar abaixo.
+
+### Fechamento publicado — Item 4 (2026-10-08)
+- Estado final: IMPLEMENTADO/PUBLICADO. PR 2 integrado em main no commit 4759ae5159a4d024d988f9cba0d3e41c354b1b9c; Quality run 37840134708 SUCCESS no head f99b4ca. GitHub mostra 3/3 checks de main concluídos com sucesso.
+- Runtime Cloudflare confirmado em https://corsys-catalogo.corsys1.workers.dev/: novo componente Campos do checkout disponível; asset publicado /assets/index-DjufW1bk.js. Version ID da Cloudflare não consultado: CLI local sem credencial configurada. Evidência de publicação é a UI nova em produção e os checks de main.
+- Administração autenticada: leitura real dos 14 campos PASS; campos fixos bloqueados; ocultar e-mail remove required e desabilita o controle. Alterações locais revertidas antes do save; salva somente política padrão original. Mensagem de sucesso real, recarga e flags persistidas confirmadas. Nenhuma mudança comercial efetiva.
+- Hosted após save: 6 pedidos, todas as configurações válidas, e-mail visível/opcional preservado. Histórico 000018=20261009020000 alinhado; migrations 1–17 intactas.
+- Limites: Supabase Preview dedicado e happy path B2B pelo navegador permanecem NOT EVALUATED. B2B sintético, isolamento e enforcement avaliados em testes SQL reais com rollback. Nenhum pedido ou WhatsApp criado no navegador.
+- Documentação de encerramento publicada separadamente, sem alteração de código/schema. Itens 5/6 não iniciados.

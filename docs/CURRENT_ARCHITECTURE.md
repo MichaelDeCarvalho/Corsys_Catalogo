@@ -426,3 +426,5 @@
 Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 884c741 SUCCESS. A migration recebeu versão automática 20261008202538, distinta do arquivo 20261009020000; alinhamento somente desta nova entrada depende de autorização específica após rejeição da revisão automática. PR 2 aberto; publicação Cloudflare pendente. Consulte SESSION_HANDOFF para evidências e próximos passos. Migrations 1–17 e pedidos reais preservados.
 
 Atualização: alinhamento da migration 000018 autorizado explicitamente e executado em 2026-10-08; versão Hosted=20261009020000, idêntica ao arquivo. Bloqueio anterior resolvido; publicação em andamento (estado final no SESSION_HANDOFF).
+
+Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=20261009020000, CI PASS e runtime Cloudflare publicado. Edição administrativa autenticada com save da política original e recarga PASS. Evidências e limites no SESSION_HANDOFF. Itens 5/6 não iniciados.
