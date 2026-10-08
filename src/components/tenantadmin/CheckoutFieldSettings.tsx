@@ -38,7 +38,7 @@ export function CheckoutFieldSettings({ tenantId }: { tenantId: string | null })
     } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao salvar os campos.'); }
     finally { setBusy(false); }
   }
-  return <section className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+  return <section className="bg-white text-slate-900 p-6 rounded-2xl border border-slate-200 space-y-4">
     <h3 className="text-sm font-bold text-slate-900">Campos do checkout</h3>
     <p className="text-xs text-slate-600">Escolha quais informações solicitar. Nome, WhatsApp, CPF/CNPJ e logradouro continuam obrigatórios. No atacado, a identidade comercial vem do cadastro aprovado. Razão social configurável aplica-se ao varejo PJ.</p>
     {!tenantId && <p role="status">Aguardando contexto da loja.</p>}
