@@ -485,4 +485,4 @@ Não deployado por esta adoção.
 - Administração autenticada: leitura real dos 14 campos PASS; campos fixos bloqueados; ocultar e-mail remove required e desabilita o controle. Alterações locais revertidas antes do save; salva somente política padrão original. Mensagem de sucesso real, recarga e flags persistidas confirmadas. Nenhuma mudança comercial efetiva.
 - Hosted após save: 6 pedidos, todas as configurações válidas, e-mail visível/opcional preservado. Histórico 000018=20261009020000 alinhado; migrations 1–17 intactas.
 - Limites: Supabase Preview dedicado e happy path B2B pelo navegador permanecem NOT EVALUATED. B2B sintético, isolamento e enforcement avaliados em testes SQL reais com rollback. Nenhum pedido ou WhatsApp criado no navegador.
-- Documentação de encerramento publicada separadamente, sem alteração de código/schema. Itens 5/6 não iniciados.
+- Encerramento em PR 3: documentação e correção mínima de contraste (text-slate-900) na seção administrativa. Sem alteração de schema ou política. Itens 5/6 não iniciados.
