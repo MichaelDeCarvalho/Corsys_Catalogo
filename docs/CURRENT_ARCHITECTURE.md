@@ -421,3 +421,6 @@
 - Identidade B2B oficial, Itens 1–3, WhatsApp textual, PDFs e tracking preservados. Itens 5/6 fora do escopo.
 - Estado desta revisão: tipos/build/regressão local PASS; Hosted/CI/publicação aguardam evidência pós-commit no SESSION_HANDOFF.
 - Confirmação de retomada: migrations 000001–000017 aplicadas no Hosted em 2026-10-08; notas históricas anteriores de pendência de 000016/17 estão superadas por esta inspeção.
+
+### Evidência operacional Item 4
+Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 884c741 SUCCESS. A migration recebeu versão automática 20261008202538, distinta do arquivo 20261009020000; alinhamento somente desta nova entrada depende de autorização específica após rejeição da revisão automática. PR 2 aberto; publicação Cloudflare pendente. Consulte SESSION_HANDOFF para evidências e próximos passos. Migrations 1–17 e pedidos reais preservados.

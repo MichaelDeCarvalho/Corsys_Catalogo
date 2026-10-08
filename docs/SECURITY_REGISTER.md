@@ -213,3 +213,5 @@
 - Concorrência administrativa usa UPDATE condicional; conflito exige recarregar. Sem secrets, PII em docs, campos livres ou expansão de políticas.
 - Auditoria de configuração não adiciona log por operador nesta versão; updated_at existente registra a alteração. Risco residual: atribuição individual depende de logs existentes; não declarada como implementada.
 - Testes de papéis reais e Hosted registrados no handoff após execução; até lá NOT EVALUATED.
+
+Advisors Hosted antes/depois do Item 4: nenhum finding novo. Aviso preexistente: [Leaked password protection desabilitada](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection), fora do escopo desta implementação. Testes de papéis reais/isolamento: PASS (ver SESSION_HANDOFF).

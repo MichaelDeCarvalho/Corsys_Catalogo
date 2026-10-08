@@ -457,3 +457,17 @@ Não deployado por esta adoção.
 - Identidade B2B oficial, Itens 1–3, WhatsApp textual, PDFs e tracking preservados. Itens 5/6 fora do escopo.
 - Estado desta revisão: tipos/build/regressão local PASS; Hosted/CI/publicação aguardam evidência pós-commit no SESSION_HANDOFF.
 - Confirmação de retomada: migrations 000001–000017 aplicadas no Hosted em 2026-10-08; notas históricas anteriores de pendência de 000016/17 estão superadas por esta inspeção.
+
+### Evidência após commit 884c741 — Item 4 (2026-10-08)
+- PR: https://github.com/MichaelDeCarvalho/Corsys_Catalogo/pull/2 (aberto, sem merge).
+- Local: npm run lint, npm run build e npm run test:regression PASS; 10 suítes. Bun não disponível no PATH local; CI usa Bun 1.4.2 + frozen lockfile.
+- GitHub Quality run 37839268285 / Verify: SUCCESS no commit 884c7412a6fd70ab1324ef40b8778e2a8899b712.
+- Migration 000018 aplicada no Hosted vlpwtdqqnecdvccxyodp via MCP. Schema e função ativos. A API gerou versão 20261008202538; arquivo usa 20261009020000 para ficar após migrations 16/17. Somente a nova entrada precisa alinhamento; migrations 1–17 intactas.
+- BLOCKER: revisão automática rejeitou UPDATE direto de supabase_migrations.schema_migrations por risco de drift durável e ausência de autorização específica. Aprovação solicitada para trocar apenas version de 000018 (20261008202538 -> 20261009020000). Nenhuma tentativa de contornar. Não fazer merge/publicação enquanto pendente.
+- Teste SQL 02_checkout_fields_test.sql executado no Hosted: PASS, incluindo constraints, required dos 10 campos configuráveis, ocultos, anon/admin/sales/stock/platform/cross-tenant, identidade B2B sintética, preços, estoque e idempotência.
+- Verificação pós-rollback: 6 pedidos reais; zero usuários/tenants de teste; configurações válidas; RLS ativa; anon sem UPDATE; authenticated com grant da coluna sob RLS; RPC negada ao browser.
+- Advisors de segurança antes/depois: nenhum finding novo; permanece aviso preexistente de leaked password protection desabilitada (fora do Item 4).
+- Preview Netlify automático SUCCESS: https://deploy-preview-2--mcdistribuicao.netlify.app (pipeline preexistente, não alterado). Navegador: 520 SKUs carregados; campos padrão visíveis; mensagens obrigatórias; varejo PF sintético avançou para revisão e voltou preservando valores. Nenhum envio, pedido ou WhatsApp disparado pelo navegador.
+- Supabase Preview dedicado: NOT EVALUATED; apenas branch main existente na listagem. Não confundir preview Netlify com branch Supabase.
+- Nova versão Cloudflare: NOT PUBLISHED/NOT EVALUATED, aguardando blocker. Edição administrativa ponta a ponta pelo browser: NOT EVALUATED; controle e RLS verificados pelo SQL, componente implementado.
+- Próximo passo após aprovação: alinhar só a nova versão; confirmar history e schema; registrar evidência; checks da revisão final; merge PR e validar versão/runtime Cloudflare e edição administrativa. Não iniciar Item 5/6.
