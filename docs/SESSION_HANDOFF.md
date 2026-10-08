@@ -471,3 +471,10 @@ Não deployado por esta adoção.
 - Supabase Preview dedicado: NOT EVALUATED; apenas branch main existente na listagem. Não confundir preview Netlify com branch Supabase.
 - Nova versão Cloudflare: NOT PUBLISHED/NOT EVALUATED, aguardando blocker. Edição administrativa ponta a ponta pelo browser: NOT EVALUATED; controle e RLS verificados pelo SQL, componente implementado.
 - Próximo passo após aprovação: alinhar só a nova versão; confirmar history e schema; registrar evidência; checks da revisão final; merge PR e validar versão/runtime Cloudflare e edição administrativa. Não iniciar Item 5/6.
+
+### Alinhamento autorizado — 2026-10-08
+- Usuário autorizou explicitamente somente a troca de versão da nova migration 000018 de 20261008202538 para 20261009020000 para concluir a publicação.
+- UPDATE condicionado por versão anterior e nome retornou exatamente uma entrada: version=20261009020000, name=000018_checkout_field_settings. Não houve alteração de schema, função, statements ou migrations 1–17 nesta operação.
+- Bloqueio anterior RESOLVIDO. Histórico alinhado ao arquivo forward-only; testes do Hosted previamente aprovados permanecem pertinentes (somente metadado mudou).
+- Quality run 37839821291: SUCCESS no commit documental f0fae4a. Preview Netlify SUCCESS na mesma revisão.
+- Publicação Cloudflare e validação administrativa continuam pendentes de execução, a registrar abaixo.
