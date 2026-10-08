@@ -486,3 +486,20 @@ Não deployado por esta adoção.
 - Hosted após save: 6 pedidos, todas as configurações válidas, e-mail visível/opcional preservado. Histórico 000018=20261009020000 alinhado; migrations 1–17 intactas.
 - Limites: Supabase Preview dedicado e happy path B2B pelo navegador permanecem NOT EVALUATED. B2B sintético, isolamento e enforcement avaliados em testes SQL reais com rollback. Nenhum pedido ou WhatsApp criado no navegador.
 - Encerramento em PR 3: documentação e correção mínima de contraste (text-slate-900) na seção administrativa. Sem alteração de schema ou política. Itens 5/6 não iniciados.
+
+
+---
+
+## Continuidade de QA — Checkout B2B / Estado de fechamento (2026-10-08)
+
+- **Escopo desta revisão:** checagem de readiness do happy path B2B autenticado e do Supabase Preview sem mutações de produção. Baseline Item 4 segue CLOSED/PUBLISHED.
+- **Hospedado, observado via leitura:** 18 migrations, última `20261009020000`; 8 Edge Functions ACTIVE; 6 pedidos preservados; política checkout válida (1/1); 0 cadastros B2B approved com user_id vinculado; somente branch Supabase `main`.
+- **Autorização técnica observada:** `create_order_checkout_internal` e `get_wholesale_catalog_internal` sem EXECUTE para anon/authenticated, com EXECUTE para service_role. O veredito não inclui teste de JWT/HTTP no navegador.
+- **Security Advisor:** somente WARN preexistente `auth_leaked_password_protection` desabilitada; não foi habilitada ou alterada.
+- **Teste B2B navegador:** BLOCKED por ausência de usuário B2B aprovado vinculado a Auth em ambiente isolado e por ausência de Supabase Preview; `NOT EVALUATED` funcionalmente.
+- **Teste Supabase Preview:** BLOCKED por falta de ambiente dedicado; provisão pode exigir plano pago e autorização de custo. Não foi criado.
+- **Roteiro reproduzível:** `docs/qa/CHECKOUT_B2B_E2E_VALIDATION.md` (13 casos positivos, negativos, limites comerciais, idempotência, isolamento, privacidade, WhatsApp textual e regressão varejo).
+- **Itens 5/6:** requisitos funcionais não localizados no material versionado; status permanece `SCOPE UNKNOWN / NOT STARTED`, sem inferir escopo.
+- **Sem alterações de produção:** nenhuma migration aplicada, Edge Function implantada, política alterada, pedido criado ou dado B2B modificado nesta revisão.
+- **Próxima execução válida:** provisionar ambiente isolado autorizado, criar identidades fictícias e buyer B2B aprovado nele, cumprir QA B2B-01–13 e registrar evidências sanitizadas. Item 5/6 depende de definição real.
+- **Entrega desta documentação:** branch GitHub `qa/b2b-checkout-e2e-readiness-20261008`; sem merge em `main`, sem CI/preview decorrente de PR e sem novo deploy Cloudflare. O teste completo ainda não pode ser marcado PASS.
