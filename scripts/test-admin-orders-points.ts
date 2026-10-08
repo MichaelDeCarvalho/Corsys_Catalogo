@@ -619,8 +619,8 @@ console.log('\n6. Governança de Migrations & Edge Function V2');
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 17,
-  'Exatamente 17 migrations no workspace (000001 a 000017 registradas)'
+  migrationFiles.length === 18,
+  'Exatamente 18 migrations no workspace (000001 a 000018 registradas)'
 );
 
 const migration14Path = 'supabase/migrations/20261005170000_000014_admin_order_management.sql';

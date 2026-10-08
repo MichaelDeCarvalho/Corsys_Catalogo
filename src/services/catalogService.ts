@@ -9,6 +9,7 @@
  * 5. Não há fallback silencioso para dados mock caso ocorra falha no Supabase.
  */
 
+import { parseCheckoutFields } from '../config/checkoutFields';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { TenantPublicSettings, Product } from '../types';
 
@@ -25,6 +26,7 @@ export interface RawTenantPublicSettingsRow {
   wholesale_min_order_value: number | string | null;
   allow_b2b_mode: boolean;
   hide_prices_without_login: boolean;
+  checkout_fields: unknown;
   delivery_methods: string[] | Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
@@ -80,6 +82,7 @@ export function adaptTenantPublicSettings(row: RawTenantPublicSettingsRow): Tena
       : null,
     allowB2bMode: Boolean(row.allow_b2b_mode),
     hidePricesWithoutLogin: Boolean(row.hide_prices_without_login),
+    checkoutFields: parseCheckoutFields(row.checkout_fields),
     deliveryMethods,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -142,7 +145,7 @@ export async function fetchTenantPublicSettings(slug: string): Promise<TenantPub
 
   const { data, error } = await supabase
     .from('tenant_public_settings')
-    .select('tenant_id, slug, public_name, whatsapp_number, logo_url, banner_url, primary_color, accent_color, min_order_value, wholesale_min_order_value, allow_b2b_mode, hide_prices_without_login, delivery_methods, created_at, updated_at')
+    .select('tenant_id, slug, public_name, whatsapp_number, logo_url, banner_url, primary_color, accent_color, min_order_value, wholesale_min_order_value, allow_b2b_mode, hide_prices_without_login, delivery_methods, checkout_fields, created_at, updated_at')
     .eq('slug', slug);
 
   if (error) {

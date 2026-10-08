@@ -99,6 +99,7 @@ export interface TenantPublicSettings {
   wholesaleMinOrderValue: number | null;
   allowB2bMode: boolean;
   hidePricesWithoutLogin: boolean;
+  checkoutFields?: import('./config/checkoutFields').CheckoutFieldsConfig;
   deliveryMethods: string[];
   createdAt?: string;
   updatedAt?: string;

@@ -36,8 +36,8 @@ const migrationFiles = fs.readdirSync('supabase/migrations')
   .sort();
 
 assert(
-  migrationFiles.length === 17,
-  `Total de migrations no workspace é exatamente 17 (encontradas: ${migrationFiles.length})`
+  migrationFiles.length === 18,
+  `Total de migrations no workspace é exatamente 18 (encontradas: ${migrationFiles.length})`
 );
 
 const migration14File = '20261005170000_000014_admin_order_management.sql';

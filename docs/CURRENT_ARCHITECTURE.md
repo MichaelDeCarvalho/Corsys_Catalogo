@@ -413,3 +413,16 @@
   - Ao deslogar (logout), estado B2B é descarregado e o usuário é redirecionado para a vitrine pública se estiver em `my_orders`.
 
 
+
+## Item 4 — Configurabilidade dos campos do checkout (2026-10-08)
+- Implementação: ADR 012; nova migration `20261009020000_000018_checkout_field_settings.sql`.
+- Configuração por tenant com allowlist explícita de 14 campos e flags booleanas `visible`/`required`; 10 campos configuráveis e 4 campos obrigatórios fixos nesta versão.
+- Enforcement na RPC transacional, descarte de valores ocultos, políticas RLS/grants existentes preservadas. Administração em Configurações da Loja com UPDATE condicional contra sobrescrita concorrente.
+- Identidade B2B oficial, Itens 1–3, WhatsApp textual, PDFs e tracking preservados. Itens 5/6 fora do escopo.
+- Estado desta revisão: tipos/build/regressão local PASS; Hosted/CI/publicação aguardam evidência pós-commit no SESSION_HANDOFF.
+- Confirmação de retomada: migrations 000001–000017 aplicadas no Hosted em 2026-10-08; notas históricas anteriores de pendência de 000016/17 estão superadas por esta inspeção.
+
+### Evidência operacional Item 4
+Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 884c741 SUCCESS. A migration recebeu versão automática 20261008202538, distinta do arquivo 20261009020000; alinhamento somente desta nova entrada depende de autorização específica após rejeição da revisão automática. PR 2 aberto; publicação Cloudflare pendente. Consulte SESSION_HANDOFF para evidências e próximos passos. Migrations 1–17 e pedidos reais preservados.
+
+Atualização: alinhamento da migration 000018 autorizado explicitamente e executado em 2026-10-08; versão Hosted=20261009020000, idêntica ao arquivo. Bloqueio anterior resolvido; publicação em andamento (estado final no SESSION_HANDOFF).
