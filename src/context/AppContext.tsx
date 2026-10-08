@@ -18,7 +18,7 @@ import {
   SAAS_PLANS 
 } from '../data/initialData';
 
-export type AppViewMode = 'superadmin' | 'tenant_admin' | 'storefront' | 'blueprint_guide';
+export type AppViewMode = 'superadmin' | 'tenant_admin' | 'storefront' | 'blueprint_guide' | 'my_orders';
 export type ShoppingMode = 'retail' | 'wholesale';
 
 interface AppContextType {

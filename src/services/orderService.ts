@@ -69,6 +69,7 @@ export interface CheckoutOrderReceipt {
   createdAt: string;
   documentUrl?: string | null;
   documentExpiresAt?: string | null;
+  trackingToken?: string | null;
 }
 
 export class OrderCheckoutError extends Error {
@@ -645,6 +646,14 @@ export function validateReceipt(raw: unknown): CheckoutOrderReceipt {
     validatedDocumentExpiresAt = ord.documentExpiresAt;
   }
 
+  let validatedTrackingToken: string | null = null;
+  if (ord.trackingToken !== undefined && ord.trackingToken !== null) {
+    if (typeof ord.trackingToken !== 'string' || !/^[a-f0-9]{64}$/i.test(ord.trackingToken)) {
+      throw new OrderCheckoutError('Resposta inválida do serviço de pedidos: Token de rastreamento inválido.');
+    }
+    validatedTrackingToken = ord.trackingToken.toLowerCase();
+  }
+
   return {
     id: ord.id,
     orderNumber: ord.orderNumber,
@@ -659,7 +668,8 @@ export function validateReceipt(raw: unknown): CheckoutOrderReceipt {
     paymentMethod: ord.paymentMethod as PaymentMethod,
     createdAt: ord.createdAt,
     documentUrl: validatedDocumentUrl,
-    documentExpiresAt: validatedDocumentExpiresAt
+    documentExpiresAt: validatedDocumentExpiresAt,
+    trackingToken: validatedTrackingToken
   };
 }
 

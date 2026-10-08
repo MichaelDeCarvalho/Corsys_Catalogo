@@ -1,3 +1,33 @@
+# SESSION HANDOFF — ITEM 3: MEUS PEDIDOS / CUSTOMER ORDER TRACKING V1
+
+## Data
+2026-10-08
+
+## Objetivo
+Implementar o acompanhamento seguro de pedidos pelo cliente (Item 3 — ADR 011), utilizando Secure Retail Token (256 bits criptográficos com persistência de hash SHA-256) e histórico B2B autenticado por JWT, sem expor consultas abertas por CPF, telefone, e-mail ou order_number.
+
+## Status Operacional Atual
+- **Item 3 — Customer Order Tracking V1 (ADR 011):** **IMPLEMENTADO / PENDING HOSTED MIGRATION & EDGE FUNCTIONS DEPLOY**
+- **Admin Orders V2:** **RUNTIME PASS / CLOSED**
+- **Item 2 — WhatsApp Textual Handoff (ADR 010):** **RUNTIME PASS / CLOSED**
+
+## Concluído nesta Etapa
+- `supabase/migrations/20261008_000015_customer_order_tracking.sql` criada e auditada adicionando `buyer_user_id`, `tracking_token_hash`, constraints, índices e as RPCs internas `create_order_checkout_internal`, `set_order_tracking_token_internal`, `track_order_by_token_internal` e `list_my_customer_orders_internal` (service_role only).
+- `supabase/config.toml` atualizado com declaração explícita de `[functions.track-order-by-token]` (`verify_jwt = false`) e `[functions.list-my-customer-orders]` (`verify_jwt = true`).
+- `supabase/functions/track-order-by-token/index.ts` criada para consulta de varejo com validação de token e cálculo de SHA-256 server-side.
+- `supabase/functions/list-my-customer-orders/index.ts` criada para consulta paginada de atacado B2B validada por JWT.
+- `supabase/functions/submit-order-checkout/index.ts` atualizada para gerar token de 256 bits para varejo, vincular o hash via RPC `set_order_tracking_token_internal` (zero DML direto) e retornar `trackingToken` no recibo.
+- `src/services/customerTrackingService.ts` criado para gerenciar consultas e persistência de pares `{ orderNumber, trackingToken }` no localStorage.
+- `src/components/storefront/CustomerOrderTrackingView.tsx` criado fornecendo visualização de status, detalhes de itens e busca por código de rastreamento.
+- `src/components/layout/Header.tsx` atualizado com o botão "Meus Pedidos".
+- `src/App.tsx` e `src/context/AppContext.tsx` atualizados para suportar o `viewMode = 'my_orders'`.
+- `scripts/test-customer-order-tracking-points.ts` atualizado para 25 asserções (25/25 aprovadas).
+- `docs/adr/ADR_011_CUSTOMER_ORDER_TRACKING_AND_RETAIL_TOKEN.md` criado e atualizado.
+- As 9 suítes de teste de regressão aprovadas (236 + 100 + 153 + 34 + 35 + 63 + 100 + 96 + 25 = 842 testes / 0 falhas).
+- `bun run check` (lint + build + test:regression) validado com 100% PASS.
+
+---
+
 # SESSION HANDOFF — ITEM 2: WHATSAPP TEXTUAL HANDOFF & ADMIN ORDERS V2 CLOSEOUT
 
 ## Data

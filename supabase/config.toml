@@ -404,6 +404,12 @@ verify_jwt = true
 [functions.generate-admin-order-pdf]
 verify_jwt = true
 
+[functions.track-order-by-token]
+verify_jwt = false
+
+[functions.list-my-customer-orders]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

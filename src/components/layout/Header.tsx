@@ -9,7 +9,8 @@ import {
   ChevronDown, 
   User, 
   LogIn, 
-  LogOut
+  LogOut,
+  Package
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -202,6 +203,21 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
           {/* Ações da Direita: Carrinho, Botão de Loja para Tenant Admin e Menu da Conta */}
           <div className="flex items-center gap-2 sm:gap-2.5">
             
+            {/* Meus Pedidos / Acompanhamento de Pedido */}
+            <button
+              onClick={() => setViewMode(viewMode === 'my_orders' ? 'storefront' : 'my_orders')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'my_orders'
+                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-xs'
+                  : 'bg-slate-850 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+              }`}
+              id="header-my-orders-button"
+              title="Acompanhar meus pedidos"
+            >
+              <Package className="w-4 h-4 text-[#FF5A00]" />
+              <span className="hidden sm:inline">Meus Pedidos</span>
+            </button>
+
             {/* Carrinho / Ver Pedido (Visível no catálogo para qualquer usuário) */}
             {viewMode === 'storefront' && (
               <button
@@ -339,6 +355,21 @@ export const Header: React.FC<{ onOpenNewTenantModal?: () => void }> = ({ onOpen
                           <span>Painel Master Global</span>
                         </button>
                       )}
+
+                      <button
+                        onClick={() => {
+                          setViewMode('my_orders');
+                          setIsUserMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left font-medium transition-colors cursor-pointer ${
+                          viewMode === 'my_orders'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                        }`}
+                      >
+                        <Package className="w-4 h-4 text-[#FF5A00]" />
+                        <span>Meus Pedidos</span>
+                      </button>
 
                       <button
                         onClick={() => {

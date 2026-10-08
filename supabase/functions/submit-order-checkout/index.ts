@@ -867,7 +867,38 @@ Deno.serve(async (req: Request) => {
       documentExpiresAt = null;
     }
 
-    // 14. Minimização de Resposta (Response Minimization - sem expor tenant_id, seller_id, idempotency_key ou PII crua)
+    // 14. Geração Segura de Token de Rastreamento para Varejo (256 bits criptográficos)
+    let trackingToken: string | null = null;
+    if (shoppingMode === "retail") {
+      try {
+        const rawBytes = new Uint8Array(32);
+        crypto.getRandomValues(rawBytes);
+        trackingToken = Array.from(rawBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+
+        // Cálculo SHA-256 do token para persistência segura
+        const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(trackingToken));
+        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+        const { error: tokenUpdateError } = await supabaseAdmin.rpc(
+          "set_order_tracking_token_internal",
+          {
+            p_order_id: orderResult.id,
+            p_idempotency_key: idempotencyKey,
+            p_tracking_token_hash: hashHex,
+          }
+        );
+
+        if (tokenUpdateError) {
+          console.warn("[submit-order-checkout] Falha ao vincular tracking_token_hash via RPC:", tokenUpdateError);
+          trackingToken = null;
+        }
+      } catch (tokenErr) {
+        console.warn("[submit-order-checkout] Erro ao gerar tracking token:", tokenErr);
+        trackingToken = null;
+      }
+    }
+
+    // 15. Minimização de Resposta (Response Minimization - sem expor tenant_id, seller_id, idempotency_key ou PII crua)
     const sanitizedResponse = {
       id: orderResult.id,
       orderNumber: orderResult.order_number,
@@ -883,6 +914,7 @@ Deno.serve(async (req: Request) => {
       createdAt: orderResult.created_at,
       documentUrl: documentUrl || null,
       documentExpiresAt: documentExpiresAt || null,
+      trackingToken: trackingToken || undefined,
     };
 
     return new Response(

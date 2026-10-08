@@ -38,6 +38,7 @@ import {
   isValidCPF, 
   isValidCNPJ 
 } from '../../utils/brDocument';
+import { storeRetailOrderTracking } from '../../services/customerTrackingService';
 import { buildOrderWhatsAppMessage } from '../../utils/orderWhatsAppMessage';
 
 interface CartItemQuantityControlProps {
@@ -638,7 +639,17 @@ export const CartDrawer: React.FC<{
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
-      // 8. Verificação de fechamento prematuro da janela pelo usuário durante o await
+      // 8. Armazenamento seguro de token de rastreamento de varejo no cliente
+      if (!isWholesale && receipt.trackingToken) {
+        storeRetailOrderTracking({
+          orderNumber: receipt.orderNumber,
+          trackingToken: receipt.trackingToken,
+          tenantSlug: settings.slug,
+          createdAt: receipt.createdAt
+        });
+      }
+
+      // 9. Verificação de fechamento prematuro da janela pelo usuário durante o await
       if (prepWindow.closed) {
         setConfirmedCustomerSnapshot(pendingCustomerSnapshot);
         setCreatedOrder(receipt);

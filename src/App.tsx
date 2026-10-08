@@ -6,6 +6,7 @@ import { Header } from './components/layout/Header';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { TenantDashboard } from './components/tenantadmin/TenantDashboard';
 import { StorefrontView } from './components/storefront/StorefrontView';
+import { CustomerOrderTrackingView } from './components/storefront/CustomerOrderTrackingView';
 import { SaasBlueprintGuide } from './components/architecture/SaasBlueprintGuide';
 import { NewTenantModal } from './components/modals/NewTenantModal';
 import { LoginModal } from './components/auth/LoginModal';
@@ -43,6 +44,7 @@ const MainContent: React.FC = () => {
           )
         )}
         {viewMode === 'storefront' && <StorefrontView />}
+        {viewMode === 'my_orders' && <CustomerOrderTrackingView />}
         {viewMode === 'blueprint_guide' && <SaasBlueprintGuide />}
       </main>
 

@@ -380,20 +380,25 @@
 
 ---
 
-## 16. Engenharia / CI — Adoção ECC (2026-10-02)
-- **Gerenciador de Pacotes e Runtime:** Bun 1.4.2 fixado via `"packageManager": "bun@1.4.2"` no `package.json`.
-- **Gate de Qualidade Unificado (`bun run check`):**
-  - Executa sequencialmente: `bun run lint` (`tsc --noEmit`), `bun run build` (`vite build`) e `bun run test:regression`.
-  - O script `test:regression` encadeia todas as 7 suítes automatizadas do repositório (687 testes com 100% de aprovação).
-- **Pipeline de Integração Contínua (CI):**
-  - Workflow GitHub Actions em `.github/workflows/quality.yml`.
-  - Executado em cada pull request e push para a branch `main`.
-- **Princípio do Menor Privilégio no CI:**
-  - Configuração estrita de permissões de token: `permissions: contents: read`.
-  - Zero secrets e zero tokens de produção ou de banco de dados no ambiente de CI.
-- **Isolamento de Pipelines:**
-  - O workflow de qualidade (CI) é estritamente separado do pipeline de deploy do frontend no Cloudflare Workers e dos deploys de migrations no Supabase.
-- **Escopo Arquitetural:**
-  - A adoção do ECC refere-se exclusivamente às práticas de governança de código, gates de tipagem, build estático e suítes de regressão. O runtime ECC completo não faz parte do produto cliente.
+## 17. Meus Pedidos / Customer Order Tracking V1 (ADR 011 — 2026-10-08)
+- **Objetivo:** Acompanhamento seguro de pedidos pelo cliente sem expor consultas por CPF, e-mail, telefone ou order_number sequencial.
+- **Varejo Anônimo (Secure Retail Token):**
+  - Token aleatório de 256 bits (64 hex lowercase) gerado no checkout server-side.
+  - Armazenamento no banco exclusivamente do hash SHA-256 em `public.orders.tracking_token_hash`.
+  - Token raw devolvido no recibo e mantido no navegador do cliente em `localStorage` (`{ orderNumber, trackingToken, tenantSlug, createdAt }`).
+  - Consulta via Edge Function `track-order-by-token` delegando para a RPC interna `track_order_by_token_internal` (service_role only).
+- **Atacado B2B Autenticado:**
+  - `buyer_user_id` associado a `auth.users(id)` persistido em `public.orders` exclusivamente para modalidade wholesale.
+  - Consulta paginada via Edge Function `list-my-customer-orders` validando JWT e delegando para a RPC `list_my_customer_orders_internal` (service_role only).
+- **Menor Privilégio e Segurança:**
+  - RLS de `public.orders` permanece restrita a gestores e corretores do tenant (zero SELECT para anon).
+  - RPCs internas possuem `SECURITY DEFINER`, `search_path = ''` e execução restrita exclusivamente a `service_role`:
+    - `set_order_tracking_token_internal(p_order_id UUID, p_idempotency_key UUID, p_tracking_token_hash TEXT)`: vinculação segura do hash no checkout com lock pessimista `FOR UPDATE` e checagem de `shopping_mode = 'retail'`. Zero DML direto de tabela no Edge.
+    - `track_order_by_token_internal(p_tenant_slug TEXT, p_tracking_token_hash TEXT)`: consulta isolada por tenant e hash SHA-256 com projeção limpa sem PII.
+    - `list_my_customer_orders_internal(p_tenant_slug TEXT, p_buyer_user_id UUID, p_limit INT, p_offset INT)`: listagem paginada B2B autorizada server-side.
+  - Declaração explícita de `[functions.track-order-by-token]` (`verify_jwt = false`) e `[functions.list-my-customer-orders]` (`verify_jwt = true`) em `supabase/config.toml`.
+- **Frontend & UI:**
+  - Componente `CustomerOrderTrackingView.tsx` sob `viewMode = 'my_orders'`.
+  - Botão "Meus Pedidos" acessível no cabeçalho e menu de usuário.
 
 
