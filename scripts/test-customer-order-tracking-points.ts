@@ -48,7 +48,7 @@ const migration15Path = 'supabase/migrations/20261008_000015_customer_order_trac
 assert(fs.existsSync(migration15Path), 'Migration 000015 existe no repositório');
 const migration15Sql = fs.readFileSync(migration15Path, 'utf-8');
 
-const migration16Path = 'supabase/migrations/20261008020000_000016_customer_order_tracking_hardening.sql';
+const migration16Path = 'supabase/migrations/20261009000000_000016_customer_order_tracking_hardening.sql';
 assert(fs.existsSync(migration16Path), '1.1 Migration 000016 existe no workspace');
 const migration16Sql = fs.readFileSync(migration16Path, 'utf-8');
 

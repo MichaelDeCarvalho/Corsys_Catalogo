@@ -37,7 +37,7 @@ Dessa forma, foi necessária a concepção de uma arquitetura segura de acompanh
 
 4. **RPCs Internas de Menor Privilégio e Hardening (Migration 000016):**
    - Migration 000015 encontra-se aplicada e congelada no Supabase Hosted.
-   - Migration 000016 (`20261008020000_000016_customer_order_tracking_hardening.sql`) é o hardening forward-only desta correção (RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION).
+   - Migration 000016 (`20261009000000_000016_customer_order_tracking_hardening.sql`) é o hardening forward-only desta correção (RELEASE CANDIDATE / HOSTED STATUS PENDING POST-SYNC VERIFICATION).
    - `set_order_tracking_token_internal(p_order_id UUID, p_idempotency_key UUID, p_tracking_token_hash TEXT)`:
      - `SECURITY DEFINER`, `search_path = ''`.
      - `REVOKE ALL` para `PUBLIC`, `anon`, `authenticated`.

@@ -635,10 +635,10 @@ assert(
   'Migration 000015 (20261008_000015_customer_order_tracking.sql) existe no workspace'
 );
 
-const migration16Path = 'supabase/migrations/20261008020000_000016_customer_order_tracking_hardening.sql';
+const migration16Path = 'supabase/migrations/20261009000000_000016_customer_order_tracking_hardening.sql';
 assert(
   fs.existsSync(migration16Path),
-  'Migration 000016 (20261008020000_000016_customer_order_tracking_hardening.sql) existe no workspace'
+  'Migration 000016 (20261009000000_000016_customer_order_tracking_hardening.sql) existe no workspace'
 );
 
 const migrationVersions = migrationFiles.map(f => f.split('_')[0]);

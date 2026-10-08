@@ -53,7 +53,7 @@ assert(
   'Migration 000015 existe no caminho canônico'
 );
 
-const migration16Path = path.join('supabase/migrations', '20261008020000_000016_customer_order_tracking_hardening.sql');
+const migration16Path = path.join('supabase/migrations', '20261009000000_000016_customer_order_tracking_hardening.sql');
 assert(
   fs.existsSync(migration16Path),
   'Migration 000016 existe no caminho canônico'

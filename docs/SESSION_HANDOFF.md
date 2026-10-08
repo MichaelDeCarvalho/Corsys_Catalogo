@@ -13,7 +13,7 @@ Aplicar hotfix e hardening de produção no Customer Order Tracking V1 (Item 3 �
 - **Item 2 — WhatsApp Textual Handoff (ADR 010):** **RUNTIME PASS / CLOSED**
 
 ## Concluído nesta Etapa
-- `supabase/migrations/20261008020000_000016_customer_order_tracking_hardening.sql` criada forward-only sem alterar 000001–000015, recriando as RPCs `track_order_by_token_internal` e `list_my_customer_orders_internal` com projeções sanitizadas sem PII (`shippingAddress`, `customerName`, `id`, `tenant_id`, etc.), shopping_mode estrito e sem exigência de `t.status = 'active'`.
+- `supabase/migrations/20261009000000_000016_customer_order_tracking_hardening.sql` criada forward-only sem alterar 000001–000015, recriando as RPCs `track_order_by_token_internal` e `list_my_customer_orders_internal` com projeções sanitizadas sem PII (`shippingAddress`, `customerName`, `id`, `tenant_id`, etc.), shopping_mode estrito e sem exigência de `t.status = 'active'`.
 - `supabase/functions/track-order-by-token/index.ts` atualizada com allowlist exata de body (`tenantSlug`, `trackingToken`), sanitização defensiva explícita de saída e 404 genérico sem mensagens SQL internas.
 - `supabase/functions/list-my-customer-orders/index.ts` atualizada com allowlist estrita de chaves (`tenantSlug`, `limit`, `offset`), rejeição de chaves proibidas (`userId`, etc.), extração server-side de `buyerUserId` e sanitização de cada item de saída.
 - `src/services/customerTrackingService.ts` atualizado com tipo `CustomerTrackedOrder` livre de PII/IDs, validador fail-closed em runtime, storage isolado por tenant (`corsys_order_tracking_v1:<slug>`), registros sem `tenantSlug` interno (`{ orderNumber, trackingToken, createdAt }`) e migração segura client-side da chave legada.
