@@ -36,6 +36,17 @@ Não executar o happy path B2B com credenciais de um cliente real, nem criar cli
 
 O teste deve registrar explicitamente resposta de rede HTTP, ausência de dados sensíveis, identificador sintético do pedido (somente no ambiente isolado) e evidência visual **sem PII**. Não salvar JWT, cookies, senhas, PDFs privados, URLs assinadas ou dados de cliente nos artefatos.
 
+### Cenários adicionais — ciclo de sessão B2B (RACE-01 a RACE-04)
+
+| ID | Operação concorrente em navegador QA | Resultado esperado |
+| --- | --- | --- |
+| RACE-01 | Iniciar consulta de status aprovada e deslogar antes da resposta | Modalidade volta a varejo; resultado atrasado não restaura aprovação nem dados comerciais |
+| RACE-02 | Iniciar carregamento de preços do comprador A, alternar para B e só então receber resposta de A | Nenhum preço ou identidade privada de A aparece na sessão de B; pedido de B continua sujeito ao backend |
+| RACE-03 | Catálogo B2B aprovado com **zero** produtos atacadistas acessíveis | Sem loop de requisições após resposta vazia; aplicação mantém estado vazio coerente |
+| RACE-04 | Abrir modal de confirmação para atacado com carrinho; alterar sessão/revogar acesso antes da confirmação | Confirmar não ativa atacado nem limpa o carrinho por uma aprovação obsoleta |
+
+Registrar pedidos de rede e resultado visual sanitizados, nunca tokens. Testes unitários de versão/Promise ou CI **não** substituem estes quatro testes de navegador.
+
 ## 3. Evidências de aceitação
 
 Para cada caso: `PASS` / `FAIL` / `BLOCKED` / `NOT EVALUATED`, data, revisão GitHub testada, ambiente, navegador, pré-condições e resultado observado. Prints sanitizados opcionais; evidência de uma asserção não substitui execução completa do fluxo.
