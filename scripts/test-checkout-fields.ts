@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createWholesaleRequestGate } from '../src/utils/wholesaleRequestGate';
 import { DEFAULT_CHECKOUT_FIELDS, parseCheckoutFields, checkoutRequiredErrors, projectCheckoutValues } from '../src/config/checkoutFields';
 
@@ -174,3 +175,20 @@ const otherUserRequest = catalogGate.begin(actorB);
 assert.equal(catalogGate.isCurrent(otherUserRequest, actorA), false,
   'Requisição pertencente a outro comprador não pode aplicar preços B2B ao atual');
 console.log('B2B async request guards: stale result, logout, user switch, out-of-order catalog and revocation PASS');
+
+// Static wiring audit only: executable request gate behavior is tested above.
+const contextSource = readFileSync('src/context/WholesaleAccessContext.tsx', 'utf8');
+assert.ok(contextSource.includes('statusRequestGateRef.current.isCurrent(request, currentUserIdRef.current)'),
+  'Status B2B consulta a identidade atual antes de aplicar a resposta');
+assert.ok(contextSource.includes('catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)'),
+  'Catálogo B2B consulta a identidade atual antes de aplicar a resposta');
+assert.ok(contextSource.includes('wholesaleOwnerId !== null && wholesaleOwnerId === user?.id'),
+  'Exposição de status no provider é limitada ao usuário atual');
+assert.ok(contextSource.includes("targetPendingMode === 'wholesale' && (!user || !isApproved || loadingStatus)"),
+  'Confirmar modal B2B usa aprovação atual, não decisão anterior');
+assert.ok(contextSource.includes('catalogLoadedUserIdRef.current !== user?.id'),
+  'Catálogo vazio não entra em loop de refetch automático');
+assert.ok(contextSource.includes('appActionsRef.current = { clearCart, showToast, setShoppingMode }') &&
+  contextSource.includes("const resetToRetail = useCallback(() => {"),
+  'Callbacks instáveis de AppContext não são dependências diretas do reset de autorização');
+console.log('B2B context lifecycle wiring: identity guards, stale modal, empty catalog and stable app actions PASS');
