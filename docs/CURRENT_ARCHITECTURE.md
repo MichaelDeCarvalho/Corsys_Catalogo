@@ -428,3 +428,12 @@ Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 88
 Atualização: alinhamento da migration 000018 autorizado explicitamente e executado em 2026-10-08; versão Hosted=20261009020000, idêntica ao arquivo. Bloqueio anterior resolvido; publicação em andamento (estado final no SESSION_HANDOFF).
 
 Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=20261009020000, CI PASS e runtime Cloudflare publicado. Edição administrativa autenticada com save da política original e recarga PASS. Evidências e limites no SESSION_HANDOFF. Itens 5/6 não iniciados.
+
+
+### Hardening em revisão — ciclo assíncrono de sessão B2B (PR #6; 2026-10-09)
+- **Não publicado:** alteração limitada à camada frontend `WholesaleAccessContext` e helper puro `src/utils/wholesaleRequestGate.ts`; sem mudanças em Auth, API, Edge Functions, schema, migrations ou privilégios.
+- Cada consulta de status/catálogo recebe um número monotônico por usuário; resultados atrasados de sessão anterior, consulta substituída ou após revogação/logout não atualizam estado.
+- O contexto só expõe `wholesaleStatus`, `wholesaleCompany` e `wholesaleCatalogMap` pertinentes ao usuário corrente. O modal pendente revalida aprovação B2B antes da troca de modalidade.
+- Catálogo vazio pode ser uma resposta legítima: o marcador de carregamento concluído impede reconsultas infinitas em `useEffect`. Um refresh explícito de status pode iniciar nova carga.
+- A decisão de autorização real segue exclusivamente no backend Supabase e nas políticas RLS; guards frontend são higiene de estado privado, não mecanismo de concessão de acesso.
+- Critérios de validação: `bun run check` no PR, testes de corrida determinísticos; E2E autenticado multiusuário e Supabase isolado permanecem `NOT EVALUATED` até disponibilidade de fixtures QA.
