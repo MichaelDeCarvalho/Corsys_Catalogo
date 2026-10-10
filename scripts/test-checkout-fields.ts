@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createWholesaleRequestGate } from '../src/utils/wholesaleRequestGate';
 import { DEFAULT_CHECKOUT_FIELDS, parseCheckoutFields, checkoutRequiredErrors, projectCheckoutValues } from '../src/config/checkoutFields';
 
 const defaults = () => structuredClone(DEFAULT_CHECKOUT_FIELDS);
@@ -129,3 +130,47 @@ assert.notEqual(fingerprintA, await computeOrderFingerprint({
 }, actorA), 'Mudança de quantidade invalida o fingerprint anterior');
 console.log('B2B checkout contract: allowlist, optional/required, operational contact, tampering and actor/tenant fingerprint PASS');
 
+
+// Status/catalog races: deterministic deferred resolutions without a network.
+const statusGate = createWholesaleRequestGate();
+const oldRequest = statusGate.begin(actorA);
+const newRequest = statusGate.begin(actorA);
+assert.equal(statusGate.isCurrent(oldRequest, actorA), false,
+  'Resposta mais antiga do mesmo usuário não pode sobrescrever uma atualização recente');
+assert.equal(statusGate.isCurrent(newRequest, actorA), true,
+  'Resposta mais recente do mesmo usuário permanece aplicável');
+assert.equal(statusGate.isCurrent(newRequest, actorB), false,
+  'Troca de usuário invalida resultado mesmo antes do efeito React de limpeza');
+statusGate.invalidate();
+assert.equal(statusGate.isCurrent(newRequest, actorA), false,
+  'Logout/revogação invalida requisição sem depender de resposta HTTP');
+
+const catalogGate = createWholesaleRequestGate();
+let resolveOldCatalog!: (value: string) => void;
+let resolveNewCatalog!: (value: string) => void;
+const slowOldCatalog = new Promise<string>(resolve => { resolveOldCatalog = resolve; });
+const fastNewCatalog = new Promise<string>(resolve => { resolveNewCatalog = resolve; });
+const oldCatalogRequest = catalogGate.begin(actorA);
+let visibleCatalog: string | null = null;
+const oldCompletion = slowOldCatalog.then(value => {
+  if (catalogGate.isCurrent(oldCatalogRequest, actorA)) visibleCatalog = value;
+});
+const newCatalogRequest = catalogGate.begin(actorA);
+const newCompletion = fastNewCatalog.then(value => {
+  if (catalogGate.isCurrent(newCatalogRequest, actorA)) visibleCatalog = value;
+});
+resolveNewCatalog('novo catálogo aprovado');
+await newCompletion;
+resolveOldCatalog('catálogo antigo');
+await oldCompletion;
+assert.equal(visibleCatalog, 'novo catálogo aprovado',
+  'Catálogo antigo chegando por último não sobrescreve o catálogo da requisição nova');
+
+const afterRevocation = catalogGate.begin(actorA);
+catalogGate.invalidate();
+assert.equal(catalogGate.isCurrent(afterRevocation, actorA), false,
+  'Catálogo solicitado antes de revogação não pode repovoar cache após limpeza');
+const otherUserRequest = catalogGate.begin(actorB);
+assert.equal(catalogGate.isCurrent(otherUserRequest, actorA), false,
+  'Requisição pertencente a outro comprador não pode aplicar preços B2B ao atual');
+console.log('B2B async request guards: stale result, logout, user switch, out-of-order catalog and revocation PASS');
