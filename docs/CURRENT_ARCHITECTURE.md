@@ -431,6 +431,7 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 
 
 ### Hardening em revisão — ciclo assíncrono de sessão B2B (PR #6; 2026-10-09)
+- Revisão adicional: o efeito compara a identidade atual com a anterior; troca direta A→B limpa modalidade, carrinho atacadista e modal pendente antes da consulta de B. Renovação do token do mesmo usuário preserva modalidade/carrinho. Provider validado com React DOM/jsdom e fronteiras sintéticas; Auth/backend reais permanecem NOT EVALUATED no E2E.
 - **Não publicado:** alteração limitada à camada frontend `WholesaleAccessContext` e helper puro `src/utils/wholesaleRequestGate.ts`; sem mudanças em Auth, API, Edge Functions, schema, migrations ou privilégios.
 - Cada consulta de status/catálogo recebe um número monotônico por usuário; resultados atrasados de sessão anterior, consulta substituída ou após revogação/logout não atualizam estado.
 - O contexto só expõe `wholesaleStatus`, `wholesaleCompany` e `wholesaleCatalogMap` pertinentes ao usuário corrente. O modal pendente revalida aprovação B2B antes da troca de modalidade.

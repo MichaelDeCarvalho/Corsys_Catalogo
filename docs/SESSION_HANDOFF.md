@@ -1,5 +1,21 @@
 # SESSION HANDOFF — ITEM 3: CUSTOMER ORDER TRACKING V1 — PRODUCTION HARDENING HOTFIX
 
+## Retomada do PR #6 — revisão e regressões de identidade (2026-10-09, America/Sao_Paulo)
+
+- Baseline revisada: `112d8f2b8aac6ab96f0c0d36ff6812cc8a68c5cf`, base `d29a5a2`. PR aberto; Quality #36 / Verify SUCCESS confirmado por jobs e logs, incluindo tipos, build e testes B2B. Isso não comprova E2E autenticado.
+- Checkout original `Corsys_Catalogo` em `feat/delivery-settings`, com alterações locais de entrega/migration 000019: preservado integralmente. Trabalho deste marco em cópia independente `review-pr6`, branch `qa/b2b-checkout-e2e-readiness-20261008`.
+- **Reprodução real com React DOM + jsdom**, usando o provider original e fronteiras Auth/App/rede sintéticas: baseline **5 PASS / 2 FAIL**. Troca direta de comprador A para B mantinha modo atacado/carrinho e modal pendente de A. Não houve teste com clientes reais ou JWT.
+- **Correção mínima:** comparar identidade anterior no efeito de autenticação e executar `clearWholesaleSession` antes de consultar o novo comprador. Troca de comprador volta ao varejo, remove carrinho atacadista e cancela modal antigo; renovação do token do mesmo comprador preserva modo/carrinho.
+- `scripts/test-wholesale-context.mjs` incorporado ao `test:regression`; jsdom `30.1.2` como dependência exclusiva de desenvolvimento, lockfile Bun atualizado. Esbuild já existente compila o provider sem alterar sua lógica; stubs limitados às dependências de ambiente.
+- **VERIFIED/PASS local:** Bun **1.4.2**, instalação baseada no lockfile, `bun run check` exit 0: TypeScript, Vite build, dez suítes existentes e sete cenários React DOM. Os sete cobrem logout tardio, catálogo vazio, resposta fora de ordem, troca de comprador/carrinho, modal de comprador anterior, renovação do mesmo comprador e revogação. Aviso de bundle >500 kB permanece; não é falha de build.
+- Problema inicial Windows: checkout com CRLF fazia duas asserções textuais falharem. Cópia isolada restaurada com `core.autocrlf=false`; baseline completa voltou a PASS. Nenhuma expectativa de teste foi flexibilizada. Dependências do checkout original também diferiam do lockfile; a verificação final usa instalação independente pelo Bun.
+- **Ambiente isolado:** listagem Supabase atual confirmou somente branch `main` no projeto Corsys_Catalogo. Nenhum projeto QA identificado como dedicado a este sistema. Docker não encontrado no PATH nem no local padrão Windows. Nenhum recurso provisionado, custo autorizado/gerado por provisão, segredo consultado ou escrita em dados de produção.
+- **Publicação BLOCKED:** comentário do bot Cloudflare registra preview FAILED para `112d8f2`, build `231ce770-ec5c-4487-a321-5fa7551372d0`; log exige autenticação Cloudflare nesta sessão. Causa NOT EVALUATED. Netlify deploy-preview estava SUCCESS no status GitHub; não comprova backend isolado nem release Cloudflare.
+- **Merge/deploy não executados:** `main` pode publicar automaticamente. Gate de release permanece: nova CI, diagnóstico Cloudflare, E2E isolado e autorização concreta de publicação quando necessária. Rollback desta correção frontend: reverter o commit da correção via PR; nenhuma migration a reverter.
+- **Itens 5/6: recuperação parcial, não fechamento.** Chat “Configurar campos do checkout” (`01a11d26-1201-7270-a684-8ca4504fda5f`) teve retomada interrompida por limite de uso. O assistente relatou configuração de métodos/endereço de saída/tarifas e depois distância rodoviária/estimativa Uber Moto/Carro. O usuário informou que Google Maps ainda não estava configurado. O pedido original completo e o mapeamento exato 5/6 não foram recuperados: relato do assistente não substitui requisitos autoritativos. Código local não commitado é rascunho, não release; manter separado do PR #6 e confirmar critérios de aceite antes de concluir essas funcionalidades.
+- **Pendências efetivas:** E2E B2B-01–13 e RACE-01–04 com backend isolado/fixtures fictícias; acesso ao log Cloudflare; confirmar especificação funcional 5/6. Nenhum desses itens marcado PASS por esta revisão.
+
+
 ## Data
 2026-10-08
 

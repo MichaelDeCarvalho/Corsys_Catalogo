@@ -221,6 +221,8 @@ Advisors Hosted antes/depois do Item 4: nenhum finding novo. Aviso preexistente:
 
 ## Respostas B2B assíncronas obsoletas — isolamento de sessão (2026-10-09)
 
+- **Evidência adicional de componente:** React DOM/jsdom reproduziu manutenção de modalidade/carrinho e modal de A após troca direta para B (5 PASS / 2 FAIL na baseline PR #6). Comparação de identidade no efeito encerra a sessão comercial anterior; após correção 7/7 PASS. Stubs Auth/rede não comprovam isolamento no backend. Estado permanece FIX PREPARED / NOT DEPLOYED; não houve remediação ou mutação de produção.
+
 - **Área:** `src/context/WholesaleAccessContext.tsx`; cache privado em memória do catálogo atacadista e identidade do comprador.
 - **Finding de revisão de código:** na revisão anterior, callbacks de `refreshWholesaleStatus` e `loadWholesaleCatalog` podiam concluir depois de `clearWholesaleSession`/troca de usuário e voltar a preencher status, dados comerciais ou mapa de preços no estado React. Modal de mudança de modo também não revalidava a aprovação ao confirmar. Cenário potencial, não foi observado como exploração real em produção.
 - **Impacto potencial:** exposição transitória em UI de dados do catálogo de outro usuário no mesmo navegador e estado visual B2B inconsistente após logout. O risco NÃO equivale a execução de RPC privilegiada, pois a autorização server-side e a RLS permanecem obrigatórias.

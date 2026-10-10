@@ -90,6 +90,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   const activeTenantSlug = PUBLIC_TENANT_SLUG;
   const currentUserIdRef = React.useRef<string | null>(user?.id ?? null);
   currentUserIdRef.current = user?.id ?? null;
+  const sessionUserIdRef = React.useRef<string | null>(user?.id ?? null);
   const statusRequestGateRef = React.useRef(createWholesaleRequestGate());
   const catalogRequestGateRef = React.useRef(createWholesaleRequestGate());
   const catalogLoadedUserIdRef = React.useRef<string | null>(null);
@@ -230,6 +231,12 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
 
   // Observa mudanças na autenticação do usuário
   useEffect(() => {
+    // Troca direta A -> B também encerra a sessão comercial anterior.
+    // Renovação do token do mesmo comprador preserva modalidade e carrinho.
+    if (sessionUserIdRef.current !== (user?.id ?? null)) {
+      sessionUserIdRef.current = user?.id ?? null;
+      clearWholesaleSession();
+    }
     if (user) {
       refreshWholesaleStatus();
     } else {

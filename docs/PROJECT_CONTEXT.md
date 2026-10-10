@@ -187,6 +187,8 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 
 ## Continuidade — Proteção de sessão B2B (PR #6, 2026-10-09)
 
+- Revisão retomada encontrou e corrigiu a herança de modo/carrinho/modal na troca direta de comprador. Sete testes executando o provider React DOM passaram após correção, e `bun run check` local passou com Bun 1.4.2; limites, release e recuperação parcial dos Itens 5/6 registrados no início do handoff. PR segue sem merge/deploy e E2E autenticado pendente.
+
 - A revisão de QA identificou possível race condition de respostas antigas de status/catálogo após logout ou troca de comprador. A correção está somente em branch de QA e **não foi publicada** em produção.
 - `WholesaleAccessContext` usa `src/utils/wholesaleRequestGate.ts` para invalidar resultados obsoletos e restringir o estado de identidade/preço B2B à sessão atual. O backend mantém autoridade sobre elegibilidade e valores.
 - Foram adicionados testes de contrato do payload atacadista e de ordenação de respostas; conclusão de CI está registrada no PR correspondente, após execução.
