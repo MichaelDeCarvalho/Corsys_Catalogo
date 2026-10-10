@@ -35,3 +35,6 @@ ADR 013 documenta as mudanças. A migration 000020 deve ser revisada e implantad
 Itens 5/6: texto original recuperado; numeração e critérios finais ainda precisam validação do usuário. Não implementar serviço pago de distância nem inferir autorização de instalação como aprovação funcional.
 
 Evidências detalhadas e segredos exclusivamente locais ficam fora do Git: logs sanitizados de testes, status CLI, fixtures de Auth e helper API. Não anexar tokens, URLs assinadas ou credenciais ao PR.
+
+
+Teste adicional 03_private_wholesale_tiers_test.sql: PASS em papéis reais, com duas faixas não vazias. Comprador aprovado não consulta tiers/produtos privados; administrador consulta somente tiers próprios e arquiva produto próprio; anon negado. Fixtures e alterações revertidas na transação.

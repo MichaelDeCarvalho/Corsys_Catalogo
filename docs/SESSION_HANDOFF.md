@@ -555,3 +555,6 @@ A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_ti
 
 
 Atualização final deste registro: 18 testes de API local PASS; pedido do navegador PED-20261010-000006 confirmado no banco (wholesale/pending/R). Cobertura consolidada PARTIAL, com limites por caso em docs/qa/LOCAL_RUNTIME_20261010.md. RACE com fronteiras reais de navegador e alguns subcasos UI/retail/tracking permanecem pendentes. Inspeção da aba externa WhatsApp foi bloqueada pela revisão automática; nenhum envio efetuado. Sem merge/deploy de produção.
+
+
+Teste adicional 03_private_wholesale_tiers_test.sql: PASS em papéis reais, com duas faixas não vazias. Comprador aprovado não consulta tiers/produtos privados; administrador consulta somente tiers próprios e arquiva produto próprio; anon negado. Fixtures e alterações revertidas na transação.
