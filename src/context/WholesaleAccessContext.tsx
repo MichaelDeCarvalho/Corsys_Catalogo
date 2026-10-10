@@ -88,6 +88,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   currentUserIdRef.current = user?.id ?? null;
   const statusRequestGateRef = React.useRef(createWholesaleRequestGate());
   const catalogRequestGateRef = React.useRef(createWholesaleRequestGate());
+  const catalogLoadedUserIdRef = React.useRef<string | null>(null);
 
   // Sincronização estrita entre purchaseMode autoritativo e shoppingMode legado do AppContext
   const setPurchaseModeSynchronized = useCallback((mode: PurchaseMode) => {
@@ -113,6 +114,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   const clearWholesaleSession = useCallback(() => {
     statusRequestGateRef.current.invalidate();
     catalogRequestGateRef.current.invalidate();
+    catalogLoadedUserIdRef.current = null;
     resetToRetail();
     setWholesaleStatus('unauthenticated');
     setWholesaleOwnerId(null);
@@ -134,6 +136,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
 
     const request = statusRequestGateRef.current.begin(user.id);
     catalogRequestGateRef.current.invalidate();
+    catalogLoadedUserIdRef.current = null;
     setWholesaleOwnerId(null);
     setWholesaleStatus('unauthenticated');
     setWholesaleCompany(null);
@@ -204,6 +207,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       if (!catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
       const newMap = new Map<string, WholesaleItemData>();
       for (const it of items) newMap.set(it.productId, it);
+      catalogLoadedUserIdRef.current = request.userId;
       setWholesaleCatalogMap(newMap);
     } catch (err: unknown) {
       if (!catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
@@ -235,7 +239,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
 
   // Quando o status passa para approved e o usuário está no modo atacado, carrega o catálogo
   useEffect(() => {
-    if (wholesaleStatus === 'approved' && wholesaleOwnerId === user?.id && purchaseMode === 'wholesale' && wholesaleCatalogMap.size === 0 && !isLoadingWholesaleCatalog) {
+    if (wholesaleStatus === 'approved' && wholesaleOwnerId === user?.id && purchaseMode === 'wholesale' && wholesaleCatalogMap.size === 0 && !isLoadingWholesaleCatalog && catalogLoadedUserIdRef.current !== user?.id) {
       loadWholesaleCatalog();
     }
   }, [wholesaleStatus, wholesaleOwnerId, user?.id, purchaseMode, wholesaleCatalogMap.size, isLoadingWholesaleCatalog, loadWholesaleCatalog]);
