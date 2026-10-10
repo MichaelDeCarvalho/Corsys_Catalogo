@@ -215,3 +215,16 @@
 - Testes de papéis reais e Hosted registrados no handoff após execução; até lá NOT EVALUATED.
 
 Advisors Hosted antes/depois do Item 4: nenhum finding novo. Aviso preexistente: [Leaked password protection desabilitada](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection), fora do escopo desta implementação. Testes de papéis reais/isolamento: PASS (ver SESSION_HANDOFF).
+
+
+---
+
+## Respostas B2B assíncronas obsoletas — isolamento de sessão (2026-10-09)
+
+- **Área:** `src/context/WholesaleAccessContext.tsx`; cache privado em memória do catálogo atacadista e identidade do comprador.
+- **Finding de revisão de código:** na revisão anterior, callbacks de `refreshWholesaleStatus` e `loadWholesaleCatalog` podiam concluir depois de `clearWholesaleSession`/troca de usuário e voltar a preencher status, dados comerciais ou mapa de preços no estado React. Modal de mudança de modo também não revalidava a aprovação ao confirmar. Cenário potencial, não foi observado como exploração real em produção.
+- **Impacto potencial:** exposição transitória em UI de dados do catálogo de outro usuário no mesmo navegador e estado visual B2B inconsistente após logout. O risco NÃO equivale a execução de RPC privilegiada, pois a autorização server-side e a RLS permanecem obrigatórias.
+- **Correção candidata (PR #6, não publicada):** guard versionado por identidade (`createWholesaleRequestGate`) para status e catálogo; invalidação no logout, troca de usuário, nova consulta e revogação; descarte de respostas antigas; catálogo e identidade renderizados somente para a identidade atual; revalidação da aprovação antes de confirmar troca para atacado; controle de catálogo vazio sem loop de refetch.
+- **Testes propostos:** testes determinísticos de versão e ordem de resolução de Promises, logout/revogação e usuário diferente anexados à suíte `scripts/test-checkout-fields.ts`. Evidência de CI por commit registrada no PR após executar. Teste com React renderizado, JWT real e browser multiusuário ainda `NOT EVALUATED`.
+- **Risco residual:** requisições já transmitidas podem completar no servidor (são ignoradas pelo client); resposta já exibida antes da limpeza ou captura de tela não pode ser recuperada; backend continua sendo o perímetro de autorização. A validação B2B E2E em ambiente isolado permanece necessária.
+- **Estado:** `FIX PREPARED / NOT DEPLOYED`; não declarar remediação em produção antes de merge, deploy e homologação.
