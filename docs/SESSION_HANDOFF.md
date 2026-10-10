@@ -2,6 +2,13 @@
 
 ## Retomada do PR #6 — revisão e regressões de identidade (2026-10-09, America/Sao_Paulo)
 
+### Verificação de continuidade — 2026-10-10
+- PR #6 permanece aberto, sem merge; revisão inspecionada `ee3561f3cbd32c9297ad874663ac37c17ec62d4a`. Quality #38 / Verify SUCCESS registrado no PR; código não modificado nesta retomada.
+- Bot Cloudflare confirma **FAILED** também para a revisão final `ee3561f`, build `d8ead3d7-596b-438a-a703-8dc3694f9e2a`. O painel mostrou indisponibilidade temporária e depois redirecionou para login; log privado não acessível, causa **NOT EVALUATED**. Não confundir a falha do pipeline com regressão comprovada do código.
+- **VERIFIED/PASS local:** Wrangler **4.143.0**, comando `deploy --dry-run --outdir .wrangler/qa-dry-run`, exit 0, quatro arquivos de assets lidos, zero bindings, encerramento explícito sem upload. Usados somente assets sintéticos do build local; telemetria desligada e logs direcionados à pasta ignorada do workspace. Primeiro ensaio encontrou restrição de escrita do log global; corrigido o destino local, segunda execução limpa. [Semântica oficial do dry-run](https://developers.cloudflare.com/workers/wrangler/commands/#deploy): validação local, não publicação/runtime remoto.
+- Confirmada ausência de Docker/Podman; `wsl --list --quiet` informa WSL não instalado. Listagem Supabase continua somente com branch `main`. O E2E isolado não pode executar neste ambiente atual; nenhuma instalação de componente do sistema, provisão paga ou fixture em produção realizada.
+- Próximos passos dependentes: disponibilizar acesso autenticado ao log Cloudflare; ambiente Supabase QA autorizado ou runtime local de containers; requisitos completos 5/6. A instrução genérica de continuar não fornece credenciais, backend isolado nem definição funcional. Nenhum merge/deploy executado.
+
 - Baseline revisada: `112d8f2b8aac6ab96f0c0d36ff6812cc8a68c5cf`, base `d29a5a2`. PR aberto; Quality #36 / Verify SUCCESS confirmado por jobs e logs, incluindo tipos, build e testes B2B. Isso não comprova E2E autenticado.
 - Checkout original `Corsys_Catalogo` em `feat/delivery-settings`, com alterações locais de entrega/migration 000019: preservado integralmente. Trabalho deste marco em cópia independente `review-pr6`, branch `qa/b2b-checkout-e2e-readiness-20261008`.
 - **Reprodução real com React DOM + jsdom**, usando o provider original e fronteiras Auth/App/rede sintéticas: baseline **5 PASS / 2 FAIL**. Troca direta de comprador A para B mantinha modo atacado/carrinho e modal pendente de A. Não houve teste com clientes reais ou JWT.
