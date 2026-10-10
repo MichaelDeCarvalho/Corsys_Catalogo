@@ -14,6 +14,7 @@
 - **Merge/deploy não executados:** `main` pode publicar automaticamente. Gate de release permanece: nova CI, diagnóstico Cloudflare, E2E isolado e autorização concreta de publicação quando necessária. Rollback desta correção frontend: reverter o commit da correção via PR; nenhuma migration a reverter.
 - **Itens 5/6: recuperação parcial, não fechamento.** Chat “Configurar campos do checkout” (`01a11d26-1201-7270-a684-8ca4504fda5f`) teve retomada interrompida por limite de uso. O assistente relatou configuração de métodos/endereço de saída/tarifas e depois distância rodoviária/estimativa Uber Moto/Carro. O usuário informou que Google Maps ainda não estava configurado. O pedido original completo e o mapeamento exato 5/6 não foram recuperados: relato do assistente não substitui requisitos autoritativos. Código local não commitado é rascunho, não release; manter separado do PR #6 e confirmar critérios de aceite antes de concluir essas funcionalidades.
 - **Pendências efetivas:** E2E B2B-01–13 e RACE-01–04 com backend isolado/fixtures fictícias; acesso ao log Cloudflare; confirmar especificação funcional 5/6. Nenhum desses itens marcado PASS por esta revisão.
+- **Entrega da correção:** commit `accdc371e55067a6b5fc08877d75b8046f20b110` enviado ao PR #6. [Quality #37](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38011123354) / Verify **SUCCESS**; instalação frozen, tipos, build e regressão com sete testes React DOM confirmados nos logs. PR aberto, sem merge; commit seguinte apenas registra esta evidência.
 
 
 ## Data

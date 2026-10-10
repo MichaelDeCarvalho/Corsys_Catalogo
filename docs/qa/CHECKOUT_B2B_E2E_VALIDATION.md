@@ -1,7 +1,8 @@
 # Checkout B2B — plano de homologação E2E (navegador + Supabase isolado)
 
-**Data de preparação:** 2026-10-08  
-**Baseline:** `main` após Item 4 (ADR 012, migration `20261009020000_000018_checkout_field_settings.sql`).  
+**Data de preparação:** 2026-10-08
+
+**Baseline:** `main` após Item 4 (ADR 012, migration `20261009020000_000018_checkout_field_settings.sql`).
 **Situação:** `NOT EVALUATED` para execução de navegador; este documento é um **roteiro**, não prova de PASS.
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
