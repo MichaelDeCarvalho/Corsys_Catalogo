@@ -440,3 +440,9 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 - Critérios de validação: `bun run check` no PR, testes de corrida determinísticos; E2E autenticado multiusuário e Supabase isolado permanecem `NOT EVALUATED` até disponibilidade de fixtures QA.
 # Atualização de QA Cloudflare — 2026-10-10
 Pipeline existente de branch usa Worker Previews com `previews: {}`; frontend somente estático, zero bindings. URLs permanecem desativadas e Base de Prévias sem variáveis de backend. Não representa Supabase QA nem comprova E2E B2B. Ver ADR 005 e SESSION_HANDOFF para evidências e limites.
+
+## QA local autenticado — 2026-10-10
+
+Ver ADR 013 para decisões, migration 000020 e diferenças controladas do ambiente local. Supabase local real, Auth real e fixtures fictícias; nenhuma alteração Hosted. RLS/integridade e checkout_fields executados no PostgreSQL com rollback: PASS. Oito testes de API local: PASS (anon/pending denied, aprovado A, isolamento A/B, total forjado negado, mínimo negado, pedido oficial total 100, idempotência). Correções encontradas: arquivamento de produto por admin, tiers B2B públicos, catálogo vazio após reload de comprador autenticado e recibo HTTP local. Bun check inclui fronteiras HTTPS/loopback.
+
+A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_tiers; equipe autorizada mantém políticas próprias. Os testes de preparação de orders agora incluem idempotency_key. Não declarar que Hosted recebeu essas correções.

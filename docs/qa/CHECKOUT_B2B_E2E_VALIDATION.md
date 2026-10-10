@@ -73,3 +73,6 @@ Na finalização, executar o `bun run check` no commit testado e testes SQL tran
 Somente marcar a pendência **B2B E2E CLOSED / RUNTIME PASS** após executar B2B-01–13 no navegador contra ambiente isolado com evidências, confirmar `bun run check`, verificar isolamento de tenant e anexar registro sanitizado em `docs/SESSION_HANDOFF.md`. A validação do Supabase Preview exige ambiente realmente provisionado e testado, não basta criar branch GitHub.
 
 **Itens 5/6:** especificação funcional não consta nas fontes versionadas inspecionadas (`docs/SESSION_HANDOFF.md`, `docs/PROJECT_CONTEXT.md`, `docs/CURRENT_ARCHITECTURE.md` e ADR 012). Não desenvolver sob rótulos 5/6 até haver escopo e critérios de aceitação identificáveis.
+
+
+Atualização final deste registro: 18 testes de API local PASS; pedido do navegador PED-20261010-000006 confirmado no banco (wholesale/pending/R). Cobertura consolidada PARTIAL, com limites por caso em docs/qa/LOCAL_RUNTIME_20261010.md. RACE com fronteiras reais de navegador e alguns subcasos UI/retail/tracking permanecem pendentes. Inspeção da aba externa WhatsApp foi bloqueada pela revisão automática; nenhum envio efetuado. Sem merge/deploy de produção.

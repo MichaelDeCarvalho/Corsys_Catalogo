@@ -195,3 +195,9 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 - Itens 5 e 6 seguem com escopo desconhecido, fora desta correção. O E2E B2B navegador ainda requer ambiente isolado e usuário de teste aprovado vinculado à autenticação.
 # Continuidade Cloudflare — 2026-10-10
 Log autenticado identificou ausência de `previews` como causa da falha de branch. Correção mínima de configuração preserva URLs desativadas, produção e isolamento sem backend. Resultado remoto da nova revisão deve ser confirmado separadamente. E2E B2B isolado e requisitos 5/6 continuam pendentes; não provisionar custo nem usar fixtures de produção.
+
+## QA local autenticado — 2026-10-10
+
+Ver ADR 013 para decisões, migration 000020 e diferenças controladas do ambiente local. Supabase local real, Auth real e fixtures fictícias; nenhuma alteração Hosted. RLS/integridade e checkout_fields executados no PostgreSQL com rollback: PASS. Oito testes de API local: PASS (anon/pending denied, aprovado A, isolamento A/B, total forjado negado, mínimo negado, pedido oficial total 100, idempotência). Correções encontradas: arquivamento de produto por admin, tiers B2B públicos, catálogo vazio após reload de comprador autenticado e recibo HTTP local. Bun check inclui fronteiras HTTPS/loopback.
+
+A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_tiers; equipe autorizada mantém políticas próprias. Os testes de preparação de orders agora incluem idempotency_key. Não declarar que Hosted recebeu essas correções.

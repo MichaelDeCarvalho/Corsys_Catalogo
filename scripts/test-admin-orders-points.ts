@@ -619,8 +619,9 @@ console.log('\n6. Governança de Migrations & Edge Function V2');
 
 const migrationFiles = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'));
 assert(
-  migrationFiles.length === 18,
-  'Exatamente 18 migrations no workspace (000001 a 000018 registradas)'
+  Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(6, '0'))
+    .every(version => migrationFiles.some(file => file.includes(`_${version}_`))),
+  'Baseline de migrations até 000018 preservada; migrations posteriores são permitidas'
 );
 
 const migration14Path = 'supabase/migrations/20261005170000_000014_admin_order_management.sql';

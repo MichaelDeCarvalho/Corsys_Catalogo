@@ -15,6 +15,7 @@
  * 11. Behavioral Simulations
  */
 
+import './order-service-test-env';
 import * as fs from 'fs';
 import { 
   computeOrderFingerprint, 

@@ -546,3 +546,12 @@ Não deployado por esta adoção.
 - **Publicação:** PR #6 em review; branch não integrada a `main`. **Sem deploy Cloudflare** e sem qualquer operação de escrita no Supabase Hosted.
 - **Limitações:** testes com React renderizado no navegador, autenticação B2B E2E real multiusuário e Supabase Preview dedicado continuam `NOT EVALUATED / BLOCKED`, conforme issue #4; itens 5/6 continuam sem requisitos versionados, conforme issue #5.
 - **Próxima ação:** observar CI Quality do commit final e anexar resultado ao PR. Revisar mudança antes de merge/publicação; após existir backend de QA, executar B2B-01–13 e os cenários de logout, alternância rápida de usuários e catálogo vazio com evidência real.
+
+## QA local autenticado — 2026-10-10
+
+Ver ADR 013 para decisões, migration 000020 e diferenças controladas do ambiente local. Supabase local real, Auth real e fixtures fictícias; nenhuma alteração Hosted. RLS/integridade e checkout_fields executados no PostgreSQL com rollback: PASS. Oito testes de API local: PASS (anon/pending denied, aprovado A, isolamento A/B, total forjado negado, mínimo negado, pedido oficial total 100, idempotência). Correções encontradas: arquivamento de produto por admin, tiers B2B públicos, catálogo vazio após reload de comprador autenticado e recibo HTTP local. Bun check inclui fronteiras HTTPS/loopback.
+
+A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_tiers; equipe autorizada mantém políticas próprias. Os testes de preparação de orders agora incluem idempotency_key. Não declarar que Hosted recebeu essas correções.
+
+
+Atualização final deste registro: 18 testes de API local PASS; pedido do navegador PED-20261010-000006 confirmado no banco (wholesale/pending/R). Cobertura consolidada PARTIAL, com limites por caso em docs/qa/LOCAL_RUNTIME_20261010.md. RACE com fronteiras reais de navegador e alguns subcasos UI/retail/tracking permanecem pendentes. Inspeção da aba externa WhatsApp foi bloqueada pela revisão automática; nenhum envio efetuado. Sem merge/deploy de produção.

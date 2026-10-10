@@ -2,6 +2,7 @@ import { FunctionsHttpError, FunctionsFetchError, FunctionsRelayError } from '@s
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { PaymentMethod } from '../types';
 import { normalizeBrazilianDocument, isValidCPF, isValidCNPJ } from '../utils/brDocument';
+import { isAllowedOrderDocumentUrl } from '../utils/orderDocumentUrl';
 
 export type CheckoutShoppingMode = 'retail' | 'wholesale';
 
@@ -632,7 +633,7 @@ export function validateReceipt(raw: unknown): CheckoutOrderReceipt {
 
   let validatedDocumentUrl: string | null = null;
   if (ord.documentUrl !== undefined && ord.documentUrl !== null) {
-    if (typeof ord.documentUrl !== 'string' || !ord.documentUrl.startsWith('https://') || ord.documentUrl.length > 2048) {
+    if (!isAllowedOrderDocumentUrl(ord.documentUrl, import.meta.env?.DEV === true, import.meta.env?.VITE_SUPABASE_URL)) {
       throw new OrderCheckoutError('Resposta inválida do serviço de pedidos: URL do documento inválida.');
     }
     validatedDocumentUrl = ord.documentUrl;
