@@ -64,6 +64,10 @@ const EMPTY_WHOLESALE_CATALOG = new Map<string, WholesaleItemData>();
 export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const { cart, clearCart, showToast, setShoppingMode } = useApp();
+  // AppContext expõe ações recriadas em renders; seus callbacks atuais ficam em ref
+  // para não reiniciar as consultas de autorização ao mudar carrinho/toast/modo.
+  const appActionsRef = React.useRef({ clearCart, showToast, setShoppingMode });
+  appActionsRef.current = { clearCart, showToast, setShoppingMode };
 
   const [purchaseMode, setPurchaseModeState] = useState<PurchaseMode>('retail');
   const [wholesaleStatus, setWholesaleStatus] = useState<WholesaleAccessStatus>('unauthenticated');
@@ -93,8 +97,8 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   // Sincronização estrita entre purchaseMode autoritativo e shoppingMode legado do AppContext
   const setPurchaseModeSynchronized = useCallback((mode: PurchaseMode) => {
     setPurchaseModeState(mode);
-    setShoppingMode(mode);
-  }, [setShoppingMode]);
+    appActionsRef.current.setShoppingMode(mode);
+  }, []);
 
   const cartRef = React.useRef(cart);
   cartRef.current = cart;
@@ -104,11 +108,11 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   // Fallback seguro para retail com limpeza de carrinho fora de state updater
   const resetToRetail = useCallback(() => {
     if (purchaseModeRef.current === 'wholesale' && cartRef.current.length > 0) {
-      clearCart();
+      appActionsRef.current.clearCart();
     }
     setPurchaseModeState('retail');
-    setShoppingMode('retail');
-  }, [clearCart, setShoppingMode]);
+    appActionsRef.current.setShoppingMode('retail');
+  }, []);
 
   // Invalida respostas pendentes sempre que sessão B2B for limpa.
   const clearWholesaleSession = useCallback(() => {
@@ -214,7 +218,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo B2B';
       console.error('[WholesaleAccessContext] Erro no catálogo atacadista:', err);
       setWholesaleCatalogError(msg);
-      showToast(`Acesso ao atacado: ${msg}`);
+      appActionsRef.current.showToast(`Acesso ao atacado: ${msg}`);
       setWholesaleCatalogMap(new Map());
       resetToRetail();
     } finally {
@@ -222,7 +226,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
         setIsLoadingWholesaleCatalog(false);
       }
     }
-  }, [user?.id, wholesaleOwnerId, wholesaleStatus, activeTenantSlug, showToast, resetToRetail]);
+  }, [user?.id, wholesaleOwnerId, wholesaleStatus, activeTenantSlug, resetToRetail]);
 
   // Observa mudanças na autenticação do usuário
   useEffect(() => {
