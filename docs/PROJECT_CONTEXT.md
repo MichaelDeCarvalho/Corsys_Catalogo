@@ -183,3 +183,11 @@ Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 88
 Atualização: alinhamento da migration 000018 autorizado explicitamente e executado em 2026-10-08; versão Hosted=20261009020000, idêntica ao arquivo. Bloqueio anterior resolvido; publicação em andamento (estado final no SESSION_HANDOFF).
 
 Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=20261009020000, CI PASS e runtime Cloudflare publicado. Edição administrativa autenticada com save da política original e recarga PASS. Evidências e limites no SESSION_HANDOFF. Itens 5/6 não iniciados.
+
+
+## Continuidade — Proteção de sessão B2B (PR #6, 2026-10-09)
+
+- A revisão de QA identificou possível race condition de respostas antigas de status/catálogo após logout ou troca de comprador. A correção está somente em branch de QA e **não foi publicada** em produção.
+- `WholesaleAccessContext` usa `src/utils/wholesaleRequestGate.ts` para invalidar resultados obsoletos e restringir o estado de identidade/preço B2B à sessão atual. O backend mantém autoridade sobre elegibilidade e valores.
+- Foram adicionados testes de contrato do payload atacadista e de ordenação de respostas; conclusão de CI está registrada no PR correspondente, após execução.
+- Itens 5 e 6 seguem com escopo desconhecido, fora desta correção. O E2E B2B navegador ainda requer ambiente isolado e usuário de teste aprovado vinculado à autenticação.
