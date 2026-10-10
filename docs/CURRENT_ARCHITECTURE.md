@@ -438,3 +438,5 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 - Catálogo vazio pode ser uma resposta legítima: o marcador de carregamento concluído impede reconsultas infinitas em `useEffect`. Um refresh explícito de status pode iniciar nova carga.
 - A decisão de autorização real segue exclusivamente no backend Supabase e nas políticas RLS; guards frontend são higiene de estado privado, não mecanismo de concessão de acesso.
 - Critérios de validação: `bun run check` no PR, testes de corrida determinísticos; E2E autenticado multiusuário e Supabase isolado permanecem `NOT EVALUATED` até disponibilidade de fixtures QA.
+# Atualização de QA Cloudflare — 2026-10-10
+Pipeline existente de branch usa Worker Previews com `previews: {}`; frontend somente estático, zero bindings. URLs permanecem desativadas e Base de Prévias sem variáveis de backend. Não representa Supabase QA nem comprova E2E B2B. Ver ADR 005 e SESSION_HANDOFF para evidências e limites.

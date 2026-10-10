@@ -193,3 +193,5 @@ Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=2026100
 - `WholesaleAccessContext` usa `src/utils/wholesaleRequestGate.ts` para invalidar resultados obsoletos e restringir o estado de identidade/preço B2B à sessão atual. O backend mantém autoridade sobre elegibilidade e valores.
 - Foram adicionados testes de contrato do payload atacadista e de ordenação de respostas; conclusão de CI está registrada no PR correspondente, após execução.
 - Itens 5 e 6 seguem com escopo desconhecido, fora desta correção. O E2E B2B navegador ainda requer ambiente isolado e usuário de teste aprovado vinculado à autenticação.
+# Continuidade Cloudflare — 2026-10-10
+Log autenticado identificou ausência de `previews` como causa da falha de branch. Correção mínima de configuração preserva URLs desativadas, produção e isolamento sem backend. Resultado remoto da nova revisão deve ser confirmado separadamente. E2E B2B isolado e requisitos 5/6 continuam pendentes; não provisionar custo nem usar fixtures de produção.
