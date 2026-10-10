@@ -503,3 +503,17 @@ Não deployado por esta adoção.
 - **Sem alterações de produção:** nenhuma migration aplicada, Edge Function implantada, política alterada, pedido criado ou dado B2B modificado nesta revisão.
 - **Próxima execução válida:** provisionar ambiente isolado autorizado, criar identidades fictícias e buyer B2B aprovado nele, cumprir QA B2B-01–13 e registrar evidências sanitizadas. Item 5/6 depende de definição real.
 - **Entrega desta documentação:** branch GitHub `qa/b2b-checkout-e2e-readiness-20261008`; sem merge em `main`, sem CI/preview decorrente de PR e sem novo deploy Cloudflare. O teste completo ainda não pode ser marcado PASS.
+
+
+---
+
+## Continuação — B2B session race hardening / PR #6 (2026-10-09)
+
+- **Motivo:** leitura de `WholesaleAccessContext` encontrou respostas de `refreshWholesaleStatus` e `loadWholesaleCatalog` sem verificação de sessão/ordem após `await`, com possibilidade de repovoamento do estado B2B após logout/troca de usuário ou chegada fora de ordem. O modal de troca também não revalidava aprovação no momento de confirmar.
+- **Implementado somente na branch de QA:** `src/utils/wholesaleRequestGate.ts` (versão de requisição + proprietário da sessão), integração em `WholesaleAccessContext` com invalidação ao limpar autenticação/iniciar novos carregamentos, renderização de estado/catálogo condicionada ao usuário atual e confirmação de atacado sujeita à aprovação atual.
+- **Regressão adicional:** catálogo aprovado vazio não aciona loop de refetch; marcador por usuário permite nova carga depois de refresh explícito.
+- **Teste automatizado:** `scripts/test-checkout-fields.ts` cobre whitelist de dados B2B, fingerprint por tenant/usuário e guarda assíncrona com resposta atrasada, ordem invertida, logout e revogação. CI da revisão final deve ser verificado no PR antes de fechar esta atividade; não interpretar commit salvo como teste executado.
+- **Artefatos de governança:** `docs/SECURITY_REGISTER.md`, `docs/CURRENT_ARCHITECTURE.md`, `docs/PROJECT_CONTEXT.md` e este handoff atualizados; nenhuma migration, Edge Function ou segredo alterado.
+- **Publicação:** PR #6 em review; branch não integrada a `main`. **Sem deploy Cloudflare** e sem qualquer operação de escrita no Supabase Hosted.
+- **Limitações:** testes com React renderizado no navegador, autenticação B2B E2E real multiusuário e Supabase Preview dedicado continuam `NOT EVALUATED / BLOCKED`, conforme issue #4; itens 5/6 continuam sem requisitos versionados, conforme issue #5.
+- **Próxima ação:** observar CI Quality do commit final e anexar resultado ao PR. Revisar mudança antes de merge/publicação; após existir backend de QA, executar B2B-01–13 e os cenários de logout, alternância rápida de usuários e catálogo vazio com evidência real.
