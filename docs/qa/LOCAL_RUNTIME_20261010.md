@@ -78,3 +78,11 @@ Fechado subcaso de criação PF + recibo salvo + tracking de varejo no navegador
 
 
 2026-10-11: navegador + Auth/Edge real local, cenário adicional de logout durante catálogo. Cópia QA de get-wholesale-catalog atrasou resposta válida por 15s após autenticação/consulta reais, marcadores sem dados sensíveis QA_RACE_DELAY_STARTED/COMPLETED. Logout entre início/fim; após resposta, botão Entrar, varejo R, sem identidade/preço B2B antigo. PASS deste subcaso real. NÃO equivale a RACE-01 (status RPC atrasado), nem RACE-02 (troca A->B); continuam pendentes. Função QA restaurada byte a byte da cópia anterior; código versionado não recebeu atraso. Nenhuma chamada Google, pedido, WhatsApp ou produção nesta rodada.
+
+## RACE-01/02 com rede local real — 2026-10-11
+
+RACE-02 PASS no percurso A -> logout -> login B: get-wholesale-catalog QA atrasou resposta válida de A por 45 segundos após autenticação e consulta reais. Logs sanitizados mostram início 04:38:27.241 UTC e fim 04:39:12.250 UTC. B entrou antes do fim; menu confirmou approved-b fictício, catálogo da loja A permaneceu varejo R$30, sem identidade comercial ou preço privado de A. B é aprovado somente na loja B, sem autorização na loja A. Não equivale a troca direta de sessão sem logout, coberta apenas pelo teste de componente. Nenhum pedido criado.
+
+RACE-01 PASS: RPC get_my_wholesale_status local preservou autenticação/RLS e atrasou RETURN v_result por 20 segundos via pg_sleep. pg_stat_activity confirmou uma consulta real em PgSleep antes do logout. Após logout e término do atraso: botão Entrar, varejo R$30, sem aprovação ou dados comerciais antigos. Definição original restaurada e igualdade pg_get_functiondef confirmada; nenhuma consulta atrasada remanescente. Função de catálogo também restaurada com hash idêntico ao backup. A instrumentação nunca entrou no código Git.
+
+Nenhuma consulta Google ou interação WhatsApp nesta rodada; sem merge/deploy. RACE-03 continua parcial (ausência de loop ainda não medida) e RACE-04 ainda pendente no navegador. Cobertura geral B2B permanece PARTIAL. Evidências desta rodada são observações de UI e marcadores/estado do banco sanitizados, sem tokens.
