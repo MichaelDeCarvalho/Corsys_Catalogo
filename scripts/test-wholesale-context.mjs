@@ -154,6 +154,16 @@ try {
     assert.equal(fixture.cart.length, 1);
     assert.equal(fixture.cleared, 0);
   });
+  await test('confirmation revalidates server approval before clearing retail cart', async () => {
+    await approve(); fixture.cart = [{ productId: 'retail-item' }]; await render(); await click('Wholesale');
+    await click('Confirm');
+    assert.equal(fixture.cleared, 0);
+    await act(async () => fixture.statusRequests.at(-1).resolve({ status: 'suspended' }));
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(fixture.cart.length, 1);
+    assert.equal(fixture.cleared, 0);
+    assert.equal(api.isSwitchModeDialogOpen, false);
+  });
   console.log(`Wholesale React DOM lifecycle: ${passed} PASS / ${failed} FAIL; synthetic boundaries, not authenticated E2E`);
   assert.equal(failed, 0);
 } finally {

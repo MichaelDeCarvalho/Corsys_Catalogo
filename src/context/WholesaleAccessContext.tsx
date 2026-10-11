@@ -94,6 +94,8 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   const statusRequestGateRef = React.useRef(createWholesaleRequestGate());
   const catalogRequestGateRef = React.useRef(createWholesaleRequestGate());
   const catalogLoadedUserIdRef = React.useRef<string | null>(null);
+  const confirmationRef = React.useRef(0);
+  const confirmingRef = React.useRef(false);
 
   // Sincronização estrita entre purchaseMode autoritativo e shoppingMode legado do AppContext
   const setPurchaseModeSynchronized = useCallback((mode: PurchaseMode) => {
@@ -117,6 +119,8 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
 
   // Invalida respostas pendentes sempre que sessão B2B for limpa.
   const clearWholesaleSession = useCallback(() => {
+    confirmationRef.current++;
+    confirmingRef.current = false;
     statusRequestGateRef.current.invalidate();
     catalogRequestGateRef.current.invalidate();
     catalogLoadedUserIdRef.current = null;
@@ -185,6 +189,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
         resetToRetail();
         setWholesaleStatus('unauthenticated');
       }
+      return res.status;
     } catch (err) {
       if (!statusRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
       console.warn('[WholesaleAccessContext] Erro ao carregar status:', err);
@@ -317,8 +322,9 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
     }
   };
 
-  const confirmSwitchPurchaseMode = () => {
-    if (!targetPendingMode) return;
+  const confirmSwitchPurchaseMode = async () => {
+    if (!targetPendingMode || confirmingRef.current) return;
+    const target = targetPendingMode;
     // A aprovação pode mudar enquanto o modal de troca está aberto.
     if (targetPendingMode === 'wholesale' && (!user || !isApproved || loadingStatus)) {
       setIsSwitchModeDialogOpen(false);
@@ -326,19 +332,34 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       showToast('Acesso ao atacado não está aprovado para a sessão atual.');
       return;
     }
-
+    if (target === 'wholesale') {
+      const buyer = user!.id;
+      const confirmation = ++confirmationRef.current;
+      confirmingRef.current = true;
+      const status = await refreshWholesaleStatus();
+      if (confirmation !== confirmationRef.current || currentUserIdRef.current !== buyer) return;
+      confirmingRef.current = false;
+      if (status !== 'approved') {
+        setIsSwitchModeDialogOpen(false);
+        setTargetPendingMode(null);
+        showToast('Acesso ao atacado não confirmado. Seu carrinho de varejo foi preservado.');
+        return;
+      }
+    }
     clearCart();
-    setPurchaseModeSynchronized(targetPendingMode);
-    if (targetPendingMode === 'wholesale') {
+    setPurchaseModeSynchronized(target);
+    if (target === 'wholesale') {
       loadWholesaleCatalog();
     }
-    showToast(`Modalidade alterada para ${targetPendingMode === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
+    showToast(`Modalidade alterada para ${target === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
 
     setIsSwitchModeDialogOpen(false);
     setTargetPendingMode(null);
   };
 
   const cancelSwitchPurchaseMode = () => {
+    confirmationRef.current++;
+    confirmingRef.current = false;
     setIsSwitchModeDialogOpen(false);
     setTargetPendingMode(null);
   };

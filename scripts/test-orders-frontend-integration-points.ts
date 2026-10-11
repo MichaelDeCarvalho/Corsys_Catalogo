@@ -794,9 +794,9 @@ assert(
 );
 
 assert(
-  wholesaleContextCode.includes('const confirmSwitchPurchaseMode = () => {') &&
+  wholesaleContextCode.includes('const confirmSwitchPurchaseMode = async () => {') &&
   wholesaleContextCode.includes('clearCart();') &&
-  wholesaleContextCode.includes('setPurchaseModeSynchronized(targetPendingMode);') &&
+  wholesaleContextCode.includes('setPurchaseModeSynchronized(target);') &&
   !wholesaleContextCode.includes("'recalculate'") &&
   !wholesaleContextCode.includes("'remove_incompatible'"),
   'A6. Confirmação limpa carrinho antes da troca; não existe recalculate nem remove_incompatible'
