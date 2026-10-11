@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Package, 
   Clock, 
@@ -44,6 +44,17 @@ export const CustomerOrderTrackingView: React.FC = () => {
   const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const identity = session?.user.id ?? null;
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
+  const requestGeneration = useRef(0);
+  const [ordersIdentity, setOrdersIdentity] = useState<string | null>(null);
+  useEffect(() => {
+    requestGeneration.current++;
+    setB2bOrders([]); setOrdersIdentity(null); setSelectedOrderNumber(null);
+    setErrorMsg(null); setIsLoading(false);
+    return () => { requestGeneration.current++; };
+  }, [identity]);
 
   // Sincronização e privacidade de sessão (Logout Privacy)
   useEffect(() => {
@@ -62,16 +73,21 @@ export const CustomerOrderTrackingView: React.FC = () => {
 
   const loadB2bOrders = useCallback(async () => {
     if (!session) return;
+    const buyer = session.user.id;
+    const generation = ++requestGeneration.current;
+    const isCurrent = () => identityRef.current === buyer && requestGeneration.current === generation;
     setIsLoading(true);
     setErrorMsg(null);
     try {
       const res = await listMyCustomerOrders(PUBLIC_TENANT_SLUG);
+      if (!isCurrent()) return;
       setB2bOrders(res.orders);
+      setOrdersIdentity(buyer);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar pedidos.';
-      setErrorMsg(msg);
+      if (isCurrent()) setErrorMsg(msg);
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }, [session]);
 
@@ -116,7 +132,8 @@ export const CustomerOrderTrackingView: React.FC = () => {
     }
   }, [activeTab, loadStoredRetailOrders]);
 
-  const currentList = activeTab === 'b2b' ? b2bOrders : retailOrders;
+  const visibleB2bOrders = ordersIdentity === identity ? b2bOrders : [];
+  const currentList = activeTab === 'b2b' ? visibleB2bOrders : retailOrders;
   const selectedOrder = currentList.find((o) => o.orderNumber === selectedOrderNumber) || null;
 
   return (
@@ -149,7 +166,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
                 activeTab === 'b2b' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Atacado B2B ({b2bOrders.length})
+              Atacado B2B ({visibleB2bOrders.length})
             </button>
           )}
           <button
@@ -190,7 +207,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
               </div>
             )}
 
-            {!isLoading && activeTab === 'b2b' && b2bOrders.length === 0 && (
+            {!isLoading && activeTab === 'b2b' && visibleB2bOrders.length === 0 && (
               <div className="py-8 text-center text-xs text-slate-400">
                 Nenhum pedido de atacado registrado ainda.
               </div>
