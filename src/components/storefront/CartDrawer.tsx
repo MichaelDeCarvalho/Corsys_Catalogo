@@ -26,6 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useWholesaleAccess } from '../../context/WholesaleAccessContext';
 import { PaymentMethod, TenantPublicSettings } from '../../types';
+import { AutomaticDeliveryEstimate } from './AutomaticDeliveryEstimate';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import {
   submitOrderCheckout,
@@ -336,6 +337,8 @@ export const CartDrawer: React.FC<{
     if (lower === 'retirada') return 'Retirada na Loja';
     if (lower === 'entrega') return 'Entrega Padrão';
     if (lower === 'uber') return 'Uber / Entrega Rápida';
+    if (lower === 'uber_moto') return 'Uber Moto';
+    if (lower === 'uber_carro') return 'Carro / Caminhão';
     if (lower === 'transportadora') return 'Transportadora';
     if (lower === 'outro') return 'Outro Método';
     return method;
@@ -1073,6 +1076,10 @@ export const CartDrawer: React.FC<{
               </div>
 
               {/* Endereço: logradouro permanece obrigatório em qualquer método. */}
+              {settings && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
+                slug={settings.slug} method={deliveryMethod}
+                address={{ street: customerData.street, number: customerData.number, neighborhood: customerData.neighborhood,
+                  city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }} />}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <p className="font-bold text-slate-700">Endereço do comprador / entrega</p>
                 <div className="grid grid-cols-2 gap-2">

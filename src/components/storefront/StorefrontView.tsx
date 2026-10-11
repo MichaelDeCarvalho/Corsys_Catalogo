@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { deliveryMethodLabel } from '../../config/deliverySettings';
 import { 
   Search, 
   ShoppingCart, 
@@ -342,7 +343,7 @@ export const StorefrontView: React.FC = () => {
                     </span>
                     {settings.deliveryMethods.map((method, idx) => (
                       <span key={idx} className="bg-slate-100 px-2 py-0.5 rounded-md capitalize font-medium text-slate-700 border border-slate-200">
-                        {method}
+                        {deliveryMethodLabel(method)}
                       </span>
                     ))}
                   </div>

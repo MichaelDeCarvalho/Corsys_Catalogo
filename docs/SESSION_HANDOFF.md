@@ -155,7 +155,7 @@ Não deployado por esta adoção.
 > Snapshot preservado do handoff existente em `main` antes da adoção ECC. Mantido para não perder evidências operacionais e decisões já registradas.
 
 ## Status Atual
-**PRODUCT MEDIA STORAGE V1 — RUNTIME PASS (SUPABASE HOSTED + WORKSPACE VALIDADO)**  
+**PRODUCT MEDIA STORAGE V1 — RUNTIME PASS (SUPABASE HOSTED + WORKSPACE VALIDADO)**
 *(Migration 000009 aplicada e congelada. Fluxo completo de upload, persistência, reordenação de principal e remoção física validado em runtime no SKU BR022.)*
 
 ---
@@ -558,3 +558,51 @@ Atualização final deste registro: 18 testes de API local PASS; pedido do naveg
 
 
 Teste adicional 03_private_wholesale_tiers_test.sql: PASS em papéis reais, com duas faixas não vazias. Comprador aprovado não consulta tiers/produtos privados; administrador consulta somente tiers próprios e arquiva produto próprio; anon negado. Fixtures e alterações revertidas na transação.
+
+## Preparacao Google Maps solicitada pelo usuario
+Google substitui Geoapify/manual. Ver docs/qa/GOOGLE_MAPS_ACTIVATION.md para escopo, testes e bloqueios. Adapter Essentials, calculo em centavos e componente Maps URL preparados sem integracao/ativacao; teste sintetico e lint PASS. Reserva persistente de quota, endpoint e UI ainda pendentes. Console autenticado atualmente MEDICAOAGUA, projeto do Catalogo nao identificado; billing/quota/key/alerta nao modificados. Solicitados projeto/email e decisao sobre rota DRIVE comum versus perfis Enterprise. Nenhuma garantia de risco zero ou deploy. Alteracoes ainda locais, checks do head 3b9c115 nao validam este novo rascunho.
+
+2026-10-11:contador global Google250/dia7500/mes implementado em migration20261011032224 e validado em SQL05 no banco local, fixturesrevertidas. Integracao endpoint/UI e protecao de chave pendentes; sem chamadasGooglereais,mergeoudeploy. Evidencias em GOOGLE_MAPS_ACTIVATION.md.
+
+2026-10-11: estimate-delivery eAutomaticDeliveryEstimate conectados aoCartDrawer; painelDeliverySettings integrado. Migration19 aplicada localmente eSQL04PASS comrollback; SQL05contadorPASS anterior. BuncheckPASS(logqa-google-code-check.log); test-delivery-settings eGoogleRoutingPASS adicionais incluidos emcheck. POSTlocal semAuth401gateway, comanonJWT403origemnegada; OPTIONS403. Nao alegar testeativo503 ou chamadaGoogle. Configqa-local ainda precisa estanza functions.estimate-delivery verify_jwtfalse e origens deQA ao retomar. FeatureflagGooglefalse/ausente e semchave, portanto nenhumconsumo. UI corrida/revisao ainda naoexecutadas. Aindaalteracoeslocais semcommit/push/merge/deploy.
+
+2026-10-11: validacaoUI entregaMoto comenderecoficticio completo ePOST503desativadoPASS; componente impedeenderecoincompleto,nadaGoogleenviado. ProtecaodechaveporIPbloqueadapelaausenciadeIPestaticoSupabase. Nao baixar exigenciariscozero/HTTPref semdecisaoexplicita; OAuthalternativaaindaNAOAVALIADA paraesteprojeto. Sessao functions16937 ativa,origemlocalhostpermitida,Googlefalse. Alteracoeslocais,semcommit/deploy.
+
+## Validação real local — 2026-10-11
+
+O usuário aprovou prosseguir após receber a explicação sobre o risco residual da chave sem restrição por IP. Restrição à Routes API confirmada novamente no Console. Chave instalada exclusivamente no arquivo privado de ambiente do servidor local, fora do checkout Git; valor não registrado nesta documentação nem exposto no navegador.
+
+Quatro consultas reais passaram pelo endpoint local e foram contabilizadas nos dois contadores privados (dia: 4; mês: 4). Endereços públicos de teste: MASP, Avenida Paulista 1578, e Praça da Sé 1, São Paulo. Retorno Google: 4143 metros. Moto a 180 centavos/km: 746 centavos; Carro/Caminhão a 250 centavos/km: 1036 centavos. Ambas as modalidades usam DRIVE básico.
+
+Na interface: distância 4,14 km; Moto R$ 7,46; Carro/Caminhão R$ 10,36. Trocar modalidade removeu o resultado anterior. Link universal Maps gerado com origem/destino e sem chave. Total do pedido continuou R$ 30,00, com frete a combinar; nenhum pedido foi enviado. Evidência visual: qa-google-route-success.png na raiz do workspace.
+
+Requisições com origem não permitida, endereço incompleto e consentimento ausente foram rejeitadas (403/400/400). Verificação completa `check` passou, incluindo testes existentes e novos testes de entrega/rotas. Testes sintéticos não substituem o registro separado das quatro consultas reais.
+
+Ativação limitada ao ambiente local. Produção não recebeu chave, migrations nem deploy. Cota Google anteriormente verificada: 250/dia; limite local: 250/dia e 7500/mês. O limite mensal local não protege chamadas realizadas diretamente com uma chave vazada; alertas de faturamento não bloqueiam gastos. Sem garantia de custo zero. Link Maps foi inspecionado; a navegação externa não foi testada. Matriz B2B completa e CI do novo trabalho continuam pendentes.
+
+## Reauditoria da chave e controles adicionais — 2026-10-11
+
+Escopo autorizado: adapter Google, endpoint público estimate-delivery, limites PostgreSQL, arquivo secreto local, código/frontend compilado e logs locais. Produção, IAM/2FA da conta Google e histórico completo Git não avaliados nesta rodada. Nenhuma nova chamada Google foi necessária.
+
+Achado confirmado: uma pessoa pode falsificar Origin fora do navegador e esgotar a cota global; CORS não autentica. Mitigação aplicada: reserva serializada também limita a 10 tentativas por janela de 60 segundos, mantendo 250/dia e 7500/mês. Não elimina abuso lento/distribuído nem protege uso direto de chave vazada. A janela permite rajadas na fronteira entre janelas; não é limite móvel. Uso legítimo acima do limite recebe indisponibilidade temporária, sem fallback pago.
+
+Achado confirmado: arquivo privado .env herdava permissão de leitura do grupo local CodexSandboxUsers. Remediação aplicada e lida novamente: herança removida e três identidades explícitas — usuário atual, SYSTEM e Administradores. Administradores e processos executados como o usuário ainda podem acessar o segredo. Arquivo permanece fora do checkout e deve ser excluído de backups/exportações compartilhadas. Não houve criptografia adicional do arquivo nem avaliação de BitLocker.
+
+Prevenção adicional: check inclui test-google-secret-boundary.ts. Rejeita padrões de chave Google em fontes/artefatos e referência à variável/header server-only em frontend/dist. Mensagens não imprimem valores de credenciais. Comparação exata com a chave real em 18 logs/artefatos locais passou, inclusive arquivos de log abertos (leitura compartilhada). Isso não certifica outros logs, backups, histórico remoto ou serviços externos.
+
+Endpoint mantém destino Google fixo, HTTPS, redirects recusados, timeout 8s, sem retries automáticos, resposta de erro sanitizada e corpo máximo 4096 bytes. JSON malformado agora retorna 400. Chave enviada em cabeçalho, nunca em URL; nenhum console/log do endpoint registra chave ou endereço. Esses controles foram inspecionados; redirects/timeout não foram ensaiados contra Google nesta rodada.
+
+VERIFIED: testes SQL de cotas diária/mensal e isolamento; SQL de rajada (10 permitidas, 11 bloqueada, janela expirada libera, serviço não reseta); check completo (tipos/build/regressões/rotas/fronteira do segredo). SQL transacional com rollback, sem consumo Google. Migration nova aplicada somente no banco local. Não foi feito teste de carga ou concorrência em conexões independentes.
+
+Risco residual: chave sem restrição IP pode ser reutilizada por quem a obtiver. Restrição Routes não limita SKU; alertas não bloqueiam cobrança. IP de saída fixo/identidade OAuth, proteção adicional de bot e revisão de IAM/2FA devem ser avaliados antes da ativação em produção, sem criar infraestrutura paga. Não foi observado vazamento nos arquivos examinados; não é garantia absoluta.
+
+Fonte oficial consultada: https://developers.google.com/maps/api-security-best-practices . Rollback: reverter migration de rajada para a função anterior preservando cotas, remover teste de scanner se necessário; restauração de ACL requer decisão explícita e não é recomendada. Documentos anteriores permanecem registro histórico; este marco descreve controles atuais.
+## Estado consolidado — entrega Google Routes, 2026-10-11
+
+Integração local implementada: painel de métodos/endereço/tarifas, cálculo automático DRIVE básico no servidor, link Maps sem chave e estimativa separada do total oficial. Sem distância manual. Chave exclusivamente no servidor local, Routes API somente, sem restrição IP por decisão expressa do usuário após explicação dos riscos. Quatro consultas Google reais: 4143 metros, Moto R$7,46, Carro/Caminhão R$10,36. Produção permanece sem ativação.
+
+Limites persistentes: 10 tentativas por janela de 60 segundos, 250/dia e 7500/mês; reserva antes da chamada, falhas consomem cota, bloqueios sem fallback. Arquivo secreto fora do checkout com ACL restrita; check examina código e artefatos para impedir publicação de chaves. Endereço da loja é compartilhado no resultado/link, apesar de a configuração ser privada; painel informa isso explicitamente.
+
+Revalidação HTTP com Auth real local: 18/18 PASS em 2026-10-11, incluindo isolamento A/B, revogação, idempotência, mínimos, campos e varejo. Nenhuma mensagem enviada. A matriz completa de interface B2B e corridas com rede real continua PARTIAL; não converter cobertura de API/componente em E2E PASS. Relatório detalhado em docs/qa/GOOGLE_MAPS_ACTIVATION.md.
+
+Riscos: Origin não autentica; abuso pode esgotar limites. Chave vazada permite chamadas diretas que ignoram contadores locais; Routes API não restringe SKU e alertas não bloqueiam cobrança. IAM/2FA ainda não avaliados. Não há garantia de custo zero, nem autorização de merge/deploy de produção.

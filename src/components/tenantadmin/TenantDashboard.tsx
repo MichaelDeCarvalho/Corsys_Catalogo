@@ -21,6 +21,7 @@ import { ProductManager } from './ProductManager';
 import { OrderManager } from './OrderManager';
 import { TeamAccessManager } from './TeamAccessManager';
 import { CheckoutFieldSettings } from './CheckoutFieldSettings';
+import { DeliverySettings } from './DeliverySettings';
 import { StoreSettings } from './StoreSettings';
 import { WholesaleCustomerManager } from './WholesaleCustomerManager';
 import { fetchAdminProducts, isValidUuid } from '../../services/adminCatalogService';
@@ -431,7 +432,7 @@ export const TenantDashboard: React.FC = () => {
         )}
         {activeTab === 'wholesale_customers' && <WholesaleCustomerManager />}
         {activeTab === 'team' && <TeamAccessManager />}
-        {activeTab === 'settings' && <React.Fragment key={adminTenantId}><CheckoutFieldSettings tenantId={adminTenantId} /><StoreSettings /></React.Fragment>}
+        {activeTab === 'settings' && <React.Fragment key={adminTenantId}><CheckoutFieldSettings tenantId={adminTenantId} /><DeliverySettings tenantId={adminTenantId} /><StoreSettings /></React.Fragment>}
       </div>
 
     </div>

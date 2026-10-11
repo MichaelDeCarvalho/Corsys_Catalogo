@@ -446,3 +446,14 @@ Pipeline existente de branch usa Worker Previews com `previews: {}`; frontend so
 Ver ADR 013 para decisões, migration 000020 e diferenças controladas do ambiente local. Supabase local real, Auth real e fixtures fictícias; nenhuma alteração Hosted. RLS/integridade e checkout_fields executados no PostgreSQL com rollback: PASS. Oito testes de API local: PASS (anon/pending denied, aprovado A, isolamento A/B, total forjado negado, mínimo negado, pedido oficial total 100, idempotência). Correções encontradas: arquivamento de produto por admin, tiers B2B públicos, catálogo vazio após reload de comprador autenticado e recibo HTTP local. Bun check inclui fronteiras HTTPS/loopback.
 
 A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_tiers; equipe autorizada mantém políticas próprias. Os testes de preparação de orders agora incluem idempotency_key. Não declarar que Hosted recebeu essas correções.
+
+
+## Estado consolidado — entrega Google Routes, 2026-10-11
+
+Integração local implementada: painel de métodos/endereço/tarifas, cálculo automático DRIVE básico no servidor, link Maps sem chave e estimativa separada do total oficial. Sem distância manual. Chave exclusivamente no servidor local, Routes API somente, sem restrição IP por decisão expressa do usuário após explicação dos riscos. Quatro consultas Google reais: 4143 metros, Moto R$7,46, Carro/Caminhão R$10,36. Produção permanece sem ativação.
+
+Limites persistentes: 10 tentativas por janela de 60 segundos, 250/dia e 7500/mês; reserva antes da chamada, falhas consomem cota, bloqueios sem fallback. Arquivo secreto fora do checkout com ACL restrita; check examina código e artefatos para impedir publicação de chaves. Endereço da loja é compartilhado no resultado/link, apesar de a configuração ser privada; painel informa isso explicitamente.
+
+Revalidação HTTP com Auth real local: 18/18 PASS em 2026-10-11, incluindo isolamento A/B, revogação, idempotência, mínimos, campos e varejo. Nenhuma mensagem enviada. A matriz completa de interface B2B e corridas com rede real continua PARTIAL; não converter cobertura de API/componente em E2E PASS. Relatório detalhado em docs/qa/GOOGLE_MAPS_ACTIVATION.md.
+
+Riscos: Origin não autentica; abuso pode esgotar limites. Chave vazada permite chamadas diretas que ignoram contadores locais; Routes API não restringe SKU e alertas não bloqueiam cobrança. IAM/2FA ainda não avaliados. Não há garantia de custo zero, nem autorização de merge/deploy de produção.
