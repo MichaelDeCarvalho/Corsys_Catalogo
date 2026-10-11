@@ -606,3 +606,15 @@ Limites persistentes: 10 tentativas por janela de 60 segundos, 250/dia e 7500/m�
 Revalidação HTTP com Auth real local: 18/18 PASS em 2026-10-11, incluindo isolamento A/B, revogação, idempotência, mínimos, campos e varejo. Nenhuma mensagem enviada. A matriz completa de interface B2B e corridas com rede real continua PARTIAL; não converter cobertura de API/componente em E2E PASS. Relatório detalhado em docs/qa/GOOGLE_MAPS_ACTIVATION.md.
 
 Riscos: Origin não autentica; abuso pode esgotar limites. Chave vazada permite chamadas diretas que ignoram contadores locais; Routes API não restringe SKU e alertas não bloqueiam cobrança. IAM/2FA ainda não avaliados. Não há garantia de custo zero, nem autorização de merge/deploy de produção.
+## Continuidade de navegador — 2026-10-11, head b6d9691
+
+VERIFIED no navegador local com Auth real: comprador A abriu atacado, preço R$20 e mínimo 5. Carrinho com 5 unidades/R$100 foi encerrado via logout. Após conclusão assíncrona: botão Entrar, carrinho sem contagem, catálogo varejo R$30, sem identificação comercial/preço atacadista. Isso comprova logout normal; não é o cenário RACE de resposta deliberadamente atrasada.
+
+VERIFIED B2B-02 (subcaso pending): login pending-a fictício, status Em análise. Clique no atacado manteve varejo R$30 e exibiu aviso de análise administrativa. Nenhum pedido criado ou mensagem enviada. Evidência visual privada: qa-b2b-pending-blocked.png fora do Git. Subcaso blocked ainda não executado no navegador.
+
+Quality #44 SUCCESS para b6d96910dc310c497bce566f4828b534d887a9c9 foi confirmado na etapa anterior. Alterações desta etapa são apenas documentação de evidência. Matriz geral continua PARTIAL. Após carregamento, IAM confirmou Permissões do projeto Catalogo: uma identidade de usuário visível, Michael Carvalho, papel Proprietário. Sem outros usuários/grupos na tabela sem filtros. Concessões de papel fornecidas pelo Google não incluídas (checkbox desmarcado); revisão limitada aos acessos exibidos. 2FA não avaliada. Nenhuma permissão modificada.
+## Campos e mínimo na interface — 2026-10-11
+
+Head b6d9691, usuário aprovado fictício A, Supabase local. B2B-05: mínimo temporário R$500, carrinho 5 x R$20=R$100; interface informou faltam R$400 e desabilitou Avançar. Quantidade 25 atingiu R$500 e permitiu abrir entrega. B2B-07 (email): política visible/required true, email exibido com asterisco; Validar orçamento com campo vazio produziu E-mail é obrigatório e manteve entrega, sem envio de pedido. Evidência local qa-b2b-required-email.png fora do Git.
+
+Configurações restauradas do snapshot privado local: mínimo R$100 e email visible/required false, conferidos no banco. Recarregamento e nova abertura B2B da tela de entrega confirmaram ausência do textbox E-mail (B2B-06, subcaso email oculto). Não estender resultado a todos os campos configuráveis. Nenhum pedido ou chamada Google foi gerado. Snapshot de recuperação mantido somente no banco QA local. Matriz geral continua PARTIAL, especialmente PF/PJ/tracking completo e RACE com atrasos controlados de rede real.
