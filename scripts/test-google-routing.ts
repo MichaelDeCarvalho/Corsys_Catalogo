@@ -6,6 +6,9 @@ import { googleMapsRouteUrl } from '../src/utils/googleMapsRouteUrl';
 const checkoutSource = readFileSync('src/components/storefront/CartDrawer.tsx', 'utf8');
 assert.match(checkoutSource, /import\.meta\.env\.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true'/,
   'Delivery estimate UI must require an explicit build-time opt-in');
+const adminDeliverySource = readFileSync('src/components/tenantadmin/DeliverySettings.tsx', 'utf8');
+assert.match(adminDeliverySource, /disabled=\{import\.meta\.env\.VITE_GOOGLE_ROUTES_UI_ENABLED !== 'true'\}/,
+  'Tenant admin must not enable an unavailable Google estimate before release');
 const origin = 'Rua de teste, 10, Cidade & Bairro, BR';
 const destination = 'Outra rua, 20 #fundos, Cidade, BR';
 const link = new URL(googleMapsRouteUrl(origin, destination));
