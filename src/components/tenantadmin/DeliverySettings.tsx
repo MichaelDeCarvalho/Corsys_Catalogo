@@ -70,7 +70,7 @@ export function DeliverySettings({ tenantId }: { tenantId: string | null }) {
         setMessage(''); setConfig({ ...config, origin: e.target.checked ? { ...emptyAddress } : null });
       }} />Cadastrar endereço de saída da loja</label>
       <p className="text-xs text-slate-600">A configuração é privada, mas o endereço de saída aparece no resultado e no link de rota para o comprador. Cadastre um endereço comercial que possa ser compartilhado.</p>
-      <label className="flex gap-2 items-center"><input type="checkbox" checked={config.estimateEnabled} onChange={e => {
+      <label className="flex gap-2 items-center"><input type="checkbox" disabled={import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED !== 'true'} checked={config.estimateEnabled} onChange={e => {
         setMessage(''); setConfig({ ...config, estimateEnabled: e.target.checked });
       }} />Ativar estimativa por distância (requer serviço de rotas configurado)</label>
       {config.origin && <div className="grid sm:grid-cols-2 gap-3">{(Object.keys(addressLabels) as (keyof typeof addressLabels)[]).map(key => <label key={key} className="text-sm">
