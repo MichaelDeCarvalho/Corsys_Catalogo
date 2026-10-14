@@ -164,6 +164,70 @@ try {
     assert.equal(fixture.cleared, 0);
     assert.equal(api.isSwitchModeDialogOpen, false);
   });
+  await test('pending buyer cannot enable wholesale or fetch private catalog', async () => {
+    await act(async () => fixture.statusRequests[0].resolve({ status: 'pending' }));
+    await click('Wholesale');
+    assert.equal(output('Wholesale status'), 'pending');
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(fixture.catalogRequests.length, 0);
+    assert.equal(fixture.cleared, 0);
+  });
+  await test('suspended buyer remains in retail without private requests', async () => {
+    await act(async () => fixture.statusRequests[0].resolve({ status: 'suspended' }));
+    await click('Wholesale');
+    assert.equal(output('Wholesale status'), 'suspended');
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(fixture.catalogRequests.length, 0);
+    assert.equal(fixture.cleared, 0);
+  });
+  await test('rejected buyer remains in retail without private requests', async () => {
+    await act(async () => fixture.statusRequests[0].resolve({ status: 'rejected' }));
+    await click('Wholesale');
+    assert.equal(output('Wholesale status'), 'rejected');
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(fixture.catalogRequests.length, 0);
+  });
+  await test('failed approval recheck preserves the retail cart', async () => {
+    await approve();
+    fixture.cart = [{ productId: 'retail-item' }]; await render();
+    await click('Wholesale');
+    await click('Confirm');
+    assert.equal(fixture.statusRequests.length, 2);
+    await act(async () => fixture.statusRequests.at(-1).reject(new Error('Synthetic status outage')));
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(output('Wholesale status'), 'unauthenticated');
+    assert.equal(fixture.cart.length, 1);
+    assert.equal(fixture.cleared, 0);
+    assert.equal(api.isSwitchModeDialogOpen, false);
+  });
+  await test('double confirmation revalidates only once and clears cart once', async () => {
+    await approve();
+    fixture.cart = [{ productId: 'retail-item' }]; await render();
+    await click('Wholesale');
+    await click('Confirm');
+    await click('Confirm');
+    assert.equal(fixture.statusRequests.length, 2);
+    assert.equal(fixture.cleared, 0);
+    await act(async () => fixture.statusRequests.at(-1).resolve({ status: 'approved', legalName: 'Synthetic A' }));
+    assert.equal(output('Purchase mode'), 'wholesale');
+    assert.equal(fixture.cleared, 1);
+    assert.equal(fixture.cart.length, 0);
+    assert.equal(fixture.catalogRequests.length, 1);
+  });
+  await test('revocation hides loaded private catalog and resets wholesale cart', async () => {
+    await approve(); await click('Wholesale');
+    await act(async () => fixture.catalogRequests[0].resolve([{ productId: 'private-price' }]));
+    assert.equal(output('Catalog'), 'private-price');
+    fixture.cart = [{ productId: 'private-price' }]; await render();
+    await act(async () => { void api.refreshWholesaleStatus(); });
+    await act(async () => fixture.statusRequests.at(-1).resolve({ status: 'suspended' }));
+    assert.equal(output('Purchase mode'), 'retail');
+    assert.equal(output('Wholesale status'), 'suspended');
+    assert.equal(output('Catalog'), '');
+    assert.equal(output('Company'), '');
+    assert.equal(fixture.cart.length, 0);
+    assert.equal(fixture.cleared, 1);
+  });
   console.log(`Wholesale React DOM lifecycle: ${passed} PASS / ${failed} FAIL; synthetic boundaries, not authenticated E2E`);
   assert.equal(failed, 0);
 } finally {
