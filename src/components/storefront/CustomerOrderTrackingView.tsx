@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { PUBLIC_TENANT_SLUG } from '../../config/tenant';
+import { fetchTenantPublicSettings } from '../../services/catalogService';
 import { useAuth } from '../../context/AuthContext';
 import { 
   CustomerTrackedOrder, 
@@ -35,12 +36,13 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.
 };
 
 export const CustomerOrderTrackingView: React.FC = () => {
-  const { currentTenant, setViewMode } = useApp();
+  const { setViewMode } = useApp();
   const { session } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'b2b' | 'retail'>(session ? 'b2b' : 'retail');
   const [b2bOrders, setB2bOrders] = useState<CustomerTrackedOrder[]>([]);
   const [retailOrders, setRetailOrders] = useState<CustomerTrackedOrder[]>([]);
+  const [publicStoreName, setPublicStoreName] = useState<string | null>(null);
   const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,6 +51,15 @@ export const CustomerOrderTrackingView: React.FC = () => {
   identityRef.current = identity;
   const requestGeneration = useRef(0);
   const [ordersIdentity, setOrdersIdentity] = useState<string | null>(null);
+
+  // A marca exibida deve pertencer ao slug público oficial, nunca ao tenant mock do AppContext.
+  useEffect(() => {
+    let active = true;
+    fetchTenantPublicSettings(PUBLIC_TENANT_SLUG)
+      .then(settings => { if (active) setPublicStoreName(settings.publicName); })
+      .catch(() => { if (active) setPublicStoreName(null); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     requestGeneration.current++;
     setB2bOrders([]); setOrdersIdentity(null); setSelectedOrderNumber(null);
@@ -153,7 +164,7 @@ export const CustomerOrderTrackingView: React.FC = () => {
             Acompanhar Meus Pedidos
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Consulte o status e histórico de pedidos em <span className="text-slate-200 font-semibold">{currentTenant.name}</span>.
+            Consulte o status e histórico de pedidos em <span className="text-slate-200 font-semibold">{publicStoreName || 'sua loja'}</span>.
           </p>
         </div>
 
