@@ -76,3 +76,34 @@ Somente marcar a pendência **B2B E2E CLOSED / RUNTIME PASS** após executar B2B
 
 
 Atualização final deste registro: 18 testes de API local PASS; pedido do navegador PED-20261010-000006 confirmado no banco (wholesale/pending/R). Cobertura consolidada PARTIAL, com limites por caso em docs/qa/LOCAL_RUNTIME_20261010.md. RACE com fronteiras reais de navegador e alguns subcasos UI/retail/tracking permanecem pendentes. Inspeção da aba externa WhatsApp foi bloqueada pela revisão automática; nenhum envio efetuado. Sem merge/deploy de produção.
+
+
+## 6. Matriz reconciliada para pré-release — 2026-10-14
+
+**Status global: PARTIAL / NÃO LIBERADO PARA MERGE.** Evidências abaixo são das execuções locais de **10–11/10/2026** documentadas em `docs/qa/LOCAL_RUNTIME_20261010.md` e `docs/SESSION_HANDOFF.md`. **Não são uma nova execução E2E em 14/10.** O ambiente anterior era Supabase local isolado com Auth/Edge reais, não Preview Hosted. CI de componente é uma camada distinta.
+
+| ID | Evidência documentada | Faltante para aceite integral |
+| --- | --- | --- |
+| B2B-01 | Anônimo negado no percurso local/API | Reteste na revisão final |
+| B2B-02 | Pendente bloqueado na UI; backend nega | Bloqueado/suspenso no navegador e reteste final |
+| B2B-03 | Aprovado A com preço R$20 no navegador | Reteste na revisão final |
+| B2B-04 | Quantidade mínima 5 na UI e backend | Reteste na revisão final |
+| B2B-05 | Mínimo R$500 demonstrado na UI/API | Reteste na revisão final |
+| B2B-06 | Parcial: e-mail oculto na UI e dados de backend testados | Demais campos ocultos e snapshot do percurso integral |
+| B2B-07 | Parcial: e-mail visível/obrigatório validado UI/backend | Demais campos obrigatórios |
+| B2B-08 | Pedido fictício de R$100, atacado/pending confirmado no banco QA | Reteste na revisão final |
+| B2B-09 | Forja de identidade/preço negada no HTTP local | Revalidar tenant A/B no head final |
+| B2B-10 | Idempotência PASS no HTTP Auth real local | Reteste final |
+| B2B-11 | Parcial: mensagem textual sem PDF gerada | Aba externa de atacado não validada; não enviar mensagem |
+| B2B-12 | Isolamento A/B/revogação no HTTP + RACE navegador | Cobrir jornada final completa após troca de sessão |
+| B2B-13 | Parcial: PF e recibo/tracking reais em QA; PJ até revisão | PJ completo, filtros e tracking em navegador QA |
+| RACE-01 | PASS: status RPC atrasado 20s + logout sem reabrir aprovação | Reavaliar se lógica mudar |
+| RACE-02 | PASS: catálogo A atrasado 45s + logout/login B, sem preço A | Troca direta A→B só tem teste de componente |
+| RACE-03 | PASS observado por 20s: uma chamada com catálogo vazio | Janela observada finita |
+| RACE-04 | PASS depois de correção: revogação com modal aberto preserva carrinho | Backend continua sendo controle contra TOCTOU |
+
+**Regressão incremental de 14/10:** seis casos adicionais de componente no `scripts/test-wholesale-context.mjs`: pending/suspended/rejected, falha na revalidação, confirmação duplicada e revogação com catálogo já carregado. CI Quality #59 (https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38656900813) SUCCESS em `de6109d`. O cálculo Google na UI exige `VITE_GOOGLE_ROUTES_UI_ENABLED === 'true'`; sem opt-in fica oculto. Quality #62 (https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38657056819) SUCCESS em `a44e7a6`. **Nenhum navegador com Auth real foi executado nesta rodada.**
+
+**Hosted somente leitura (14/10):** 20 migrations, versões 000019/000020 alinhadas; 6 pedidos, 520 produtos; `anon` sem SELECT em `wholesale_tiers`; 1 configuração privada de entrega, `estimateEnabled=false`. Migrations de Google Routes/Edge Function de estimativa ainda não aplicadas/publicadas. Não criar comprador ou pedidos artificiais em Hosted.
+
+**Gate de conclusão:** reexecutar os subcasos pendentes em browser QA contra Supabase local isolado atualizado, registrar HTTP/estado final e evidência sanitizada; depois reavaliar issue #4 e decisão de release. Não declarar a matriz integral PASS com CI de componente.
