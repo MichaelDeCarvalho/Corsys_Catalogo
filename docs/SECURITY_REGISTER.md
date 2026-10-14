@@ -230,3 +230,14 @@ Advisors Hosted antes/depois do Item 4: nenhum finding novo. Aviso preexistente:
 - **Testes propostos:** testes determinísticos de versão e ordem de resolução de Promises, logout/revogação e usuário diferente anexados à suíte `scripts/test-checkout-fields.ts`. Evidência de CI por commit registrada no PR após executar. Teste com React renderizado, JWT real e browser multiusuário ainda `NOT EVALUATED`.
 - **Risco residual:** requisições já transmitidas podem completar no servidor (são ignoradas pelo client); resposta já exibida antes da limpeza ou captura de tela não pode ser recuperada; backend continua sendo o perímetro de autorização. A validação B2B E2E em ambiente isolado permanece necessária.
 - **Estado:** `FIX PREPARED / NOT DEPLOYED`; não declarar remediação em produção antes de merge, deploy e homologação.
+
+
+---
+
+## Pré-release 2026-10-14 — acesso público a faixas de atacado em Hosted
+
+- **Evidência:** consulta somente leitura ao Supabase Hosted confirmou `public.wholesale_tiers` com `has_table_privilege('anon', ..., 'SELECT') = true`, política RLS `wholesale_tiers_select_public` presente e RLS habilitada. A contagem observada foi **0 registros**. Portanto não houve demonstração de exposição de preço privado de linha real, mas a configuração atual deixaria faixas futuras legíveis de forma anônima quando associadas a produtos públicos.
+- **Severidade:** ALTA como falha potencial de confidencialidade antes de cadastrar faixas de atacado; sem impacto observado em dados existentes (0 registros no instante auditado).
+- **Correção versionada e não publicada:** migration `20261010000000_000020_product_rls_and_private_wholesale_tiers.sql` remove a política de leitura pública, revoga privilégio `anon` e preserva políticas administrativas/autenticadas por tenant. Ao aplicar, validar diretamente os grants e testes com os papéis `anon`, comprador aprovado, administrador próprio e de outro tenant. O acesso a preços atacadistas para compradores deve permanecer restrito à Edge Function autorizada.
+- **Situação:** `OPEN / FIX PREPARED`. Não foi aplicada nenhuma migration Hosted nesta revisão. Pré-flight e sequência proposta em `docs/qa/PR6_RELEASE_GATE_20261014.md`.
+- **Risco de release adicional:** endpoint público de Google Routes, mesmo com reserva global SQL de tentativas, não cria limite global de cobrança fora da aplicação se uma chave for extraída. Google recomenda restrições de aplicativo e API, e proteção server-side; uso da chave sem restrição por IP foi documentado como escolha de QA. Não ativar Google em produção sem decisão explícita e política de custos/monitoramento. Referência oficial: https://developers.google.com/maps/api-security-best-practices .
