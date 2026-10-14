@@ -682,3 +682,11 @@ Nenhuma consulta Google ou interação WhatsApp nesta rodada; sem merge/deploy. 
 - **Advisors de segurança pós-operação:** nenhum achado novo, somente `Leaked Password Protection Disabled` anterior. [Remediação oficial](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) fora do escopo.
 - **Não executado:** SQL das migrations Google, Edge Function `estimate-delivery`, alteração de secrets/flag Google, merge, Cloudflare build/deploy ou testes com pedidos comerciais. Teste RLS HTTP autenticado de papéis em produção NOT EVALUATED; políticas e grants verificados por consultas do catálogo.
 - **Próximo bloqueio:** obter aprovação específica para alinhar **somente metadados de versão** de 000019/000020 (depois confirmar unicidade/dados, sem editar schema) e seguir gates do PR #6. Nenhuma outra mudança Hosted é parte da autorização recebida.
+
+
+## Alinhamento autorizado do histórico — 2026-10-14
+
+- Usuário autorizou especificamente corrigir as versões de 000019 e 000020 no histórico de migrations de produção.
+- Operação SQL transacional com pré-condições estritas e verificação de exatamente duas linhas: `000019_delivery_settings` de `20261014233626` para `20261009030000`; `000020_product_rls_and_private_wholesale_tiers` de `20261014233650` para `20261010000000`.
+- Verificação pós-commit em `supabase_migrations.schema_migrations` e `list_migrations`: 20 migrations, duas versões finais corretas, zero versões antigas, sem colisões; seis pedidos e 520 produtos preservados, uma configuração privada de entrega preservada e `anon` sem SELECT em `wholesale_tiers`.
+- Somente campo `version` dessas duas entradas alterado; nenhum schema, função, política comercial ou dado de negócio modificado nesta operação. Sem merge, deploy ou ativação Google Routes.
