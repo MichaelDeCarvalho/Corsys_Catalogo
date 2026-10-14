@@ -1076,7 +1076,7 @@ export const CartDrawer: React.FC<{
               </div>
 
               {/* Endereço: logradouro permanece obrigatório em qualquer método. */}
-              {settings && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
+              {settings && import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
                 slug={settings.slug} method={deliveryMethod}
                 address={{ street: customerData.street, number: customerData.number, neighborhood: customerData.neighborhood,
                   city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }} />}
