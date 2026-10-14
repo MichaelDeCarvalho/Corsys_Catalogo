@@ -4,7 +4,7 @@ import { computeGoogleRoadDistance, estimatedFreightCents } from '../supabase/fu
 import { googleMapsRouteUrl } from '../src/utils/googleMapsRouteUrl';
 // An enabling tenant choice cannot activate the paid feature without release approval.
 const checkoutSource = readFileSync('src/components/storefront/CartDrawer.tsx', 'utf8');
-assert.match(checkoutSource, /import\\.meta\\.env\\.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true'/,
+assert.match(checkoutSource, /import\.meta\.env\.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true'/,
   'Delivery estimate UI must require an explicit build-time opt-in');
 const origin = 'Rua de teste, 10, Cidade & Bairro, BR';
 const destination = 'Outra rua, 20 #fundos, Cidade, BR';
