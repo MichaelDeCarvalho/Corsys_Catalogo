@@ -11,7 +11,7 @@ import re
 import sys
 
 from playwright.sync_api import sync_playwright, expect
-from test_b2b_access_browser import guarded_context, require_loopback
+from test_b2b_access_browser import guarded_context, require_loopback, verify_safe
 
 
 def main() -> int:
@@ -75,9 +75,8 @@ def main() -> int:
                 expect(cpf).to_have_value("")
                 expect(company).to_have_count(0)
 
-                assert not private_catalog_requests, "Retail UI attempted a private wholesale catalog request"
+                verify_safe(private_catalog_requests, rejected_origins)
                 assert not order_requests, "Read-only PF/PJ test must not submit an order"
-                assert not rejected_origins, "Non-local network request attempted; route blocked"
                 print("B2B-13 PF/PJ browser UI: PASS (local QA only; no checkout, tracking, WhatsApp or PDF).")
             finally:
                 ctx.close()
