@@ -88,6 +88,17 @@ def main() -> None:
                 assert body.get("success") is True and receipt.get("orderNumber"), "Missing server receipt"
                 assert receipt.get("shoppingMode") == "retail", "Incorrect checkout mode"
                 assert receipt.get("items") and receipt.get("total") > 0, "Receipt missing canonical items"
+                # Diagnostic contains only booleans/counts and field names; no PII, tokens or URLs.
+                page.wait_for_timeout(450)
+                print("LOCAL-ORDER UI state:", {
+                    "closed_neutral_popup": page.evaluate("window.__qaClosedCount"),
+                    "review_visible": page.locator("#btn-submit-order").count(),
+                    "retry_banner": page.get_by_text("Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False).count(),
+                    "receipt_validation_error": page.get_by_text("Resposta inválida do serviço de pedidos", exact=False).count(),
+                    "generic_checkout_error": page.get_by_text("Não foi possível processar o pedido.", exact=False).count(),
+                    "receipt_keys": sorted(receipt.keys()),
+                    "item_keys": sorted(receipt["items"][0].keys()) if receipt.get("items") else []
+                }, flush=True)
                 expect(page.get_by_text("Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False)).to_be_visible(timeout=15000)
                 assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 1, "Expected one checkout and one synchronously closed popup"
 
