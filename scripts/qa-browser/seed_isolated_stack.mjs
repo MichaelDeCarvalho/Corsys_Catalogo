@@ -31,12 +31,18 @@ for (const [state, tenantId, cnpj] of fixtureUsers) {
     email, password: 'QA-Disposable-Only-2026!', email_confirm: true,
   });
   if (error || !data?.user?.id) throw new Error('Synthetic Auth fixture failed: '+(error?.status||'no-user'));
-  const { error: buyerErr } = await db.from('wholesale_customers').insert({
-    tenant_id: tenantId, user_id: data.user.id, cnpj,
+  // Existing least-privilege grants permit INSERT of application data,
+  // then a separate UPDATE to link the Auth identity. Do not widen grants.
+  const { data: buyer, error: buyerErr } = await db.from('wholesale_customers').insert({
+    tenant_id: tenantId, cnpj,
     legal_name: 'Empresa Fictícia '+state, contact_name: 'Comprador QA',
     email, phone: '00000000000',
     status: state === 'approved_b' ? 'approved' : state,
-  });
-  if (buyerErr) throw new Error('Synthetic wholesale fixture failed: '+buyerErr.code);
+  }).select('id').single();
+  if (buyerErr || !buyer?.id) throw new Error('Synthetic wholesale fixture failed: '+buyerErr?.code);
+  const { error: linkErr } = await db.from('wholesale_customers').update({
+    user_id: data.user.id,
+  }).eq('id', buyer.id);
+  if (linkErr) throw new Error('Synthetic buyer Auth link failed: '+linkErr.code);
 }
 console.log('Local QA fixture PASS: 2 tenants, 2 products, 5 Auth users; no Hosted service called');
