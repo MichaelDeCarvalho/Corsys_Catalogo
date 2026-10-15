@@ -18,6 +18,7 @@ STATUSES = {
     "suspended": "Acesso atacadista temporariamente indisponível.",
     "rejected": "Cadastro atacadista não aprovado.",
 }
+APPROVED_CASES = {"approved_a": "approved", "approved_b": "not_registered"}
 
 
 def require_loopback(key: str) -> str:
@@ -40,8 +41,8 @@ def require_fixture(state: str) -> tuple[str, str]:
 
 def selected_cases() -> list[str]:
     """Run all checks by default; allow a strict subset while preparing QA accounts."""
-    allowed = {"anon", *STATUSES}
-    raw = os.getenv("QA_B2B_CASES", "anon,pending,suspended,rejected")
+    allowed = {"anon", *STATUSES, *APPROVED_CASES}
+    raw = os.getenv("QA_B2B_CASES", "anon,pending,suspended,rejected,approved_a,approved_b")
     cases = [item.strip().lower() for item in raw.split(",")]
     if not cases or any(case not in allowed for case in cases) or len(set(cases)) != len(cases):
         sys.exit("BLOCKED: QA_B2B_CASES must contain distinct anon,pending,suspended,rejected values.")
@@ -153,17 +154,29 @@ def main() -> int:
                         page.get_by_role("button", name="Entrar no Sistema").click()
                     assert status_response.value.ok, "The status RPC did not succeed"
                     returned = status_response.value.json()
-                    assert isinstance(returned, dict) and returned.get("status") == state, "Unexpected QA buyer status"
+                    assert isinstance(returned, dict) and returned.get("status") == APPROVED_CASES.get(state, state), "Unexpected QA buyer status"
                     expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=15000)
-                    if state == "pending":
-                        expect(page.locator("#btn-mode-wholesale")).to_contain_text("Em análise")
-                    page.locator("#btn-mode-wholesale").click()
-                    expect(page.get_by_text(STATUSES[state], exact=False)).to_be_visible(timeout=10000)
-                    expect(page.locator("#btn-mode-retail")).to_have_class(
-                        re.compile(".*bg-white.*"), timeout=7000,
-                    )
-                    verify_safe(requests, unexpected)
-                    results.append((f"B2B-02 ({state})", "PASS"))
+                    if state == "approved_a":
+                        expect(page.locator("#btn-mode-wholesale")).to_contain_text("Liberado")
+                        page.locator("#btn-mode-wholesale").click()
+                        expect(page.get_by_text("Preço Atacado").first).to_be_visible(timeout=15000)
+                        expect(page.get_by_text("R$ 20,00").first).to_be_visible(timeout=15000)
+                        assert requests, "Approved buyer should request private catalog"
+                        verify_safe([], unexpected)
+                    elif state == "approved_b":
+                        page.locator("#btn-mode-wholesale").click()
+                        expect(page.locator("#b2b-gate-modal")).to_be_visible(timeout=10000)
+                        verify_safe(requests, unexpected)
+                    else:
+                        if state == "pending":
+                            expect(page.locator("#btn-mode-wholesale")).to_contain_text("Em análise")
+                        page.locator("#btn-mode-wholesale").click()
+                        expect(page.get_by_text(STATUSES[state], exact=False)).to_be_visible(timeout=10000)
+                        expect(page.locator("#btn-mode-retail")).to_have_class(
+                            re.compile(".*bg-white.*"), timeout=7000,
+                        )
+                        verify_safe(requests, unexpected)
+                    results.append((f"B2B ({state})", "PASS"))
                     print(f'QA CASE {state}: PASS', flush=True)
                 finally:
                     ctx.close()
@@ -172,9 +185,9 @@ def main() -> int:
 
     for case, result in results:
         print(f"{case}: {result}")
-    skipped = sorted({"anon", *STATUSES}.difference(cases))
+    skipped = sorted({"anon", *STATUSES, *APPROVED_CASES}.difference(cases))
     print("QA browser: selected cases completed; cases not selected:", ", ".join(skipped) or "none")
-    print("B2B-03–13 and E2E checkout/tracking NOT EVALUATED by this script.")
+    print("B2B checkout/tracking, configured fields and concurrent session races NOT EVALUATED by this script.")
     return 0
 
 
