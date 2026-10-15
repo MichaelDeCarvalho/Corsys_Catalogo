@@ -462,6 +462,15 @@ assert(
 );
 
 assert(
+  cartDrawerCode.includes("computeOrderFingerprint(draft, user?.id || 'anonymous')") &&
+  cartDrawerCode.includes('createdOrderFingerprint !== currentFingerprint') &&
+  cartDrawerCode.includes('setCreatedOrderFingerprint(currentFingerprint)') &&
+  cartDrawerCode.includes('setCreatedOrderFingerprint(null)') &&
+  cartDrawerCode.includes("kind: 'stale-receipt'"),
+  '67c. Recibo de retry é vinculado ao draft e comprador por SHA-256; mudança falha fechado, reset descarta vínculo'
+);
+
+assert(
   cartDrawerCode.includes('try {') &&
   cartDrawerCode.includes('receipt = await submitOrderCheckout(draft);') &&
   cartDrawerCode.includes('catch (err: unknown) {') &&
