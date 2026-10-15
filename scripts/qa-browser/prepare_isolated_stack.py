@@ -62,6 +62,15 @@ SET min_order_value=0, wholesale_min_order_value=100, whatsapp_number='+55000000
 WHERE slug='corsys-catalogo-demo';
 UPDATE public.products SET wholesale_enabled=true, wholesale_min_quantity=5
 WHERE sku IN ('QA-A','QA-B');
+-- In the disposable runner, exercise required, visible and hidden field policies.
+UPDATE public.tenant_public_settings
+SET checkout_fields = checkout_fields || '{
+ "email":{"visible":true,"required":true},
+ "city":{"visible":true,"required":true},
+ "companyName":{"visible":true,"required":true},
+ "notes":{"visible":false,"required":false}
+}'::jsonb
+WHERE slug='corsys-catalogo-demo';
 INSERT INTO public.tenant_delivery_settings (tenant_id)
 SELECT id FROM public.tenants WHERE slug='tenant-qa-b';
 COMMIT;
