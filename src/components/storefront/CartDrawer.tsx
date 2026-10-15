@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   Trash2,
@@ -199,6 +199,10 @@ export const CartDrawer: React.FC<{
   // Modalidade de compra autoritativa da UI oficial
   const { purchaseMode, isApproved, wholesaleCompany } = useWholesaleAccess();
   const { user } = useAuth();
+  const checkoutIdentity = `${settings?.slug || ''}:${user?.id || 'anonymous'}`;
+  const currentIdentityRef = useRef(checkoutIdentity);
+  currentIdentityRef.current = checkoutIdentity;
+  const previousIdentityRef = useRef(checkoutIdentity);
 
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'review'>('cart');
   const [createdOrder, setCreatedOrder] = useState<CheckoutOrderReceipt | null>(null);
@@ -275,6 +279,15 @@ export const CartDrawer: React.FC<{
       sellerCode: ''
     });
   }, []);
+
+  // Clear cached receipt and customer PII on buyer/tenant change. Stable identity
+  // across JWT refresh avoids needless checkout resets.
+  useEffect(() => {
+    if (previousIdentityRef.current !== checkoutIdentity) {
+      previousIdentityRef.current = checkoutIdentity;
+      resetCheckoutLifecycle();
+    }
+  }, [checkoutIdentity, resetCheckoutLifecycle]);
 
   const handleCloseDrawer = () => {
     setIsCartOpen(false);
@@ -545,6 +558,9 @@ export const CartDrawer: React.FC<{
       return;
     }
 
+    // Do not show an order from another session after a login/tenant change.
+    const submissionIdentity = checkoutIdentity;
+
     // 12. Pré-abertura síncrona da janela de handoff para evitar bloqueio de popup pelo navegador pós-await
     let prepWindow: Window | null = null;
     try {
@@ -630,6 +646,9 @@ export const CartDrawer: React.FC<{
       // Só permite reutilizar recibo após popup fechado se draft e identidade não mudaram.
       // Mesma canonicalização criptográfica usada pela idempotência oficial do serviço.
       const currentFingerprint = await computeOrderFingerprint(draft, user?.id || 'anonymous');
+      if (currentIdentityRef.current !== submissionIdentity) {
+        throw new OrderCheckoutError('Sessão ou loja alterada durante a confirmação. Revise o pedido.', { kind: 'stale-session' });
+      }
       let receipt: CheckoutOrderReceipt;
       if (createdOrder) {
         if (!createdOrderFingerprint || createdOrderFingerprint !== currentFingerprint) {
@@ -641,6 +660,10 @@ export const CartDrawer: React.FC<{
         receipt = createdOrder;
       } else {
         receipt = await submitOrderCheckout(draft);
+      }
+
+      if (currentIdentityRef.current !== submissionIdentity) {
+        throw new OrderCheckoutError('Sessão ou loja alterada durante a confirmação. Revise o pedido.', { kind: 'stale-session' });
       }
 
       // 7. Preparação do WhatsApp Handoff (Mensagem Textual Completa com Itens do Recibo Servidor)
