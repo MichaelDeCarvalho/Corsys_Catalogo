@@ -51,3 +51,9 @@
 - **E2E incompleto:** caso não seja possível completar cenário específico no ambiente isolado, registrar `BLOCKED`, não promover para `PASS` automaticamente.
 
 **Regra:** este documento é um plano de release e evidência read-only; não autoriza deploy, mudanças Hosted, ativação de cobrança nem criação de chaves. Seguir `docs/RELEASE_CHECKLIST.md`, `docs/qa/GOOGLE_MAPS_ACTIVATION.md` e `docs/SESSION_HANDOFF.md`.
+
+
+### Ajuste de gate — recibo e retry do WhatsApp (14/10/2026)
+
+- Bloqueio de reutilização indevida de `createdOrder` após popup WhatsApp fechado: o mesmo SHA-256 do `draft` e comprador precisa ser confirmado na tentativa seguinte. [Quality #107](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38672256780) passou nos testes existentes/novos de fingerprint. A regressão estrutural não é E2E.
+- Antes do merge, validar no navegador QA isolado um pedido fictício cujo popup foi fechado **após** o receipt; tentar abrir com o mesmo draft, depois editar dados e confirmar que não redireciona recibo anterior; testar mudança de sessão durante request sem revelar dados do outro comprador. Não reutilizar ambiente de produção.
