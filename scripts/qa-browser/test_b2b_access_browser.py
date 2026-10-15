@@ -51,7 +51,13 @@ def selected_cases() -> list[str]:
 def guarded_context(browser, storefront_url: str, backend_url: str):
     """Abort HTTP(S) requests outside the exact two approved local QA origins."""
     allowed = {(urlsplit(url).scheme, urlsplit(url).netloc) for url in (storefront_url, backend_url)}
+    allowed_websocket_endpoints = {
+        (urlsplit(url).hostname, urlsplit(url).port) for url in (storefront_url, backend_url)
+    }
     ctx = browser.new_context(accept_downloads=False, service_workers="block")
+    if not hasattr(ctx, "route_web_socket"):
+        ctx.close()
+        sys.exit("BLOCKED: Playwright 1.48+ required to intercept WebSocket connections.")
     unexpected: list[str] = []
 
     def route_request(route):
@@ -63,6 +69,16 @@ def guarded_context(browser, storefront_url: str, backend_url: str):
             route.continue_()
 
     ctx.route("**/*", route_request)
+
+    def route_websocket(ws):
+        url = urlsplit(ws.url)
+        if url.scheme not in ("ws", "wss") or (url.hostname, url.port) not in allowed_websocket_endpoints:
+            unexpected.append(url.hostname or "unknown")
+            ws.close(code=1008)
+        else:
+            ws.connect_to_server()
+
+    ctx.route_web_socket("**/*", route_websocket)
     page = ctx.new_page()
     requests: list[str] = []
     page.on(
