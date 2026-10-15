@@ -662,9 +662,10 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes("setCustomerData(prev => ({ ...prev, type: 'PJ' }))") &&
+  cartDrawerCode.includes("type: 'PJ', document: prev.type === 'PJ' ? prev.document : ''") &&
+  cartDrawerCode.includes("type: 'PF', document: prev.type === 'PF' ? prev.document : ''") &&
   cartDrawerCode.includes("delete next.document"),
-  '81s. Troca entre PF e PJ limpa erros de validação anteriores'
+  '81s. Troca PF/PJ limpa documento incompatível e erros anteriores'
 );
 
 assert(
