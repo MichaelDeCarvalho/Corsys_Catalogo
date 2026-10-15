@@ -32,20 +32,31 @@ def main() -> None:
         try:
             ctx, page, private, external = guarded_context(browser, frontend, backend)
             submits: list[str] = []
-            popups: list[str] = []
 
             def observe_request(req):
                 if (req.url.startswith(backend.rstrip("/") + "/functions/v1/submit-order-checkout")
                         and req.method == "POST"):
                     submits.append("submit")
 
-            def close_neutral_popup(popup):
-                popups.append("closed")
-                # Closing about:blank before navigation prevents sending any WhatsApp message.
-                popup.close()
-
             ctx.on("request", observe_request)
-            page.on("popup", close_neutral_popup)
+            # Close the real about:blank window synchronously before the async
+            # server checkout finishes. A Playwright popup event alone may run
+            # after the application has checked Window.closed.
+            page.add_init_script("""(() => {
+                window.__qaClosedCount = 0;
+                const nativeOpen = window.open.bind(window);
+                window.open = (url, target, features) => {
+                    if (url !== 'about:blank' || target !== '_blank') {
+                        throw new Error('Unexpected external popup');
+                    }
+                    const popup = nativeOpen(url, target, features);
+                    if (popup) {
+                        popup.close();
+                        window.__qaClosedCount++;
+                    }
+                    return popup;
+                };
+            })();""")
             try:
                 page.goto(frontend, wait_until="domcontentloaded", timeout=25000)
                 expect(page.get_by_text("Loja Oficial QA", exact=True).first).to_be_visible(timeout=25000)
@@ -78,12 +89,12 @@ def main() -> None:
                 assert receipt.get("shoppingMode") == "retail", "Incorrect checkout mode"
                 assert receipt.get("items") and receipt.get("total") > 0, "Receipt missing canonical items"
                 expect(page.get_by_text("Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False)).to_be_visible(timeout=15000)
-                assert len(submits) == 1 and len(popups) == 1, "Expected one order and closed neutral popup"
+                assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 1, "Expected one checkout and one synchronously closed popup"
 
                 print("LOCAL-ORDER: retrying the same order after closing popup", flush=True)
                 page.locator("#btn-submit-order").click()
                 expect(page.get_by_text("Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False)).to_be_visible(timeout=12000)
-                assert len(submits) == 1 and len(popups) == 2, "Retry duplicated order or failed to open neutral popup"
+                assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 2, "Retry duplicated order or did not reopen and close popup"
 
                 print("LOCAL-ORDER: changing buyer contact before retry", flush=True)
                 page.get_by_role("button", name="Voltar e editar").click()
@@ -122,7 +133,7 @@ def main() -> None:
                 assert parsed.path == "/5500000000000" and receipt["orderNumber"] in message
                 assert "QA-Produto Fictício" in message and "Total:" in message
                 assert "11.222.333/0001-81" not in message, "CNPJ leaked into WhatsApp text"
-                assert len(submits) == 1 and len(popups) == 2, "WhatsApp handoff duplicated checkout or leaked external popup"
+                assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 2, "WhatsApp handoff duplicated checkout or reopened external popup"
                 verify_safe(private, external)
                 print("LOCAL-ORDER: PASS local Edge/Postgres receipt, two closed popups, retry/stale draft, and intercepted WhatsApp message link; zero messages sent", flush=True)
             finally:
