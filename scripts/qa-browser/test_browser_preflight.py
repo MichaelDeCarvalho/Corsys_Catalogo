@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_b2b_access_browser import guarded_context, require_loopback, selected_cases
+from test_b2b_access_browser import guarded_context, require_loopback, selected_cases, verify_safe
 
 
 class FakePage:
@@ -97,6 +97,13 @@ class BrowserPreflightTests(unittest.TestCase):
             with self.subTest(value=value), patch.dict(os.environ, {"QA_BASE_URL": value}):
                 with self.assertRaises(SystemExit):
                     require_loopback("QA_BASE_URL")
+
+    def test_blocked_external_font_requests_do_not_invalidate_isolated_qa(self):
+        verify_safe([], ["fonts.googleapis.com", "fonts.gstatic.com"])
+        with self.assertRaises(AssertionError):
+            verify_safe([], ["example.supabase.co"])
+        with self.assertRaises(AssertionError):
+            verify_safe(["private-catalog"], [])
 
     def test_http_and_websocket_routes_are_restricted(self):
         browser = FakeBrowser()
