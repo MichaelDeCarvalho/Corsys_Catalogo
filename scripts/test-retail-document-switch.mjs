@@ -23,6 +23,7 @@ globalThis.__retailQa = fixture;
 const compiled = await build({
   entryPoints: ['src/components/storefront/CartDrawer.tsx'],
   bundle: true, write: false, platform: 'node', format: 'esm',
+  define: { 'import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED': '"false"' },
   plugins: [{
     name: 'fake-boundaries',
     setup(b) {
@@ -102,12 +103,16 @@ try {
   assert.equal(docInput()?.getAttribute('placeholder'), '00.000.000/0001-00');
   await typeDocument('12.345.678/0001-99');
   assert.equal(docInput().value, '12.345.678/0001-99');
+  await chooseBuyerType('Pessoa Jurídica (CNPJ)');
+  assert.equal(docInput().value, '12.345.678/0001-99', 'CNPJ value must be controlled by React state');
   await chooseBuyerType('Pessoa Física (CPF)');
   assert.equal(docInput()?.getAttribute('placeholder'), '000.000.000-00');
   assert.equal(docInput().value, '', 'Switch PJ to PF must clear old CNPJ');
   assert.equal(document.querySelector('input[placeholder="Supermercado Silva Ltda"]'), null);
   await typeDocument('529.982.247-25');
   assert.equal(docInput().value, '529.982.247-25');
+  await chooseBuyerType('Pessoa Física (CPF)');
+  assert.equal(docInput().value, '529.982.247-25', 'CPF value must be controlled by React state');
   await chooseBuyerType('Pessoa Jurídica (CNPJ)');
   assert.equal(docInput()?.getAttribute('placeholder'), '00.000.000/0001-00');
   assert.equal(docInput().value, '', 'Switch PF to PJ must clear old CPF');
