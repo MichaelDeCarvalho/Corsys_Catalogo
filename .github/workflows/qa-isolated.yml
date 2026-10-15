@@ -59,6 +59,13 @@ jobs:
       - name: Replace catalog bootstrap with synthetic QA-only data
         run: python3 scripts/qa-browser/prepare_isolated_stack.py
 
+      - name: Enable checkout only in ephemeral local Edge Functions
+        shell: bash
+        run: |
+          test -z "${SUPABASE_ACCESS_TOKEN:-}" && test -z "${SUPABASE_PROJECT_ID:-}"
+          install -m 600 /dev/null supabase/functions/.env
+          printf 'CHECKOUT_ENABLED=true\\n' > supabase/functions/.env
+
       - name: Start disposable local Supabase with loopback bindings
         shell: bash
         run: |
@@ -98,6 +105,20 @@ jobs:
 
       - name: Verify configured checkout fields in real Chromium
         run: python3 scripts/qa-browser/test_checkout_field_policy_browser.py
+
+      - name: Verify one fictitious local checkout, WhatsApp popup close and replay guard
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: python3 scripts/qa-browser/test_checkout_transaction_browser.py
+
+      - name: Independently assert persisted fictitious order count in local DB
+        shell: bash
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: |
+          source "$RUNNER_TEMP/local-supabase.env"
+          test -n "$SERVICE_ROLE_KEY"
+          QA_LOCAL_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" bun scripts/qa-browser/assert_local_order.mjs
 
       - name: Stop ephemeral database
         if: always()
