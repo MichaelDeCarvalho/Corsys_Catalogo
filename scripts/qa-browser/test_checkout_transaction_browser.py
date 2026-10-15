@@ -97,7 +97,21 @@ def main() -> None:
                     "receipt_validation_error": page.get_by_text("Resposta inválida do serviço de pedidos", exact=False).count(),
                     "generic_checkout_error": page.get_by_text("Não foi possível processar o pedido.", exact=False).count(),
                     "receipt_keys": sorted(receipt.keys()),
-                    "item_keys": sorted(receipt["items"][0].keys()) if receipt.get("items") else []
+                    "item_keys": sorted(receipt["items"][0].keys()) if receipt.get("items") else [],
+                    "receipt_types": {k: type(v).__name__ for k, v in receipt.items() if k != "items"},
+                    "item_types": {k: type(v).__name__ for k, v in receipt["items"][0].items()} if receipt.get("items") else {},
+                    "validation_failure": next((tag for tag in [
+                        "ID ausente", "Número do pedido ausente", "Modalidade inválida",
+                        "Método de entrega ausente", "Itens ausentes", "Subtotal inválido",
+                        "Desconto inválido", "Taxa de frete inválida", "Total inválido",
+                        "Status diferente de pending", "Forma de pagamento inválida",
+                        "Data de criação inválida", "Item malformado",
+                        "Dados do produto ausentes", "Imagem do produto inválida",
+                        "Preço unitário inválido", "Quantidade inválida",
+                        "Preço total do item inválido", "Variante do produto inválida",
+                        "URL do documento inválida", "Data de expiração do documento inválida",
+                        "Token de rastreamento inválido"
+                    ] if page.get_by_text(tag, exact=False).count()), "unknown")
                 }, flush=True)
                 expect(page.get_by_text("Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False)).to_be_visible(timeout=15000)
                 assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 1, "Expected one checkout and one synchronously closed popup"
