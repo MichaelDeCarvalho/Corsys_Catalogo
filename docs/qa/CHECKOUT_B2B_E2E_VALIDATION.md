@@ -146,3 +146,14 @@ python scripts/qa-browser/test_b2b_access_browser.py
 ```
 
 O segundo script exige `QA_B2B_PENDING_*`, `QA_B2B_SUSPENDED_*` e `QA_B2B_REJECTED_*` fornecidos **somente na sessão privada** do ambiente QA, nunca em CI/repositório. Para ambos, registrar resultado efetivo, HEAD testado e evidências sanitizadas. Sem execução real, o status global continua **PARTIAL / BLOCKED**, e o PR #6 permanece sem autorização de merge.
+
+
+## 9. Execução seletiva e contrato de segurança do runner — 2026-10-14
+
+A execução padrão de `test_b2b_access_browser.py` continua cobrindo os quatro cenários (`anon,pending,suspended,rejected`), com fixtures obrigatórias para as três identidades. Para executar apenas um subconjunto na estação QA isolada, usar `QA_B2B_CASES` com nomes separados por vírgula. Exemplo: `QA_B2B_CASES=anon` não exige login nem senhas; `QA_B2B_CASES=pending,suspended` exige somente as duas contas sintéticas correspondentes. Valores desconhecidos, lista vazia e duplicatas falham fechado. **Executar somente um subconjunto não altera o status dos casos não executados: permanecem NOT EVALUATED.**
+
+Os dois runners recusam URLs de frontend/backend fora das origens HTTP(S) loopback explícitas. A sessão Playwright bloqueia Service Workers e intercepta HTTP(S) e WebSockets para impedir conexões *diretas* a origens que não sejam as duas origens QA configuradas. Requer Playwright Python **1.48+** para interceptação de WebSockets. Os testes de contrato em `scripts/qa-browser/test_browser_preflight.py` validam seleção, preflight de origem e interceptação de HTTP/WebSocket sem executar navegador, usar credenciais ou tocar em rede. O Quality executa esses testes Python stdlib após `bun run check`.
+
+**Limitação importante:** o interceptador Playwright não equivale a firewall de rede/namespace. A própria documentação Playwright informa que redirecionamentos podem ser seguidos após a primeira requisição roteada. Portanto a QA efetiva precisa também permanecer em ambiente de rede isolado de produção (sem secrets/URL Hosted), e a execução do browser com Auth real continua sendo uma etapa separada. Referências: https://playwright.dev/python/docs/network e https://playwright.dev/python/docs/api/class-browsercontext .
+
+**Escopo da evidência:** sucesso de `python3 -m unittest discover -s scripts/qa-browser -p 'test_browser_preflight.py' -v` comprova regras dos runners em objetos sintéticos, **não** B2B-01–13, login real, RLS, checkout ou tracking de navegador. Nenhuma autorização implícita de merge ou deploy.
