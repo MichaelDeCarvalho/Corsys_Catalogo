@@ -663,9 +663,10 @@ assert(
 
 assert(
   cartDrawerCode.includes("type: 'PJ', document: prev.type === 'PJ' ? prev.document : ''") &&
-  cartDrawerCode.includes("type: 'PF', document: prev.type === 'PF' ? prev.document : ''") &&
-  cartDrawerCode.includes("delete next.document"),
-  '81s. Troca PF/PJ limpa documento incompatível e erros anteriores'
+  cartDrawerCode.includes("type: 'PF', document: prev.type === 'PF' ? prev.document : '', companyName: ''") &&
+  cartDrawerCode.includes("delete next.document") &&
+  cartDrawerCode.includes("delete next.companyName"),
+  '81s. Troca PF/PJ limpa documentos, razão social PJ e erros incompatíveis'
 );
 
 assert(
