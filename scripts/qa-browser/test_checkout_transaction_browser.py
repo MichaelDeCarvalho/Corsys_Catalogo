@@ -92,8 +92,39 @@ def main() -> None:
                 page.locator("#btn-submit-order").click()
                 expect(page.get_by_text("O pedido anterior já foi registrado com outros dados.", exact=False)).to_be_visible(timeout=12000)
                 assert len(submits) == 1, "Modified draft attempted another order"
+
+                # For the final original-draft retry, replace only window.open
+                # with a same-page sink. We inspect the real generated wa.me URL
+                # but never open a tab, connect to WhatsApp, or send a message.
+                page.evaluate("""() => {
+                  window.__qaWhatsAppLinks = [];
+                  window.open = (url, target) => {
+                    if (url !== 'about:blank' || target !== '_blank') throw new Error('unexpected popup');
+                    return {
+                      closed: false,
+                      close() { this.closed = true; },
+                      location: {
+                        set href(value) { window.__qaWhatsAppLinks.push(value); }
+                      }
+                    };
+                  };
+                }""")
+                page.get_by_role("button", name="Voltar e editar").click()
+                page.get_by_placeholder("Ex: 41987654321").fill("41999999999")
+                page.locator("#btn-validate-quote").click()
+                page.locator("#btn-submit-order").click()
+                page.wait_for_function("window.__qaWhatsAppLinks && window.__qaWhatsAppLinks.length === 1", timeout=12000)
+                from urllib.parse import parse_qs
+                handoff_url = page.evaluate("window.__qaWhatsAppLinks[0]")
+                parsed = urlsplit(handoff_url)
+                message = parse_qs(parsed.query).get("text", [""])[0]
+                assert parsed.scheme == "https" and parsed.hostname == "wa.me"
+                assert parsed.path == "/5500000000000" and receipt["orderNumber"] in message
+                assert "QA-Produto Fictício" in message and "Total:" in message
+                assert "11.222.333/0001-81" not in message, "CNPJ leaked into WhatsApp text"
+                assert len(submits) == 1 and len(popups) == 2, "WhatsApp handoff duplicated checkout or leaked external popup"
                 verify_safe(private, external)
-                print("LOCAL-ORDER: PASS real Edge/Postgres receipt, closed popup, idempotent retry, stale draft denied; no WhatsApp sent", flush=True)
+                print("LOCAL-ORDER: PASS local Edge/Postgres receipt, two closed popups, retry/stale draft, and intercepted WhatsApp message link; zero messages sent", flush=True)
             finally:
                 ctx.close()
         finally:
