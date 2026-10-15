@@ -8,6 +8,7 @@ No fixture creation, order checkout, PDF download, or WhatsApp navigation.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from urllib.parse import urlsplit
 
@@ -65,7 +66,7 @@ def guarded_context(browser, storefront_url: str):
     return ctx, page, requests, unexpected
 
 
-def verify_safe(ctx, requests, unexpected):
+def verify_safe(requests, unexpected):
     assert not unexpected, "Attempted non-loopback network call(s) blocked by QA security gate"
     assert not requests, "Non-approved account attempted a private wholesale catalog request"
 
@@ -91,9 +92,9 @@ def main() -> int:
                 page.locator("#btn-mode-wholesale").click()
                 expect(page.locator("#b2b-gate-modal")).to_be_visible(timeout=7000)
                 expect(page.locator("#btn-mode-retail")).to_have_class(
-                    __import__("re").compile(".*bg-white.*"), timeout=7000,
+                    re.compile(".*bg-white.*"), timeout=7000,
                 )
-                verify_safe(ctx, requests, unexpected)
+                verify_safe(requests, unexpected)
                 results.append(("B2B-01 (anônimo)", "PASS"))
             finally:
                 ctx.close()
@@ -114,15 +115,17 @@ def main() -> int:
                     ) as status_response:
                         page.get_by_role("button", name="Entrar no Sistema").click()
                     assert status_response.value.ok, "The status RPC did not succeed"
+                    returned = status_response.value.json()
+                    assert isinstance(returned, dict) and returned.get("status") == state, "Unexpected QA buyer status"
                     expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=15000)
                     if state == "pending":
                         expect(page.locator("#btn-mode-wholesale")).to_contain_text("Em análise")
                     page.locator("#btn-mode-wholesale").click()
                     expect(page.get_by_text(STATUSES[state], exact=False)).to_be_visible(timeout=10000)
                     expect(page.locator("#btn-mode-retail")).to_have_class(
-                        __import__("re").compile(".*bg-white.*"), timeout=7000,
+                        re.compile(".*bg-white.*"), timeout=7000,
                     )
-                    verify_safe(ctx, requests, unexpected)
+                    verify_safe(requests, unexpected)
                     results.append((f"B2B-02 ({state})", "PASS"))
                 finally:
                     ctx.close()
@@ -138,7 +141,7 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (AssertionError, Exception) as error:
+    except Exception as error:
         # Avoid printing exception data containing URLs, tokens or personal details.
         print(f"FAIL/BLOCKED: {type(error).__name__}; see local-only QA trace for diagnosis.", file=sys.stderr)
         raise SystemExit(1)
