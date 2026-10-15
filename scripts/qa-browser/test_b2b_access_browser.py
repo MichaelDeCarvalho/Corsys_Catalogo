@@ -34,6 +34,12 @@ def require_fixture(state: str) -> tuple[str, str]:
     prefix = "QA_B2B_" + state.upper()
     email = os.getenv(prefix + "_EMAIL", "").strip()
     password = os.getenv(prefix + "_PASSWORD", "")
+    # Approved test accounts are synthetic and created by this same isolated CI;
+    # reuse the existing disposable QA test password, never a Hosted credential.
+    if state in APPROVED_CASES and os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("QA_CONFIRM_DISPOSABLE_STACK") == "yes":
+        suffix = "approved" if state == "approved_a" else "approved-b"
+        email = f"qa-b2b-{suffix}@qa.invalid"
+        password = os.getenv("QA_B2B_PENDING_PASSWORD", "")
     if not email or not password:
         sys.exit(f"BLOCKED: missing synthetic QA fixture: {prefix}_EMAIL / {prefix}_PASSWORD.")
     return email, password
