@@ -471,6 +471,15 @@ assert(
 );
 
 assert(
+  cartDrawerCode.includes('const currentIdentityRef = useRef(checkoutIdentity)') &&
+  cartDrawerCode.includes('previousIdentityRef.current !== checkoutIdentity') &&
+  cartDrawerCode.includes('resetCheckoutLifecycle();') &&
+  cartDrawerCode.includes('currentIdentityRef.current !== submissionIdentity') &&
+  cartDrawerCode.includes("kind: 'stale-session'"),
+  '67d. Mudança de usuário ou tenant invalida receipt, estado pessoal e resposta tardia da confirmação'
+);
+
+assert(
   cartDrawerCode.includes('try {') &&
   cartDrawerCode.includes('receipt = await submitOrderCheckout(draft);') &&
   cartDrawerCode.includes('catch (err: unknown) {') &&
