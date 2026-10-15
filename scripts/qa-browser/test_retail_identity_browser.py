@@ -6,6 +6,7 @@ It verifies visible interaction, not checkout persistence or tracking.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 
@@ -20,9 +21,9 @@ def main() -> int:
         sys.exit("BLOCKED: frontend and Supabase must use separate local QA endpoints.")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, executable_path=os.getenv("QA_CHROMIUM_EXECUTABLE") or None)
         try:
-            ctx, page, private_catalog_requests, rejected_origins = guarded_context(browser, frontend)
+            ctx, page, private_catalog_requests, rejected_origins = guarded_context(browser, frontend, backend)
             order_requests: list[str] = []
             page.on(
                 "request",
