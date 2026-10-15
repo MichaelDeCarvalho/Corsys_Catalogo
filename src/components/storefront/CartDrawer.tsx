@@ -905,7 +905,7 @@ export const CartDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomerData(prev => ({ ...prev, type: 'PJ' }));
+                      setCustomerData(prev => ({ ...prev, type: 'PJ', document: prev.type === 'PJ' ? prev.document : '' }));
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.document;
@@ -922,7 +922,7 @@ export const CartDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomerData(prev => ({ ...prev, type: 'PF' }));
+                      setCustomerData(prev => ({ ...prev, type: 'PF', document: prev.type === 'PF' ? prev.document : '' }));
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.document;
