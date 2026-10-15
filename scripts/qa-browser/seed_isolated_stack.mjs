@@ -18,26 +18,6 @@ const { data: tenants, error: tErr } = await db.from('tenants').select('id,slug'
 if (tErr || tenants?.length !== 2) throw new Error('Missing synthetic tenants');
 const tenantA = tenants.find(x => x.slug === 'corsys-catalogo-demo').id;
 const tenantB = tenants.find(x => x.slug === 'tenant-qa-b').id;
-async function upsert(table, values) {
-  const { error } = await db.from(table).upsert(values, { onConflict: 'tenant_id' });
-  if (error) throw new Error('Synthetic '+table+' fixture failed: '+error.code);
-}
-const { error: settingsError } = await db.from('tenant_public_settings').insert({
-  tenant_id: tenantB, slug: 'tenant-qa-b', public_name: 'Loja B QA',
-  whatsapp_number: '+5500000000000', allow_b2b_mode: true,
-  min_order_value: 0, wholesale_min_order_value: 100,
-  delivery_methods: ['retirada', 'entrega'],
-});
-if (settingsError) throw new Error('Tenant B settings fixture failed: '+settingsError.code);
-const { error: updateError } = await db.from('tenant_public_settings').update({
-  min_order_value: 0, wholesale_min_order_value: 100,
-  whatsapp_number: '+5500000000000', delivery_methods: ['retirada', 'entrega'],
-}).eq('tenant_id', tenantA);
-if (updateError) throw new Error('Tenant A settings fixture failed: '+updateError.code);
-const { error: productError } = await db.from('products').update({
-  wholesale_enabled: true, wholesale_min_quantity: 5,
-}).in('tenant_id', [tenantA, tenantB]);
-if (productError) throw new Error('Products fixture failed: '+productError.code);
 const fixtureUsers = [
   ['pending', tenantA, '00000000000001'],
   ['suspended', tenantA, '00000000000002'],
