@@ -107,3 +107,26 @@ Atualização final deste registro: 18 testes de API local PASS; pedido do naveg
 **Hosted somente leitura (14/10):** 20 migrations, versões 000019/000020 alinhadas; 6 pedidos, 520 produtos; `anon` sem SELECT em `wholesale_tiers`; 1 configuração privada de entrega, `estimateEnabled=false`. Migrations de Google Routes/Edge Function de estimativa ainda não aplicadas/publicadas. Não criar comprador ou pedidos artificiais em Hosted.
 
 **Gate de conclusão:** reexecutar os subcasos pendentes em browser QA contra Supabase local isolado atualizado, registrar HTTP/estado final e evidência sanitizada; depois reavaliar issue #4 e decisão de release. Não declarar a matriz integral PASS com CI de componente.
+
+
+## 7. Retomada browser QA automatizável — 2026-10-14/15
+
+**GATE: BLOCKED para conclusão E2E nesta sessão.** A estação Windows/WSL da validação de 10–11/10 não está montada neste runtime; não há checkout local do repositório, Supabase CLI/serviços Docker ou Auth fixtures da QA anterior. Chromium e Python Playwright estão presentes, mas **isso não cria o aplicativo nem o backend isolado**. A sessão atual pode consultar GitHub privado e Supabase **Hosted produção**; este último não deve receber dados de teste. Nenhum cenário de navegador com backend real foi executado aqui. Não contar esse bloqueio como FAIL de código ou como PASS de E2E.
+
+Criado no PR #6: `scripts/qa-browser/test_b2b_access_browser.py`, roteiro automatizado read-only para Chromium via Python Playwright. Testa B2B-01 anônimo e B2B-02 nas três contas fictícias distintas (`pending`, `suspended` e `rejected`) por login visual/consulta de status/negativa de atacado. O script **recusa** URLs que não sejam localhost/127.0.0.1/::1, aborta qualquer requisição HTTP(S) externa antes de prosseguir, não cria pedidos, não navega ao WhatsApp e não publica credenciais no log. Por desenho, **não cobre** os subcasos restantes B2B-03–13 nem RACE-01–04. O passo adicional no Quality apenas verifica sintaxe Python; **não** executa a QA Browser sem fixtures.
+
+### Execução reproduzível na estação QA isolada anterior
+
+1. Recuperar a branch atual do PR #6 na estação Windows/WSL; inicializar **somente** Supabase local e os dois tenants/usuários fictícios conforme `docs/qa/LOCAL_RUNTIME_20261010.md`, sem vincular o projeto Hosted. Conferir Postgres 17, funções de Auth e as migrations locais conforme requisitos do checkout; mudanças específicas de Google podem ficar desativadas para a bateria B2B.
+2. Iniciar o frontend Vite apontado exclusivamente à URL local do Supabase. Conferir no navegador a ausência de chamadas a `*.supabase.co` e outras origens externas. Sem serviço local/fixtures, registrar BLOCKED; não alterar URL para produção para fazer o teste passar.
+3. Instalar Playwright Python e Chromium na estação QA se ainda não existentes (`python -m pip install playwright`; `python -m playwright install chromium`). Definir as variáveis de ambiente somente na sessão local, nunca commitar credenciais ou colocá-las em issues:
+   - `QA_BASE_URL=http://127.0.0.1:3000` (ou a porta Vite local efetiva)
+   - `QA_SUPABASE_URL=http://127.0.0.1:54321`
+   - `QA_B2B_PENDING_EMAIL` / `QA_B2B_PENDING_PASSWORD`
+   - `QA_B2B_SUSPENDED_EMAIL` / `QA_B2B_SUSPENDED_PASSWORD`
+   - `QA_B2B_REJECTED_EMAIL` / `QA_B2B_REJECTED_PASSWORD`
+   - Opcional: `QA_CHROMIUM_EXECUTABLE` apontando ao Chromium da estação.
+4. Executar `python scripts/qa-browser/test_b2b_access_browser.py`. Registrar somente PASS/FAIL/BLOCKED e revisão de HEAD (não salvar URLs de pedidos, JWT, senhas, screenshot com PII ou tokens). O teste nunca deve ser redirecionado para Cloudflare ou Hosted. Se uma fixture não existir ou qualquer URL não for local, ele falha fechado (BLOCKED).
+5. Concluir manualmente/em navegador QA os subcasos B2B-06/07, 11, 12, 13 ainda incompletos; conferir criação de pedido apenas com fixture local e aceitação explícita de abertura da URL WhatsApp sintética, sem envio. Registrar observação de requests/DB e controle de isolamento por tenant. Atualizar a matriz e somente então reconsiderar o gate para merge.
+
+**Importante:** não inserir scripts Playwright de login Auth com credenciais em CI público e não publicar a instância QA Docker no domínio produtivo. Este roteiro sozinho **não** fecha a matriz B2B.
