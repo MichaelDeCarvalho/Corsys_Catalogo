@@ -45,14 +45,13 @@ def require_fixture(state: str) -> tuple[str, str]:
 
 def guarded_context(browser, storefront_url: str, backend_url: str):
     """Abort HTTP(S) requests outside the exact two approved local QA origins."""
-    allowed = {urlsplit(storefront_url).netloc, urlsplit(backend_url).netloc}
-    schemes = {urlsplit(storefront_url).scheme, urlsplit(backend_url).scheme}
+    allowed = {(urlsplit(url).scheme, urlsplit(url).netloc) for url in (storefront_url, backend_url)}
     ctx = browser.new_context(accept_downloads=False)
     unexpected: list[str] = []
 
     def route_request(route):
         parsed = urlsplit(route.request.url)
-        if parsed.scheme in ("http", "https") and (parsed.netloc not in allowed or parsed.scheme not in schemes):
+        if parsed.scheme in ("http", "https") and (parsed.scheme, parsed.netloc) not in allowed:
             unexpected.append(parsed.hostname or "unknown")  # No path, token or PII
             route.abort("blockedbyclient")
         else:
