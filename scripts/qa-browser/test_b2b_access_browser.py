@@ -43,10 +43,20 @@ def require_fixture(state: str) -> tuple[str, str]:
     return email, password
 
 
+def selected_cases() -> list[str]:
+    """Run all checks by default; allow a strict subset while preparing QA accounts."""
+    allowed = {"anon", *STATUSES}
+    raw = os.getenv("QA_B2B_CASES", "anon,pending,suspended,rejected")
+    cases = [item.strip().lower() for item in raw.split(",")]
+    if not cases or any(case not in allowed for case in cases) or len(set(cases)) != len(cases):
+        sys.exit("BLOCKED: QA_B2B_CASES must contain distinct anon,pending,suspended,rejected values.")
+    return cases
+
+
 def guarded_context(browser, storefront_url: str, backend_url: str):
     """Abort HTTP(S) requests outside the exact two approved local QA origins."""
     allowed = {(urlsplit(url).scheme, urlsplit(url).netloc) for url in (storefront_url, backend_url)}
-    ctx = browser.new_context(accept_downloads=False)
+    ctx = browser.new_context(accept_downloads=False, service_workers="block")
     unexpected: list[str] = []
 
     def route_request(route):
@@ -78,7 +88,8 @@ def main() -> int:
     backend = require_loopback("QA_SUPABASE_URL")
     if urlsplit(frontend).port == urlsplit(backend).port and urlsplit(frontend).hostname == urlsplit(backend).hostname:
         sys.exit("BLOCKED: frontend and Supabase QA need distinct endpoints.")
-    fixtures = {status: require_fixture(status) for status in STATUSES}
+    cases = selected_cases()
+    fixtures = {status: require_fixture(status) for status in cases if status != "anon"}
     browser_bin = os.getenv("QA_CHROMIUM_EXECUTABLE", "").strip()
     results: list[tuple[str, str]] = []
 
@@ -87,19 +98,20 @@ def main() -> int:
             headless=True, executable_path=browser_bin or None,
         )
         try:
-            ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
-            try:
-                page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
-                expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=20000)
-                page.locator("#btn-mode-wholesale").click()
-                expect(page.locator("#b2b-gate-modal")).to_be_visible(timeout=7000)
-                expect(page.locator("#btn-mode-retail")).to_have_class(
-                    re.compile(".*bg-white.*"), timeout=7000,
-                )
-                verify_safe(requests, unexpected)
-                results.append(("B2B-01 (anônimo)", "PASS"))
-            finally:
-                ctx.close()
+            if "anon" in cases:
+                ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
+                try:
+                    page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
+                    expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=20000)
+                    page.locator("#btn-mode-wholesale").click()
+                    expect(page.locator("#b2b-gate-modal")).to_be_visible(timeout=7000)
+                    expect(page.locator("#btn-mode-retail")).to_have_class(
+                        re.compile(".*bg-white.*"), timeout=7000,
+                    )
+                    verify_safe(requests, unexpected)
+                    results.append(("B2B-01 (anônimo)", "PASS"))
+                finally:
+                    ctx.close()
 
             for state, (email, password) in fixtures.items():
                 ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
