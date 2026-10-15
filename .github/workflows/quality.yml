@@ -40,3 +40,6 @@ jobs:
 
       - name: Run project checks
         run: bun run check
+
+      - name: Syntax-check isolated browser QA runner (no network or accounts)
+        run: python3 -m py_compile scripts/qa-browser/test_b2b_access_browser.py
