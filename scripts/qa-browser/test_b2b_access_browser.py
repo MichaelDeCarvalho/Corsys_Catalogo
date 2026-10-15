@@ -118,6 +118,7 @@ def main() -> int:
         )
         try:
             if "anon" in cases:
+                print('QA CASE anon: start', flush=True)
                 ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
                 try:
                     page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
@@ -129,10 +130,12 @@ def main() -> int:
                     )
                     verify_safe(requests, unexpected)
                     results.append(("B2B-01 (anônimo)", "PASS"))
+                    print('QA CASE anon: PASS', flush=True)
                 finally:
                     ctx.close()
 
             for state, (email, password) in fixtures.items():
+                print(f'QA CASE {state}: start', flush=True)
                 ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
                 try:
                     page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
@@ -161,6 +164,7 @@ def main() -> int:
                     )
                     verify_safe(requests, unexpected)
                     results.append((f"B2B-02 ({state})", "PASS"))
+                    print(f'QA CASE {state}: PASS', flush=True)
                 finally:
                     ctx.close()
         finally:
