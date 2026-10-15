@@ -130,3 +130,19 @@ Criado no PR #6: `scripts/qa-browser/test_b2b_access_browser.py`, roteiro automa
 5. Concluir manualmente/em navegador QA os subcasos B2B-06/07, 11, 12, 13 ainda incompletos; conferir criação de pedido apenas com fixture local e aceitação explícita de abertura da URL WhatsApp sintética, sem envio. Registrar observação de requests/DB e controle de isolamento por tenant. Atualizar a matriz e somente então reconsiderar o gate para merge.
 
 **Importante:** não inserir scripts Playwright de login Auth com credenciais em CI público e não publicar a instância QA Docker no domínio produtivo. Este roteiro sozinho **não** fecha a matriz B2B.
+
+
+## 8. Continuação de QA — PF/PJ somente leitura (2026-10-14)
+
+Esta sessão **não reativou** o backend Supabase QA local (as portas 3000/5173/54321 estão indisponíveis). O Chromium instalado pôde iniciar, porém o navegador foi bloqueado com `ERR_BLOCKED_BY_ADMINISTRATOR` ao navegar inclusive para um servidor temporário em `127.0.0.1`. Não substituir por produção ou forçar o bloqueio. Nenhum teste E2E Auth/Edge de B2B-01–13 foi executado nesta sessão; permanecem os PASS históricos de 10–11/10 no ambiente/revisão anteriores.
+
+Foi adicionado `scripts/qa-browser/test_retail_identity_browser.py`, um teste Chromium **sem envio de pedido**: visita frontend/Supabase estritamente loopback, usa produto fictício disponível na vitrine, entra no checkout de varejo, alterna PF→PJ→PF, valida campos CPF/CNPJ/razão social e afirma que não houve `submit-order-checkout`, consulta privada B2B ou request a origin externo. O script reutiliza o guard de rede do runner B2B. Este subcaso cobrirá **apenas a UI de B2B-13**, não o pedido PJ, rastreamento, filtros ou o fluxo geral. Depende de produto/estoque, política default da loja e mínimo de varejo compatível em QA; se pré-condição falhar, marcar BLOCKED em vez de alterar a produção.
+
+O pipeline Quality verifica `python3 -m py_compile` de ambos os scripts, mas **não** inicia um navegador nem provê banco/usuários. Para executar na estação QA anterior, configurar `QA_BASE_URL` e `QA_SUPABASE_URL` exclusivamente localhost, iniciar frontend+Supabase isolados com fixtures fictícias e usar:
+
+```bash
+python scripts/qa-browser/test_retail_identity_browser.py
+python scripts/qa-browser/test_b2b_access_browser.py
+```
+
+O segundo script exige `QA_B2B_PENDING_*`, `QA_B2B_SUSPENDED_*` e `QA_B2B_REJECTED_*` fornecidos **somente na sessão privada** do ambiente QA, nunca em CI/repositório. Para ambos, registrar resultado efetivo, HEAD testado e evidências sanitizadas. Sem execução real, o status global continua **PARTIAL / BLOCKED**, e o PR #6 permanece sem autorização de merge.
