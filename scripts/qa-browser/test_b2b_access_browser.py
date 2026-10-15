@@ -12,11 +12,6 @@ import re
 import sys
 from urllib.parse import urlsplit
 
-try:
-    from playwright.sync_api import sync_playwright, expect
-except ImportError:
-    sys.exit("BLOCKED: install Python Playwright in isolated QA environment (pip install playwright).")
-
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 STATUSES = {
     "pending": "Cadastro atacadista em análise.",
@@ -90,6 +85,10 @@ def main() -> int:
         sys.exit("BLOCKED: frontend and Supabase QA need distinct endpoints.")
     cases = selected_cases()
     fixtures = {status: require_fixture(status) for status in cases if status != "anon"}
+    try:
+        from playwright.sync_api import sync_playwright, expect
+    except ImportError:
+        sys.exit("BLOCKED: install Python Playwright in isolated QA environment (pip install playwright).")
     browser_bin = os.getenv("QA_CHROMIUM_EXECUTABLE", "").strip()
     results: list[tuple[str, str]] = []
 
@@ -149,7 +148,9 @@ def main() -> int:
 
     for case, result in results:
         print(f"{case}: {result}")
-    print("QA browser: read-only smoke cases completed; remaining B2B-03–13 NOT EVALUATED by this script.")
+    skipped = sorted({"anon", *STATUSES}.difference(cases))
+    print("QA browser: selected cases completed; cases not selected:", ", ".join(skipped) or "none")
+    print("B2B-03–13 and E2E checkout/tracking NOT EVALUATED by this script.")
     return 0
 
 
