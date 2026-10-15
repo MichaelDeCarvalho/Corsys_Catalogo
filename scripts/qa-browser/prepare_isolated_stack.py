@@ -44,6 +44,28 @@ for before, after in (
         raise SystemExit("BLOCKED: expected public settings data changed")
     s = s.replace(before, after)
 settings.write_text(s)
+# Extra synthetic seed is applied after all business migrations, only in disposable CI.
+qa_seed = root / "migrations/20261010150000_ci_only_synthetic_fixtures.sql"
+if qa_seed.exists():
+    raise SystemExit("BLOCKED: synthetic fixture migration unexpectedly exists")
+qa_seed.write_text("""-- Disposable local CI fixture, never part of version-controlled migrations.
+BEGIN;
+INSERT INTO public.tenant_public_settings
+  (tenant_id, slug, public_name, whatsapp_number, min_order_value,
+   wholesale_min_order_value, allow_b2b_mode, delivery_methods)
+SELECT id, slug, 'Loja B QA', '+5500000000000', 0, 100, true,
+       '["retirada","entrega"]'::jsonb
+FROM public.tenants WHERE slug='tenant-qa-b';
+UPDATE public.tenant_public_settings
+SET min_order_value=0, wholesale_min_order_value=100, whatsapp_number='+5500000000000',
+    delivery_methods='["retirada","entrega"]'::jsonb
+WHERE slug='corsys-catalogo-demo';
+UPDATE public.products SET wholesale_enabled=true, wholesale_min_quantity=5
+WHERE sku IN ('QA-A','QA-B');
+INSERT INTO public.tenant_delivery_settings (tenant_id)
+SELECT id FROM public.tenants WHERE slug='tenant-qa-b';
+COMMIT;
+""")
 for path in root.glob("migrations/*google_routes*.sql"):
     path.rename(path.with_suffix(".ci-disabled"))
 print("CI stack prepared: fictitious tenants/products, Google migrations excluded, no remote link")
