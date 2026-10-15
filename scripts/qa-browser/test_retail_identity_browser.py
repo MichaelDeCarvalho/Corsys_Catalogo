@@ -46,20 +46,34 @@ def main() -> int:
                 expect(pj).to_be_visible()
                 expect(pf).to_be_visible()
 
-                # PF => document CPF, without a retail-PJ company name input.
+                # Start PJ; switching to PF must clear the previously entered CNPJ
+                # and commercial name, not just hide a field.
+                cnpj = page.get_by_placeholder("00.000.000/0001-00")
+                company = page.get_by_placeholder("Supermercado Silva Ltda")
+                expect(cnpj).to_be_visible()
+                expect(company).to_be_visible()
+                cnpj.fill("12.345.678/0001-95")
+                company.fill("Empresa Fictícia QA")
                 pf.click()
-                expect(page.get_by_placeholder("000.000.000-00")).to_be_visible()
-                expect(page.get_by_placeholder("Supermercado Silva Ltda")).to_have_count(0)
+                cpf = page.get_by_placeholder("000.000.000-00")
+                expect(cpf).to_be_visible()
+                expect(cpf).to_have_value("")
+                expect(company).to_have_count(0)
 
-                # PJ => document CNPJ + company name input.
+                # Switching back must not resurrect the old CNPJ or company name.
                 pj.click()
-                expect(page.get_by_placeholder("00.000.000/0001-00")).to_be_visible()
-                expect(page.get_by_placeholder("Supermercado Silva Ltda")).to_be_visible()
+                expect(cnpj).to_be_visible()
+                expect(cnpj).to_have_value("")
+                expect(company).to_be_visible()
+                expect(company).to_have_value("")
 
-                # Reversing buyer type must remove the PJ-only field.
+                # Switching to PF again must discard the old CPF too.
                 pf.click()
-                expect(page.get_by_placeholder("000.000.000-00")).to_be_visible()
-                expect(page.get_by_placeholder("Supermercado Silva Ltda")).to_have_count(0)
+                cpf.fill("529.982.247-25")
+                pj.click()
+                pf.click()
+                expect(cpf).to_have_value("")
+                expect(company).to_have_count(0)
 
                 assert not private_catalog_requests, "Retail UI attempted a private wholesale catalog request"
                 assert not order_requests, "Read-only PF/PJ test must not submit an order"
