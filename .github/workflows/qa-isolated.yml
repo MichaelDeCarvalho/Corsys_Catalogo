@@ -96,6 +96,9 @@ jobs:
       - name: Verify PF/PJ checkout transitions in real Chromium
         run: python3 scripts/qa-browser/test_retail_identity_browser.py
 
+      - name: Verify configured checkout fields in real Chromium
+        run: python3 scripts/qa-browser/test_checkout_field_policy_browser.py
+
       - name: Stop ephemeral database
         if: always()
         run: supabase stop --no-backup || true
