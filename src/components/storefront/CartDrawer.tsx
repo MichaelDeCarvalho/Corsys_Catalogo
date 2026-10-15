@@ -922,10 +922,11 @@ export const CartDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomerData(prev => ({ ...prev, type: 'PF', document: prev.type === 'PF' ? prev.document : '' }));
+                      setCustomerData(prev => ({ ...prev, type: 'PF', document: prev.type === 'PF' ? prev.document : '', companyName: '' }));
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.document;
+                        delete next.companyName;
                         return next;
                       });
                       setSubmitError(null);
