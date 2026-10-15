@@ -42,4 +42,4 @@ jobs:
         run: bun run check
 
       - name: Syntax-check isolated browser QA runner (no network or accounts)
-        run: python3 -m py_compile scripts/qa-browser/test_b2b_access_browser.py scripts/qa-browser/test_retail_identity_browser.py scripts/qa-browser/test_browser_preflight.py scripts/qa-browser/test_checkout_field_policy_browser.py && python3 -m unittest discover -s scripts/qa-browser -p 'test_browser_preflight.py' -v
+        run: python3 -m py_compile scripts/qa-browser/test_b2b_access_browser.py scripts/qa-browser/test_retail_identity_browser.py scripts/qa-browser/test_browser_preflight.py scripts/qa-browser/test_checkout_field_policy_browser.py scripts/qa-browser/test_checkout_transaction_browser.py && python3 -m unittest discover -s scripts/qa-browser -p 'test_browser_preflight.py' -v
