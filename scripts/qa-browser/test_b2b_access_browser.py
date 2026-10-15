@@ -169,6 +169,30 @@ def main() -> int:
                         expect(page.get_by_text("R$ 20,00").first).to_be_visible(timeout=15000)
                         assert requests, "Approved buyer should request private catalog"
                         verify_safe([], unexpected)
+                        # B2B-04/05/06/07: full local-Auth wholesale review, never submit.
+                        add_button = page.get_by_role(
+                            "button", name=re.compile(r"^Adicionar \\(\\d+ [^)]+\\)$")
+                        ).first
+                        expect(add_button).to_be_enabled(timeout=12000)
+                        add_button.click()  # min 5 units, local QA total R$ 100
+                        page.locator("#floating-open-cart-btn").click()
+                        expect(page.locator("#btn-cart-proceed")).to_be_enabled()
+                        page.locator("#btn-cart-proceed").click()
+                        expect(page.get_by_placeholder("Nome completo")).to_have_count(0)
+                        expect(page.get_by_placeholder("00.000.000/0001-00")).to_have_count(0)
+                        expect(page.get_by_label("Razão social (varejo PJ)")).to_have_count(0)
+                        expect(page.get_by_label("Observações")).to_have_count(0)
+                        expect(page.get_by_label("E-mail", exact=True)).to_be_visible()
+                        expect(page.get_by_label("Cidade", exact=True)).to_be_visible()
+                        page.locator("#btn-validate-quote").click()
+                        expect(page.get_by_text("E-mail é obrigatório.", exact=True)).to_be_visible()
+                        expect(page.get_by_text("Cidade é obrigatório.", exact=True)).to_be_visible()
+                        page.get_by_label("E-mail", exact=True).fill("b2b@qa.invalid")
+                        page.get_by_label("Cidade", exact=True).fill("Curitiba")
+                        page.get_by_label("Logradouro", exact=True).fill("Rua Fictícia QA")
+                        page.locator("#btn-validate-quote").click()
+                        expect(page.locator("#btn-submit-order")).to_be_visible(timeout=10000)
+                        print("QA CASE approved_a: wholesale checkout review PASS; no order submitted", flush=True)
                     elif state == "approved_b":
                         page.locator("#btn-mode-wholesale").click()
                         expect(page.locator("#b2b-gate-modal")).to_be_visible(timeout=10000)
