@@ -28,7 +28,8 @@ STATUSES = {
 def require_loopback(key: str) -> str:
     value = os.getenv(key, "").strip()
     parsed = urlsplit(value)
-    if parsed.scheme not in ("http", "https") or parsed.hostname not in LOOPBACK:
+    if (parsed.scheme not in ("http", "https") or parsed.hostname not in LOOPBACK or parsed.port is None
+            or parsed.username or parsed.password or parsed.path not in ("", "/") or parsed.query or parsed.fragment):
         sys.exit(f"BLOCKED: {key} must be an explicitly configured loopback HTTP(S) URL; no hosted access.")
     return value
 
@@ -42,14 +43,16 @@ def require_fixture(state: str) -> tuple[str, str]:
     return email, password
 
 
-def guarded_context(browser, storefront_url: str):
-    """Abort *every* non-loopback HTTP(S) request before it can leave the sandbox."""
+def guarded_context(browser, storefront_url: str, backend_url: str):
+    """Abort HTTP(S) requests outside the exact two approved local QA origins."""
+    allowed = {urlsplit(storefront_url).netloc, urlsplit(backend_url).netloc}
+    schemes = {urlsplit(storefront_url).scheme, urlsplit(backend_url).scheme}
     ctx = browser.new_context(accept_downloads=False)
     unexpected: list[str] = []
 
     def route_request(route):
         parsed = urlsplit(route.request.url)
-        if parsed.scheme in ("http", "https") and parsed.hostname not in LOOPBACK:
+        if parsed.scheme in ("http", "https") and (parsed.netloc not in allowed or parsed.scheme not in schemes):
             unexpected.append(parsed.hostname or "unknown")  # No path, token or PII
             route.abort("blockedbyclient")
         else:
@@ -85,7 +88,7 @@ def main() -> int:
             headless=True, executable_path=browser_bin or None,
         )
         try:
-            ctx, page, requests, unexpected = guarded_context(browser, frontend)
+            ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
             try:
                 page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
                 expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=20000)
@@ -100,7 +103,7 @@ def main() -> int:
                 ctx.close()
 
             for state, (email, password) in fixtures.items():
-                ctx, page, requests, unexpected = guarded_context(browser, frontend)
+                ctx, page, requests, unexpected = guarded_context(browser, frontend, backend)
                 try:
                     page.goto(frontend, wait_until="domcontentloaded", timeout=20000)
                     expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=20000)
@@ -110,7 +113,8 @@ def main() -> int:
                     page.locator('input[type="password"]').fill(password)
                     # Request is observed before the login click to avoid missing an early response.
                     with page.expect_response(
-                        lambda r: "get_my_wholesale_status" in r.url and r.request.method == "POST",
+                        lambda r: (r.url.startswith(backend.rstrip("/") + "/rest/v1/rpc/get_my_wholesale_status")
+                                   and r.request.method == "POST"),
                         timeout=25000,
                     ) as status_response:
                         page.get_by_role("button", name="Entrar no Sistema").click()
