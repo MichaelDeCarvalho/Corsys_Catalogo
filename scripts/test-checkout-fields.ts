@@ -175,7 +175,7 @@ assert.notEqual(fingerprintA, await computeOrderFingerprint({
 }, actorA), 'Mudança de contato não pode reutilizar recibo antigo');
 assert.notEqual(fingerprintA, await computeOrderFingerprint({
   ...wholesaleDraft, shoppingMode: 'retail',
-  customer: { name: 'Comprador fictício', type: 'PJ', document: '12345678000195', phone: '41988889999' }
+  customer: { name: 'Comprador fictício', type: 'PF', document: '52998224725', phone: '41988889999' }
 }, actorA), 'Modalidades de compra diferentes não podem reutilizar recibos antigos');
 console.log('Checkout receipt fingerprint: buyer, tenant, address, payment, contact, items and mode isolation PASS');
 console.log('B2B checkout contract: allowlist, optional/required, operational contact, tampering and actor/tenant fingerprint PASS');
