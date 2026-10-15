@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createWholesaleRequestGate } from '../src/utils/wholesaleRequestGate';
-import { DEFAULT_CHECKOUT_FIELDS, parseCheckoutFields, checkoutRequiredErrors, projectCheckoutValues } from '../src/config/checkoutFields';
+import { CHECKOUT_FIELDS, LOCKED_CHECKOUT_FIELDS, DEFAULT_CHECKOUT_FIELDS, fieldApplies, parseCheckoutFields, checkoutRequiredErrors, projectCheckoutValues } from '../src/config/checkoutFields';
 
 const defaults = () => structuredClone(DEFAULT_CHECKOUT_FIELDS);
 assert.deepEqual(parseCheckoutFields(defaults()), defaults());
@@ -29,6 +29,41 @@ assert.equal(checkoutRequiredErrors(config, { ...values, email: 'a@b.invalid', c
 assert.deepEqual(Object.keys(checkoutRequiredErrors(defaults(), { type: 'PF' }, false)), ['name', 'phone', 'document', 'street']);
 assert.deepEqual(Object.keys(checkoutRequiredErrors(defaults(), { type: 'PJ' }, true)), ['street']);
 console.log('Checkout fields: parser, required rules, PF/PJ/B2B and hidden-value projection PASS');
+
+// Complete configurable-field matrix at the pure validation/projection layer.
+// This is not a browser test or a server persistence claim.
+const optionalCheckoutFields = (Object.keys(CHECKOUT_FIELDS) as Array<keyof typeof CHECKOUT_FIELDS>)
+  .filter(key => !LOCKED_CHECKOUT_FIELDS.includes(key));
+let matrixChecks = 0;
+for (const key of optionalCheckoutFields) {
+  for (const wholesale of [false, true]) {
+    const hidden = defaults();
+    hidden[key] = { visible: false, required: false };
+    assert.deepEqual(parseCheckoutFields(hidden), hidden);
+    const entered = {
+      type: 'PJ', name: 'Comprador QA', document: '12345678000195',
+      phone: '41999999999', street: 'Rua QA', [key]: 'valor-antigo',
+    };
+    const sanitized = projectCheckoutValues(hidden, entered, wholesale);
+    assert.equal(sanitized[key], '', `Campo oculto ${key} deve ser expurgado (${wholesale ? 'B2B' : 'retail'})`);
+    assert.equal(entered[key], 'valor-antigo', 'Projeção não pode mutar formulário de entrada');
+    assert.equal(checkoutRequiredErrors(hidden, entered, wholesale)[key], undefined,
+      'Campo oculto não pode ser obrigatório');
+
+    const required = defaults();
+    required[key] = { visible: true, required: true };
+    const missing = { ...entered, [key]: ' ' };
+    const errors = checkoutRequiredErrors(required, missing, wholesale);
+    if (fieldApplies(key, wholesale, missing.type)) {
+      assert.equal(errors[key], `${CHECKOUT_FIELDS[key]} é obrigatório.`);
+    } else {
+      assert.equal(errors[key], undefined,
+        `Campo ${key} não deve exigir identidade comercial do browser B2B`);
+    }
+    matrixChecks += 2;
+  }
+}
+console.log(`Checkout fields matrix: ${matrixChecks} hidden/required rules across ${optionalCheckoutFields.length} optional fields and PF/PJ/B2B contract PASS`);
 
 // B2B integration-contract tests (pure functions only; no browser, network or order creation).
 // Commercial identity is always derived server-side; browser may send operational contact only.
