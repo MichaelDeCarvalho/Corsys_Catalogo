@@ -171,7 +171,7 @@ def main() -> int:
                         verify_safe([], unexpected)
                         # B2B-04/05/06/07: full local-Auth wholesale review, never submit.
                         add_button = page.get_by_role(
-                            "button", name=re.compile(r"^Adicionar \(\d+ [^)]+\)$")
+                            "button", name=re.compile(r"^Adicionar Atacado \(\d+ [^)]+\)$")
                         ).first
                         expect(add_button).to_be_enabled(timeout=12000)
                         add_button.click()  # min 5 units, local QA total R$ 100
