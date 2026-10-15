@@ -213,3 +213,9 @@ Limites persistentes: 10 tentativas por janela de 60 segundos, 250/dia e 7500/m�
 Revalidação HTTP com Auth real local: 18/18 PASS em 2026-10-11, incluindo isolamento A/B, revogação, idempotência, mínimos, campos e varejo. Nenhuma mensagem enviada. A matriz completa de interface B2B e corridas com rede real continua PARTIAL; não converter cobertura de API/componente em E2E PASS. Relatório detalhado em docs/qa/GOOGLE_MAPS_ACTIVATION.md.
 
 Riscos: Origin não autentica; abuso pode esgotar limites. Chave vazada permite chamadas diretas que ignoram contadores locais; Routes API não restringe SKU e alertas não bloqueiam cobrança. IAM/2FA ainda não avaliados. Não há garantia de custo zero, nem autorização de merge/deploy de produção.
+
+## Marco de QA/release em 2026-10-14 (PR #6)
+
+- Autorizadas e aplicadas somente migrations 000019 (entrega privada) e 000020 (RLS preços por faixas); histórico da produção alinhado, 20 migrations/6 pedidos/520 produtos. Entrega por rotas pagas permanece desativada, sem execução das migrations Google ou implantação de nova Edge Function.
+- Na branch QA, os testes React DOM do contexto B2B cresceram de 8 para 14 cenários sintéticos, incluindo suspenso/rejeitado, erro, clique duplicado e revogação; o CI dessas alterações foi confirmado separadamente. Alterações de UI exigem opt-in público VITE_GOOGLE_ROUTES_UI_ENABLED='true' para mostrar cálculo e habilitar opção administrativa; backend continua com flag separada.
+- Homologação B2B local real histórica cobre happy path, 18 requisições autenticadas, RACE-01–04 e PF com recibo/tracking; matriz B2B-01–13 continua PARTIAL para subcasos de blocked, todos os campos, PJ e handoff externo. Não autorizar merge por equivalência de CI a E2E. Documentos de status e release: docs/qa/CHECKOUT_B2B_E2E_VALIDATION.md e docs/qa/PR6_RELEASE_GATE_20261014.md.
