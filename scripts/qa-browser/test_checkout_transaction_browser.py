@@ -126,6 +126,15 @@ def main() -> None:
                 page.get_by_placeholder("Ex: 41987654321").fill("41988888888")
                 page.locator("#btn-validate-quote").click()
                 page.locator("#btn-submit-order").click()
+                page.wait_for_timeout(700)
+                print("LOCAL-ORDER changed-draft diagnostics:", {
+                    "submits": len(submits),
+                    "stale_receipt_notice": page.get_by_text("O pedido anterior já foi registrado com outros dados.", exact=False).count(),
+                    "retry_notice": page.get_by_text("Pedido registrado. Clique novamente", exact=False).count(),
+                    "popup_closed": page.evaluate("window.__qaClosedCount"),
+                    "review_visible": page.locator("#btn-submit-order").count(),
+                    "auth_or_settings_notice": page.get_by_text("Sessão ou loja alterada", exact=False).count(),
+                }, flush=True)
                 expect(page.get_by_text("O pedido anterior já foi registrado com outros dados.", exact=False)).to_be_visible(timeout=12000)
                 assert len(submits) == 1, "Modified draft attempted another order"
 
