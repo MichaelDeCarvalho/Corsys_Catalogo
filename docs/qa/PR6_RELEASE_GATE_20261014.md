@@ -1,5 +1,19 @@
 # PR #6 — Gate de homologação e publicação (2026-10-14)
 
+## Estado vigente — 16/10/2026 (supersede notas históricas onde houver conflito)
+
+**Veredito: QA INTEGRADA B2B PARCIALMENTE APROVADA; RELEASE AINDA BLOQUEADO.**
+
+- **CI código:** [Quality #167](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38967546403) SUCCESS no commit `f540b738`.
+- **CI browser:** [Isolated Browser QA #52](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38967546293) SUCCESS no mesmo commit. Login B2B approved A, pedido real em banco QA local HTTP 201 com 5×R$20 = R$100, pedido pendente, retry sem novo POST, tracking HTTP 200 e alternância Atacado/Varejo PASS. Auditoria Postgres local confirmou 2 pedidos fictícios (varejo + atacado), ambos tenant A, cliente atacadista autorizado, zero pedidos tenant B. WhatsApp jamais recebeu mensagem.
+- **Segurança preservada:** a auditoria anterior via PostgREST falhou com SQLSTATE `42501` por `orders` restrita até mesmo ao papel usado na leitura REST. Correção foi exclusivamente no test runner (`assert_local_wholesale_order.sh` usando `psql` no container descartável), nunca `GRANT`/RLS/migration. A rotina JavaScript rejeitada foi excluída. Este gate não habilita `service_role` a ler `orders` via REST.
+- **Hosted:** migrations `000019` e `000020` previamente aplicadas e congeladas, proteção da tabela `wholesale_tiers` reconciliada; não executar `db push` que inclua Google. Endpoint `estimate-delivery` e Google Routes continuam desativados em produção.
+- **Pendentes obrigatórios antes de merge:** cenário de troca de sessão durante envio in-flight (incluindo ausência de recibo cruzado), PDF privado local, subcasos restantes da matriz B2B-01–13/política de campos e revisão de segurança/rollback do diff completo. Quality e QA acima valem para `f540b738`, não constituem verificação automática de revisões documentais posteriores.
+- **Publicação:** continua exigindo autorização distinta e explícita para merge em `main` e Cloudflare; ativação Google Routes requer gate independente de credenciais, quotas e custos. Nenhum deploy executado.
+
+---
+
+
 ## Estado vigente após migrations e QA incremental — 14/10/2026
 
 **Veredito: PREPARADO EM QA / BLOQUEADO PARA MERGE.** Esta seção substitui o estado factual do registro histórico abaixo (que permanece para rastreabilidade); itens não executados não podem ser marcados PASS.
