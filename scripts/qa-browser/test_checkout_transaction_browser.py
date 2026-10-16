@@ -171,7 +171,7 @@ def main() -> None:
                     "total_in_message": "Total:" in message,
                     "no_full_document": "11.222.333/0001-81" not in message,
                     "single_submission": len(submits) == 1,
-                    "exactly_two_real_popups_closed": page.evaluate("window.__qaClosedCount") == 2,
+                    "exactly_three_real_popups_closed": page.evaluate("window.__qaClosedCount") == 3,
                 }
                 print("LOCAL-ORDER WhatsApp handoff contract:", handoff_checks, flush=True)
                 assert all(handoff_checks.values()), "Local WhatsApp handoff contract failed"
