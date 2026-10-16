@@ -103,6 +103,31 @@ def main() -> None:
                 assert receipt.get("items") and receipt["items"][0].get("quantity") == 5
                 assert float(receipt["items"][0]["unitPrice"]) == 20
                 assert float(receipt["total"]) == 100, "Wholesale total was not server-authoritative"
+
+                # Optional document feature: validate actual private signed PDF
+                # when returned, without touching Hosted, unauthenticated public URLs,
+                # or recording signed tokens/PII in CI logs.
+                doc_url = receipt.get("documentUrl")
+                if doc_url:
+                    signed = urlsplit(doc_url)
+                    local = urlsplit(backend)
+                    expected_prefix = "/storage/v1/object/sign/order-documents/"
+                    assert (signed.scheme, signed.netloc) == (local.scheme, local.netloc)
+                    assert signed.path.startswith(expected_prefix)
+                    assert signed.query, "Signed PDF URL must carry a token"
+                    signed_pdf = ctx.request.get(doc_url, timeout=15000)
+                    assert signed_pdf.status == 200, "Signed private order PDF not retrievable"
+                    pdf_bytes = signed_pdf.body()
+                    assert pdf_bytes.startswith(b"%PDF-") and len(pdf_bytes) > 500
+                    # An unsigned URL to the same private object must not disclose it.
+                    object_path = signed.path[len(expected_prefix):]
+                    plain_url = backend.rstrip("/") + "/storage/v1/object/public/order-documents/" + object_path
+                    plain_pdf = ctx.request.get(plain_url, timeout=15000)
+                    assert plain_pdf.status in (400, 401, 403, 404), "Private order PDF exposed publicly"
+                    print("LOCAL-B2B stage=pdf", {"signed_pdf": True, "public_access_denied": True}, flush=True)
+                else:
+                    # A missing optional PDF must never be misreported as PDF PASS.
+                    print("LOCAL-B2B stage=pdf NOT EVALUATED: no signed document returned", flush=True)
                 expect(page.get_by_text(
                     "Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False
                 )).to_be_visible(timeout=12000)
