@@ -127,8 +127,14 @@ def main() -> None:
                 assert tracking.value.ok, "B2B tracking gateway rejected approved buyer"
                 expect(page.get_by_text("Histórico de Atacado")).to_be_visible(timeout=12000)
                 expect(page.get_by_text("#" + receipt["orderNumber"])).to_be_visible(timeout=12000)
+                print("LOCAL-B2B stage=tracking-list", {"order_in_wholesale_tab": True}, flush=True)
                 page.get_by_role("button", name=re.compile(r"Pedidos Recentes de Varejo")).click()
                 expect(page.get_by_text("#" + receipt["orderNumber"])).to_have_count(0)
+                print("LOCAL-B2B stage=retail-isolation", {"order_hidden_in_retail": True}, flush=True)
+                # Record counts only, never external URLs or credentials.
+                print("LOCAL-B2B stage=network-guard", {
+                    "unexpected_external_hosts": len(set(external).difference({"fonts.googleapis.com", "fonts.gstatic.com"})),
+                }, flush=True)
                 verify_safe([], external)  # Private-catalog requests are expected for approved buyers.
                 print("LOCAL-B2B: PASS Auth/Edge checkout, canonical R$100, one submission, retry, B2B tracking and retail separation; no WhatsApp sent", flush=True)
             finally:
