@@ -125,11 +125,17 @@ def main() -> None:
                     page.locator("#header-my-orders-button").click()
                 print("LOCAL-B2B stage=tracking", {"http_status": tracking.value.status}, flush=True)
                 assert tracking.value.ok, "B2B tracking gateway rejected approved buyer"
-                expect(page.get_by_text("Histórico de Atacado")).to_be_visible(timeout=12000)
-                expect(page.get_by_text("#" + receipt["orderNumber"])).to_be_visible(timeout=12000)
+                history_heading = page.get_by_role("heading", name="Histórico de Atacado", exact=True)
+                expect(history_heading).to_be_visible(timeout=12000)
+                print("LOCAL-B2B stage=tracking-heading", {"visible": True}, flush=True)
+                order_button = page.get_by_role(
+                    "button", name=re.compile(r"^#" + re.escape(receipt["orderNumber"]))
+                )
+                expect(order_button).to_have_count(1, timeout=12000)
+                expect(order_button).to_be_visible(timeout=12000)
                 print("LOCAL-B2B stage=tracking-list", {"order_in_wholesale_tab": True}, flush=True)
                 page.get_by_role("button", name=re.compile(r"Pedidos Recentes de Varejo")).click()
-                expect(page.get_by_text("#" + receipt["orderNumber"])).to_have_count(0)
+                expect(order_button).to_have_count(0, timeout=12000)
                 print("LOCAL-B2B stage=retail-isolation", {"order_hidden_in_retail": True}, flush=True)
                 # Record counts only, never external URLs or credentials.
                 print("LOCAL-B2B stage=network-guard", {
