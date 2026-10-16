@@ -175,6 +175,28 @@ def main() -> None:
                 }
                 print("LOCAL-ORDER WhatsApp handoff contract:", handoff_checks, flush=True)
                 assert all(handoff_checks.values()), "Local WhatsApp handoff contract failed"
+
+                # B2B-13 retail regression: same fictitious PJ receipt is
+                # recoverable with the real token-based tracking endpoint.
+                with page.expect_response(
+                    lambda r: "track-order-by-token" in r.url and r.request.method == "POST",
+                    timeout=30000,
+                ) as retail_tracking:
+                    page.locator("#header-my-orders-button").click()
+                assert retail_tracking.value.status == 200, "Retail tracking token was rejected"
+                expect(page.get_by_role("heading", name="Pedidos Neste Navegador")).to_be_visible(timeout=12000)
+                retail_order = page.get_by_role(
+                    "button", name=re.compile(r"^#" + re.escape(receipt["orderNumber"]))
+                )
+                expect(retail_order).to_have_count(1, timeout=12000)
+                expect(retail_order).to_be_visible()
+                retail_order.click()
+                expect(page.get_by_text("Varejo", exact=True).first).to_be_visible(timeout=12000)
+                assert page.get_by_role("button", name=re.compile("Atacado B2B")).count() == 0
+                print("LOCAL-ORDER stage=retail-tracking", {
+                    "http_status": retail_tracking.value.status,
+                    "pj_receipt_in_retail": True, "wholesale_tab_hidden": True
+                }, flush=True)
                 verify_safe(private, external)
                 print("LOCAL-ORDER: PASS local Edge/Postgres receipt, two closed popups, retry/stale draft, and intercepted WhatsApp message link; zero messages sent", flush=True)
             finally:
