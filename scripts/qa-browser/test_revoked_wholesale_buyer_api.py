@@ -58,7 +58,7 @@ def main() -> None:
             def post_edge(token: str, name: str, body: dict):
                 return api.post(
                     "/functions/v1/" + name,
-                    headers={"Authorization": "Bearer " + token},
+                    headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
                     data=json.dumps(body), max_redirects=0, timeout=25000,
                 )
 
