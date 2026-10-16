@@ -858,10 +858,10 @@ Deno.serve(async (req: Request) => {
           // public Supabase API origin; preserve the signed path and token.
           const signed = new URL(signedData.signedUrl, supabaseUrl);
           const publicApi = new URL(supabaseUrl);
-          if (signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")
-              && publicApi.protocol === "https:" ||
-              (signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")
-               && publicApi.protocol === "http:" && publicApi.hostname === "127.0.0.1")) {
+          const allowedApiOrigin = publicApi.protocol === "https:"
+            || (publicApi.protocol === "http:" && publicApi.hostname === "127.0.0.1");
+          if (allowedApiOrigin
+              && signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")) {
             const publicSigned = new URL(signed.pathname + signed.search, publicApi);
             documentUrl = publicSigned.toString();
             documentExpiresAt = new Date(Date.now() + 604800 * 1000).toISOString();
