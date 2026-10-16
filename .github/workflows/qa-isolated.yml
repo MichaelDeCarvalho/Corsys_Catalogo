@@ -111,14 +111,11 @@ jobs:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
         run: python3 scripts/qa-browser/test_checkout_transaction_browser.py
 
-      - name: Independently assert persisted fictitious order count in local DB
+      - name: Independently assert persisted fictitious order count in local Postgres
         shell: bash
         env:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
-        run: |
-          source "$RUNNER_TEMP/local-supabase.env"
-          test -n "$SERVICE_ROLE_KEY"
-          QA_LOCAL_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" bun scripts/qa-browser/assert_local_order.mjs
+        run: bash scripts/qa-browser/assert_local_order.sh
 
       - name: Stop ephemeral database
         if: always()
