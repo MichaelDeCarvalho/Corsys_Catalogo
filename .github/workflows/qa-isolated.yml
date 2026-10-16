@@ -128,6 +128,10 @@ jobs:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
         run: bash scripts/qa-browser/assert_local_wholesale_order.sh
 
+      - name: Diagnose optional private order PDF in disposable storage
+        shell: bash
+        run: bash scripts/qa-browser/diagnose_local_order_pdf.sh
+
       - name: Verify logout during in-flight checkout in Chromium
         env:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
