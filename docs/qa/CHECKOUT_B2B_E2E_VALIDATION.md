@@ -7,6 +7,29 @@
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
 
+## Evidência incremental atual — 16/10/2026, PR #6
+
+**GATE: PARCIAL — NÃO LIBERADO PARA MERGE.** E2E isolado com Auth/Edge/Chromium/Postgres fictícios [QA #38978436835](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978436835) e [Quality #38978436776](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978436776) PASS no SHA `e6057c50054a34cbdaeb3146779ff29b5535072e`. Este resultado é anterior à migration de segurança 000023 e **não a aprova**. A [QA de replay adversarial #38978866418](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978866418) FAIL na etapa de replay entre tenants; a causa está sob correção em QA e nenhum dado Hosted foi alterado.
+
+| Caso | Cobertura observada nesta revisão | Situação |
+| --- | --- | --- |
+| B2B-01/02 | Chromium Auth anônimo, pendente, suspenso, rejeitado; catálogo atacado negado | PASS para estados exercitados |
+| B2B-03 | Comprador A aprovado, R$20/un, catálogo privado | PASS |
+| B2B-04/05 | Quantidade mínima 5 e mínimo financeiro; testes locais de UI/API documentados em 10–11/10, não todos os subcasos adversariais na revisão atual | PARCIAL |
+| B2B-06 | Campo oculto `notes` não aparece no browser nem persiste; validação pura de campos opcionais, mas não todos os campos em browser | PARCIAL |
+| B2B-07 | Obrigatoriedade real de `companyName`, `email`, `city` na UI; snapshot PJ persistido e regras no SQL; demais regras opcionais não percorridas em browser | PARCIAL |
+| B2B-08 | Pedido de 5×R$20 com HTTP 201, pending e auditoria SQL local de comprador A | PASS |
+| B2B-09 | Whitelist no gateway e validação SQL; forja de todos os campos não reexecutada no browser da revisão mais recente | PARCIAL |
+| B2B-10 | Retry de WhatsApp não gera outro POST; auditoria de contagem; replay HTTP real entre compradores identificou possível falha de autorização ainda sob correção | BLOQUEADO |
+| B2B-11 | Mensagem textual `wa.me` efetivamente construída, interceptada em memória, recibo/itens/total oficiais, zero mensagens enviadas e zero PDF na mensagem | PASS do contrato, **não** envio |
+| B2B-12 | Buyer B do tenant B negado HTTP 403 no catálogo A; revogação de A negada no catálogo e checkout HTTP 403; replay com chave pré-existente de A em revisão de segurança | BLOQUEADO até novo CI |
+| B2B-13 | PF/PJ alternância, pedido PJ real, tracking HTTP 200 e filtro varejo/atacado isolado, sem envio WhatsApp | PASS para jornada PJ; pedido PF persistido não testado |
+| RACE-01–04 | Cenários anteriores de status/catálogo/modal Auth documentados em 10–11/10; adicional de resposta real HTTP 201 atrasada no checkout após logout + auditoria SQL PASS no CI atual | PARCIAL no conjunto histórico; checkout in-flight PASS |
+
+**Critérios ainda necessários:** CI isolado na migration 000023 (autorização e idempotência por comprador), subcasos adversariais não cobertos no browser, confirmação de rollback/drill e aprovação explícita de merge/deploy. Não inferir aceite integral de testes puramente unitários ou scripts não executados.
+
+---
+
 ## 1. Pré-condições obrigatórias (fail-closed)
 
 - [ ] Ambiente Supabase **isolado da produção** disponível, autorizado e com custo aprovado quando aplicável. Branching do Supabase pode depender de plano pago; não provisionar implicitamente.
