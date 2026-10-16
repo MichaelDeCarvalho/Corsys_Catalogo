@@ -141,6 +141,36 @@ def main() -> None:
                 )).to_be_visible(timeout=12000)
                 assert len(submissions) == 1 and page.evaluate("window.__qaClosedCount") == 2
 
+                # B2B-11: inspect the actual wholesale WhatsApp text handoff without
+                # opening any external URL, transmitting data or posting again.
+                page.evaluate("""() => {
+                    window.__qaWholesaleWhatsAppLinks = [];
+                    window.open = (url, target) => {
+                        if (url !== 'about:blank' || target !== '_blank') throw new Error('Unexpected popup');
+                        return {
+                            closed: false,
+                            close() { this.closed = true; },
+                            location: { set href(value) { window.__qaWholesaleWhatsAppLinks.push(value); } }
+                        };
+                    };
+                }""")
+                page.locator("#btn-submit-order").click()
+                page.wait_for_function("window.__qaWholesaleWhatsAppLinks.length === 1", timeout=12000)
+                from urllib.parse import parse_qs
+                parsed_handoff = urlsplit(page.evaluate("window.__qaWholesaleWhatsAppLinks[0]"))
+                wholesale_message = parse_qs(parsed_handoff.query).get("text", [""])[0]
+                assert parsed_handoff.scheme == "https" and parsed_handoff.hostname == "wa.me"
+                assert parsed_handoff.path == "/5500000000000", "Wholesale contact must be QA-only"
+                assert receipt["orderNumber"] in wholesale_message
+                assert "QA-Produto Fictício" in wholesale_message
+                assert "Total:" in wholesale_message
+                assert "storage/v1/" not in wholesale_message and "documentUrl" not in wholesale_message
+                assert len(submissions) == 1, "WhatsApp handoff must not create another order"
+                print("LOCAL-B2B stage=whatsapp", {
+                    "text_handoff": True, "official_receipt": True,
+                    "private_pdf_not_shared": True, "external_messages_sent": 0
+                }, flush=True)
+
                 # Same authenticated user must see the official persisted B2B order in tracking.
                 page.get_by_title("Fechar carrinho").click()
                 with page.expect_response(
