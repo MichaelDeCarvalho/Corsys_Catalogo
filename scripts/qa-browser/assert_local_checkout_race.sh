@@ -44,6 +44,29 @@ BEGIN
   ) <> 2 THEN
     RAISE EXCEPTION 'QA race B2B order buyer binding or total incorrect';
   END IF;
+  IF to_regprocedure('private.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)') IS NULL
+    OR has_function_privilege(
+      'service_role',
+      'private.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+      'EXECUTE'
+    ) THEN
+    RAISE EXCEPTION 'QA legacy checkout implementation must be inaccessible to service_role';
+  END IF;
+  IF NOT has_function_privilege(
+    'service_role',
+    'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'anon',
+    'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated',
+    'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'QA checkout wrapper API grants are not least privilege';
+  END IF;
   RAISE NOTICE 'LOCAL-RACE DB PASS: one retail + two wholesale local orders, authorized buyer, canonical totals and no tenant B orders';
 END
 $audit$;
