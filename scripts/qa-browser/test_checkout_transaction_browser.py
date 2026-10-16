@@ -163,11 +163,18 @@ def main() -> None:
                 handoff_url = page.evaluate("window.__qaWhatsAppLinks[0]")
                 parsed = urlsplit(handoff_url)
                 message = parse_qs(parsed.query).get("text", [""])[0]
-                assert parsed.scheme == "https" and parsed.hostname == "wa.me"
-                assert parsed.path == "/5500000000000" and receipt["orderNumber"] in message
-                assert "QA-Produto Fictício" in message and "Total:" in message
-                assert "11.222.333/0001-81" not in message, "CNPJ leaked into WhatsApp text"
-                assert len(submits) == 1 and page.evaluate("window.__qaClosedCount") == 2, "WhatsApp handoff duplicated checkout or reopened external popup"
+                handoff_checks = {
+                    "https_wa_domain": parsed.scheme == "https" and parsed.hostname == "wa.me",
+                    "synthetic_recipient": parsed.path == "/5500000000000",
+                    "server_order_number": receipt["orderNumber"] in message,
+                    "synthetic_product": "QA-Produto Fictício" in message,
+                    "total_in_message": "Total:" in message,
+                    "no_full_document": "11.222.333/0001-81" not in message,
+                    "single_submission": len(submits) == 1,
+                    "exactly_two_real_popups_closed": page.evaluate("window.__qaClosedCount") == 2,
+                }
+                print("LOCAL-ORDER WhatsApp handoff contract:", handoff_checks, flush=True)
+                assert all(handoff_checks.values()), "Local WhatsApp handoff contract failed"
                 verify_safe(private, external)
                 print("LOCAL-ORDER: PASS local Edge/Postgres receipt, two closed popups, retry/stale draft, and intercepted WhatsApp message link; zero messages sent", flush=True)
             finally:
