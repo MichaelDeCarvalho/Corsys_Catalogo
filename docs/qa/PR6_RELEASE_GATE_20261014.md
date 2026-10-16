@@ -1,5 +1,17 @@
 # PR #6 — Gate de homologação e publicação (2026-10-14)
 
+## Gate atualizado — 16/10/2026, após recuperação de GitHub Actions
+
+**Veredito: checkout integrado, corrida de sessão e PDF privado na QA isolada APROVADOS; MERGE/RELEASE AINDA BLOQUEADOS por aceite final e autorização de publicação.**
+
+- **Revisão testada:** `9e412dd6b084a0da232b5af5fb37362f27868c28`. [Quality](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38974680072): SUCCESS; [Isolated Browser QA](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38974679950): SUCCESS. Os problemas anteriores de runner sem etapas foram resolvidos.
+- **Corrida de identidade in-flight:** Chromium enviou pedido B2B HTTP 201 ao Supabase descartável, reteve a resposta, encerrou sessão em outra aba e liberou a resposta; nenhum recibo/PII da identidade anterior foi apresentado, zero segundo POST. Auditoria SQL: exatamente 3 pedidos fictícios (1 varejo + 2 atacado), tenant A, comprador atacadista aprovado, total canônico de R$100 e nenhum pedido tenant B.
+- **PDF privado end-to-end:** teste comprovou Signed URL local HTTP 200, bytes `%PDF-`, acesso público sem assinatura negado. Diagnóstico independente: bucket `order-documents` privado, 2 objetos persistidos e zero avisos de geração/upload/assinatura.
+- **Correção mínima:** `submit-order-checkout` separa origem pública de URL assinada de `SUPABASE_URL` interno do Docker usando `PUBLIC_SUPABASE_URL` server-side opcional, nunca derivado do cliente; preserva HTTPS/loopback, caminho exato do objeto canônico e token. Em produção permanece fallback para `SUPABASE_URL`; nenhuma configuração Hosted foi alterada.
+- **Ainda exigido antes de publicação:** revisão final do diff PR #6 e matriz funcional B2B remanescente, checklist de rollback e aprovação humana específica. Migrations Google/estimativa seguem fora do escopo; não executar `db push`, merge nem Cloudflare deploy sem autorização distinta.
+
+---
+
 ## Estado vigente — 16/10/2026 (supersede notas históricas onde houver conflito)
 
 **Veredito: QA INTEGRADA B2B PARCIALMENTE APROVADA; RELEASE AINDA BLOQUEADO.**
