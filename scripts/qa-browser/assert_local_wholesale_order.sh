@@ -86,6 +86,21 @@ BEGIN
     RAISE EXCEPTION 'QA tenant B has an unexpected order';
   END IF;
 
+  -- B2B-06/07/13: configured notes are hidden, while the fictitious retail
+  -- PJ company's required fields must survive server-side persistence.
+  IF EXISTS (SELECT 1 FROM public.orders WHERE coalesce(notes,'') <> '') THEN
+    RAISE EXCEPTION 'Hidden notes field leaked into persisted QA order';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE shopping_mode='retail'
+      AND customer->>'type'='PJ'
+      AND customer->>'companyName'='Empresa Fictícia QA'
+      AND customer->>'email'='comprador@qa.invalid'
+  ) THEN
+    RAISE EXCEPTION 'QA required PJ fields not preserved in official persisted snapshot';
+  END IF;
+
   RAISE NOTICE 'LOCAL-B2B DB PASS: one retail and one wholesale order; pending, tenant A, approved B2B buyer, canonical total, no tenant B orders';
 END
 $audit$;
