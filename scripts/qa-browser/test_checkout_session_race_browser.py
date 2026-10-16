@@ -45,7 +45,7 @@ def main() -> None:
             # but the React handler must not show its stale receipt afterward.
             page.add_init_script("""(() => {
                 const realFetch = window.fetch.bind(window);
-                window.__qaRace = { pending: false, httpStatus: null, released: false, release: null, popups: 0 };
+                window.__qaRace = { pending: false, httpStatus: null, released: false, observedAfterResponse: false, release: null, popups: 0 };
                 window.fetch = (...args) => {
                     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
                     if (!url.includes('/functions/v1/submit-order-checkout')) return realFetch(...args);
@@ -56,6 +56,8 @@ def main() -> None:
                             window.__qaRace.released = true;
                             window.__qaRace.pending = false;
                             resolve(response);
+                            // Give React's awaited submit handler a browser task to settle.
+                            setTimeout(() => { window.__qaRace.observedAfterResponse = true; }, 500);
                         };
                     }));
                 };
@@ -119,11 +121,13 @@ def main() -> None:
                 print("LOCAL-RACE stage=logout", {"server_committed": True, "client_signed_out": True}, flush=True)
 
                 page.evaluate("window.__qaRace.release()")
-                page.wait_for_function("window.__qaRace.released === true")
+                page.wait_for_function("window.__qaRace.observedAfterResponse === true", timeout=5000)
                 # No stale order receipt, B2B private pricing or WhatsApp handoff
                 # may appear in the logged-out browser after the response arrives.
                 expect(page.get_by_text("Pedido registrado. Clique novamente", exact=False)).to_have_count(0)
                 expect(page.get_by_text("#" + receipt["orderNumber"], exact=False)).to_have_count(0)
+                expect(page.get_by_text("race-buyer@qa.invalid", exact=False)).to_have_count(0)
+                expect(page.locator("#btn-submit-order")).to_have_count(0)
                 expect(page.locator("#btn-mode-wholesale")).not_to_contain_text("Liberado", timeout=12000)
                 assert page.evaluate("window.__qaRace.popups") == 1
                 assert len(observed) == 1
