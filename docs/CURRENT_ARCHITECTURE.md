@@ -295,6 +295,7 @@
   - Autoridade de preços, itens e status estritamente derivada de `orderResult` e snapshots validados pelo banco de dados.
   - Paginação dinâmica com cabeçalho repetido e numeração de páginas em documentos com até 200 itens.
   - PDF server-side é preservado para auditoria e impressão/emissão administrativa.
+  - **Origem pública de Signed URLs no checkout:** a Edge Function `submit-order-checkout` pode receber `PUBLIC_SUPABASE_URL` exclusivamente por configuração server-side; na ausência usa `SUPABASE_URL`. Isso separa a origem pública HTTPS/loopback local da origem interna Docker do Supabase. O servidor só expõe URL assinada se a origem configurada for HTTPS ou `127.0.0.1` HTTP e o caminho corresponder exatamente ao bucket privado `order-documents` e ao objeto canônico do pedido, com token válido. Em QA descartável a origem explícita é `http://127.0.0.1:54321`; Hosted não foi alterado.
 
 ---
 
