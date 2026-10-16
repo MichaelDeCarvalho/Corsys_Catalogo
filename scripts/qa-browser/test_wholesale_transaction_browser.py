@@ -172,7 +172,10 @@ def main() -> None:
                 }, flush=True)
 
                 # Same authenticated user must see the official persisted B2B order in tracking.
-                page.get_by_title("Fechar carrinho").click()
+                # A completed in-memory WhatsApp handoff closes the drawer;
+                # a closed neutral popup from earlier retries leaves it open.
+                if page.get_by_title("Fechar carrinho").count():
+                    page.get_by_title("Fechar carrinho").click()
                 with page.expect_response(
                     lambda r: "list-my-customer-orders" in r.url and r.request.method == "POST",
                     timeout=30000,
