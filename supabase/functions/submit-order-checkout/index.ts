@@ -854,8 +854,18 @@ Deno.serve(async (req: Request) => {
           .createSignedUrl(canonicalPdfPath, 604800);
 
         if (!signError && signedData?.signedUrl) {
-          documentUrl = signedData.signedUrl;
-          documentExpiresAt = new Date(Date.now() + 604800 * 1000).toISOString();
+          // Storage may return an internal/local origin. Expose only the configured
+          // public Supabase API origin; preserve the signed path and token.
+          const signed = new URL(signedData.signedUrl, supabaseUrl);
+          const publicApi = new URL(supabaseUrl);
+          if (signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")
+              && publicApi.protocol === "https:" ||
+              (signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")
+               && publicApi.protocol === "http:" && publicApi.hostname === "127.0.0.1")) {
+            const publicSigned = new URL(signed.pathname + signed.search, publicApi);
+            documentUrl = publicSigned.toString();
+            documentExpiresAt = new Date(Date.now() + 604800 * 1000).toISOString();
+          }
         } else {
           console.warn("[submit-order-checkout] Aviso: Falha na assinatura da URL do documento de pedido.");
         }
