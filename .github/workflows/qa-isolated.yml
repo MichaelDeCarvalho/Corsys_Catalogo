@@ -117,6 +117,19 @@ jobs:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
         run: bash scripts/qa-browser/assert_local_order.sh
 
+      - name: Verify approved wholesale buyer checkout and tracking in Chromium
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: python3 scripts/qa-browser/test_wholesale_transaction_browser.py
+
+      - name: Independently assert retail and wholesale buyer data in isolated Postgres
+        shell: bash
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: |
+          source "$RUNNER_TEMP/local-supabase.env"
+          QA_LOCAL_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" bun scripts/qa-browser/assert_local_wholesale_order.mjs
+
       - name: Stop ephemeral database
         if: always()
         run: supabase stop --no-backup || true
