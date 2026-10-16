@@ -1,7 +1,7 @@
 # ADR 015 — Idempotência não é autorização de checkout B2B
 
 - **Data:** 2026-10-16
-- **Estado:** implementação proposta na branch PR #6; aceitação de segurança condicionada à QA isolada e revisão de release; **não publicado**.
+- **Estado:** aceita tecnicamente e validada na QA descartável; **não publicada**, pendente de autorização seletiva de migration e release.
 - **Migração:** `20261016000000_000023_checkout_idempotency_buyer_guard.sql` (forward-only).
 
 ## Contexto e problema
@@ -28,5 +28,7 @@ Manter a migration original 000018 **intacta**. Em migration **nova e transacion
 - **Reversão:** forward-fix; **não reverter** 000018, apagar pedidos ou executar rollback DDL automático em produção. Preparar migração corretiva separada se ocorrer regressão.
 - **Release:** migrations Google `20261011*` ainda não aplicadas em Hosted antecedem cronologicamente 000023; por isso **não usar `supabase db push` indiscriminadamente**. Criar roteiro explícito de migração seletiva, backup e aprovação antes de qualquer execução Hosted.
 - **Evidência:** teste `scripts/qa-browser/test_revoked_wholesale_buyer_api.py` exige negativa HTTP 403 para replay da chave da loja A pelo usuário B; a auditoria SQL confirma que o legado privado não é executável pelo papel `service_role` e que o wrapper nega `anon/authenticated`. Quality e Browser QA devem estar PASS no SHA exato.
+
+**Evidência de validação:** [Quality #38979475405](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979475405) e [Browser QA #38979869345](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979869345) SUCCESS no código testado. Replays cruzados, revogação, grants da função privada e checkouts legítimos PASS no Supabase local.
 
 **Sem permissão implícita de merge, deploy, DB Hosted ou ativação de Google Routes.**
