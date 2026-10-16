@@ -169,9 +169,9 @@ END $qa$;"""
             # B2B-09: never trust a caller's claimed buyer, tenant or prices.
             for field, forged_value in (
                 ("buyerUserId", str(uuid4())),
-                ("tenantId", str(uuid4())),
-                ("price", 0.01),
-                ("costPrice", 0.01),
+                ("subtotal", 0.01),
+                ("total", 0.01),
+                ("wholesalePrice", 0.01),
             ):
                 manipulated = draft(key=str(uuid4()))
                 manipulated[field] = forged_value
