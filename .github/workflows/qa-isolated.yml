@@ -143,6 +143,11 @@ jobs:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
         run: bash scripts/qa-browser/assert_local_checkout_race.sh
 
+      - name: Verify cross-tenant and revoked wholesale buyer in local Auth and Edge
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: python3 scripts/qa-browser/test_revoked_wholesale_buyer_api.py
+
       - name: Stop ephemeral database
         if: always()
         run: supabase stop --no-backup || true
