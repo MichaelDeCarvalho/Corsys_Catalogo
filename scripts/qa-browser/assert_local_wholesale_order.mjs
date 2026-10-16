@@ -23,7 +23,13 @@ if (!tenantA || !tenantB || tenantA === tenantB) throw new Error('Invalid synthe
 
 const { data: orders, error: ordersErr } = await client.from('orders')
   .select('id,tenant_id,order_number,shopping_mode,status,total,buyer_user_id');
-if (ordersErr || orders?.length !== 2) throw new Error('Expected exactly two local orders');
+if (ordersErr || orders?.length !== 2) {
+  console.log('LOCAL-B2B DB diagnostic', {
+    db_error_code: ordersErr?.code || null,
+    result_count: orders?.length ?? null,
+  });
+  throw new Error('Expected exactly two local orders');
+}
 const retail = orders.find(o => o.shopping_mode === 'retail');
 const wholesale = orders.find(o => o.shopping_mode === 'wholesale');
 if (!retail || !wholesale || retail.id === wholesale.id ||
