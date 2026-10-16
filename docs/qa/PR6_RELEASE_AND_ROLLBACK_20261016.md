@@ -15,6 +15,14 @@
 
 ---
 
+## Validação de segurança concluída na QA isolada — 16/10/2026
+
+A migration 000023, o wrapper RPC e os grants passaram em [Isolated Browser QA #38979869345](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979869345); [Quality #38979475405](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979475405) SUCCESS no SHA de código `744c8017` (documentos posteriores não alteram lógica). Comprador B de outro tenant não consegue consultar catálogo A nem reutilizar a chave de pedido A; comprador A após revogação recebe HTTP 403 no catálogo/checkout; Postgres preserva três pedidos locais, sem duplicação. PDF privado, WhatsApp textual interceptado e checkout concorrente também PASS. **Somente QA descartável**, sem verificação Hosted dessa mudança.
+
+A nova barreira foi validada em teste, mas **o gate de produção segue BLOQUEADO** até revisão final dos subcasos parciais, estratégia seletiva da migration 000023 (sem Google), backup/recuperação e autorização humana para migration, merge e Cloudflare deploy.
+
+---
+
 ## Revisão por fronteira de risco
 
 | Superfície | Diff / controle observado | Condição de aceite |
