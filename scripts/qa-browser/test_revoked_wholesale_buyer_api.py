@@ -77,17 +77,20 @@ def main() -> None:
             # Negative replay: an idempotency key must never act as authority
             # to retrieve an order from a different buyer or tenant. It is
             # extracted only inside the disposable test DB and never logged.
-            query = """SELECT idempotency_key::text FROM public.orders
+            query = """SELECT idempotency_key::text || '|' || id::text FROM public.orders
                        WHERE shopping_mode='wholesale'
                          AND tenant_id=(SELECT id FROM public.tenants
                                         WHERE slug='corsys-catalogo-demo')
                        ORDER BY created_at LIMIT 1;"""
-            prior_key = subprocess.run(
+            prior_record = subprocess.run(
                 ["docker", "exec", "-i", local_dbs[0], "psql", "-U", "postgres",
                  "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-At", "-c", query],
                 capture_output=True, text=True, check=True,
             ).stdout.strip()
+            assert prior_record.count("|") == 1, "No unique QA wholesale order"
+            prior_key, prior_order_id = prior_record.split("|")
             assert re.fullmatch(r"[a-f0-9-]{36}", prior_key), "No synthetic replay key"
+            assert re.fullmatch(r"[a-f0-9-]{36}", prior_order_id), "No synthetic order ID"
             cross_buyer_replay = post_edge(jwt_b, "submit-order-checkout", {
                 "tenantSlug": "corsys-catalogo-demo",
                 "idempotencyKey": prior_key,
@@ -103,6 +106,86 @@ def main() -> None:
             assert cross_buyer_replay.status == 403, (
                 "Cross-tenant idempotency replay bypassed buyer authorization"
             )
+
+            def draft(*, key: str, qty: int = 5) -> dict:
+                return {
+                    "tenantSlug": "corsys-catalogo-demo",
+                    "idempotencyKey": key,
+                    "shoppingMode": "wholesale",
+                    "items": [{"productId": product_id, "quantity": qty,
+                               "selectedVariant": None}],
+                    "customer": {"email": "buyer@qa.invalid"},
+                    "shippingAddress": {"street": "Rua Fictícia QA",
+                                        "city": "Curitiba"},
+                    "paymentMethod": "pix",
+                    "deliveryMethod": "retirada",
+                }
+
+            # B2B-10: same approved buyer replay is stable; no new order is made.
+            positive = post_edge(jwt_a, "submit-order-checkout", draft(key=prior_key))
+            assert positive.status == 201, "Approved buyer's idempotent replay failed"
+            replay_receipt = positive.json().get("order", {})
+            assert replay_receipt.get("id") == prior_order_id
+            assert replay_receipt.get("shoppingMode") == "wholesale"
+            assert float(replay_receipt.get("total") or 0) == 100
+            print("LOCAL-B2B stage=approved-replay PASS", flush=True)
+
+            # B2B-04: backend must independently enforce the product minimum.
+            too_few = post_edge(jwt_a, "submit-order-checkout",
+                                draft(key=str(uuid4()), qty=4))
+            assert too_few.status == 400, "Backend accepted quantity below B2B minimum"
+
+            # B2B-05: temporarily raise the minimum ONLY in disposable Postgres.
+            # The product minimum remains 5; 5 x R$20 falls short of R$120.
+            def local_sql(sql: str) -> None:
+                subprocess.run(
+                    ["docker", "exec", "-i", local_dbs[0], "psql", "-U",
+                     "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q"],
+                    input=sql, capture_output=True, text=True, check=True,
+                )
+
+            before = """DO $qa$
+DECLARE changed integer;
+BEGIN
+  UPDATE public.tenant_public_settings
+  SET wholesale_min_order_value=120
+  WHERE slug='corsys-catalogo-demo' AND wholesale_min_order_value=100;
+  GET DIAGNOSTICS changed = ROW_COUNT;
+  IF changed <> 1 THEN RAISE EXCEPTION 'Expected QA minimum 100'; END IF;
+END $qa$;"""
+            restore = """UPDATE public.tenant_public_settings
+                         SET wholesale_min_order_value=100
+                         WHERE slug='corsys-catalogo-demo'
+                           AND wholesale_min_order_value=120;"""
+            local_sql(before)
+            try:
+                too_low = post_edge(jwt_a, "submit-order-checkout",
+                                    draft(key=str(uuid4())))
+                assert too_low.status == 400, "Backend accepted below-store-minimum B2B order"
+            finally:
+                local_sql(restore)
+            print("LOCAL-B2B stage=minima PASS", flush=True)
+
+            # B2B-09: never trust a caller's claimed buyer, tenant or prices.
+            for field, forged_value in (
+                ("buyerUserId", str(uuid4())),
+                ("tenantId", str(uuid4())),
+                ("price", 0.01),
+                ("costPrice", 0.01),
+            ):
+                manipulated = draft(key=str(uuid4()))
+                manipulated[field] = forged_value
+                denial = post_edge(jwt_a, "submit-order-checkout", manipulated)
+                assert denial.status == 400, "Forbidden authority field was accepted"
+            # Required tenant-specific optional checkout fields must be checked
+            # server-side even when a client bypasses browser validation.
+            no_email = draft(key=str(uuid4()))
+            del no_email["customer"]["email"]
+            assert post_edge(jwt_a, "submit-order-checkout", no_email).status == 400
+            no_city = draft(key=str(uuid4()))
+            del no_city["shippingAddress"]["city"]
+            assert post_edge(jwt_a, "submit-order-checkout", no_city).status == 400
+            print("LOCAL-B2B stage=forgery-and-required-fields PASS", flush=True)
 
             # Mutation is deliberately performed against ONLY the disposable
             # postgres container after A's legitimate orders have been audited.
