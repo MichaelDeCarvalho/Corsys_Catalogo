@@ -126,9 +126,7 @@ jobs:
         shell: bash
         env:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
-        run: |
-          source "$RUNNER_TEMP/local-supabase.env"
-          QA_LOCAL_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" bun scripts/qa-browser/assert_local_wholesale_order.mjs
+        run: bash scripts/qa-browser/assert_local_wholesale_order.sh
 
       - name: Stop ephemeral database
         if: always()
