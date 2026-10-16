@@ -5,6 +5,16 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Achado crítico da revisão do diff — 16/10/2026
+
+**GATE BLOQUEADO POR AUTORIZAÇÃO B2B / REPLAY DE IDEMPOTÊNCIA.** A RPC original de 000018 retorna pedidos já existentes antes de validar o comprador em tentativas de replay. O teste adversarial de chave de A reutilizada pelo comprador B, introduzido em `cee84b7`, falhou em [QA #38978866418](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978866418); essa execução não registrou o status HTTP exato e **não prova ocorrência em Hosted**. É um risco de autorização que precisa ser fechado antes de qualquer publicação.
+
+**Remediação em branch de QA, NÃO APLICADA NO HOSTED:** migration forward-only `20261016000000_000023_checkout_idempotency_buyer_guard.sql`, ADR 015 e Security Register. A implementação antiga da RPC é movida a `private` com EXECUTE revogado aos papéis de API; o wrapper `public` valida tenant e comprador ativo inclusive no replay, compara dono/modalidade e serializa pela chave antes de delegar. Auditorias SQL e teste negativo serão executados em Supabase descartável. Até confirmar CI completo no SHA exato, estado **NOT EVALUATED**, nunca PASS.
+
+**Dependência de release:** 000023 sucede migrations de Google Routes `20261011*` ainda não aplicadas em produção. Não executar `supabase db push` para instalar 000023, pois isso pode aplicar as migrations pagas fora do escopo. Para eventual implantação posterior, exigir aprovação separada de migration, plano seletivo supervisionado, backup e validação de privilégios/compatibilidade.
+
+---
+
 ## Revisão por fronteira de risco
 
 | Superfície | Diff / controle observado | Condição de aceite |
