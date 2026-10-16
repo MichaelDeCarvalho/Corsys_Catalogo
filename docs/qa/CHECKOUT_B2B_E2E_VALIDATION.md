@@ -20,13 +20,13 @@
 | B2B-07 | Obrigatoriedade real de `companyName`, `email`, `city` na UI; snapshot PJ persistido e regras no SQL; demais regras opcionais não percorridas em browser | PARCIAL |
 | B2B-08 | Pedido de 5×R$20 com HTTP 201, pending e auditoria SQL local de comprador A | PASS |
 | B2B-09 | Whitelist no gateway e validação SQL; forja de todos os campos não reexecutada no browser da revisão mais recente | PARCIAL |
-| B2B-10 | Retry de WhatsApp não gera outro POST; auditoria de contagem; replay HTTP real entre compradores identificou possível falha de autorização ainda sob correção | BLOQUEADO |
+| B2B-10 | Retry sem novo POST, auditoria SQL e tentativa de replay cruzado negada após migration 000023; replay positivo HTTP pelo mesmo comprador não foi executado nesta bateria | PARCIAL |
 | B2B-11 | Mensagem textual `wa.me` efetivamente construída, interceptada em memória, recibo/itens/total oficiais, zero mensagens enviadas e zero PDF na mensagem | PASS do contrato, **não** envio |
-| B2B-12 | Buyer B do tenant B negado HTTP 403 no catálogo A; revogação de A negada no catálogo e checkout HTTP 403; replay com chave pré-existente de A em revisão de segurança | BLOQUEADO até novo CI |
+| B2B-12 | Buyer B do tenant B negado no catálogo; comprador A revogado negado no catálogo/checkout; replay da chave de A por B bloqueado sob migration 000023, SQL/grants auditados | PASS para casos negativos executados |
 | B2B-13 | PF/PJ alternância, pedido PJ real, tracking HTTP 200 e filtro varejo/atacado isolado, sem envio WhatsApp | PASS para jornada PJ; pedido PF persistido não testado |
 | RACE-01–04 | Cenários anteriores de status/catálogo/modal Auth documentados em 10–11/10; adicional de resposta real HTTP 201 atrasada no checkout após logout + auditoria SQL PASS no CI atual | PARCIAL no conjunto histórico; checkout in-flight PASS |
 
-**Critérios ainda necessários:** CI isolado na migration 000023 (autorização e idempotência por comprador), subcasos adversariais não cobertos no browser, confirmação de rollback/drill e aprovação explícita de merge/deploy. Não inferir aceite integral de testes puramente unitários ou scripts não executados.
+**Atualização observada no código SHA 744c8017:** [Quality #38979475405](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979475405) SUCCESS e [Browser QA #38979869345](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979869345) SUCCESS no último HEAD documental (mesmo código). A migração 000023 passou no Supabase local; replay cruzado, revogação e contratos positivos PASS. **Ainda necessários:** subcasos não exercitados em navegador, ensaio de rollback/aceite funcional e autorizações separadas de migração seletiva/merge/deploy. Não inferir aceite integral de testes puramente unitários ou scripts não executados.
 
 ---
 
