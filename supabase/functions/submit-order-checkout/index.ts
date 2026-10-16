@@ -854,15 +854,21 @@ Deno.serve(async (req: Request) => {
           .createSignedUrl(canonicalPdfPath, 604800);
 
         if (!signError && signedData?.signedUrl) {
-          // Storage may return an internal/local origin. Expose only the configured
-          // public Supabase API origin; preserve the signed path and token.
+          // The Edge Runtime may reach Supabase through an internal Docker URL.
+          // The browser receives only a trusted server-configured public API origin.
+          // Never use request Host/Origin or a client-provided URL for signed tokens.
           const signed = new URL(signedData.signedUrl, supabaseUrl);
-          const publicApi = new URL(supabaseUrl);
-          const allowedApiOrigin = publicApi.protocol === "https:"
-            || (publicApi.protocol === "http:" && publicApi.hostname === "127.0.0.1");
-          if (allowedApiOrigin
-              && signed.pathname.startsWith("/storage/v1/object/sign/order-documents/")) {
-            const publicSigned = new URL(signed.pathname + signed.search, publicApi);
+          const publicApi = new URL(Deno.env.get("PUBLIC_SUPABASE_URL") || supabaseUrl);
+          const allowedApiOrigin = (
+            publicApi.protocol === "https:"
+            || (publicApi.protocol === "http:" && publicApi.hostname === "127.0.0.1")
+          ) && !publicApi.username && !publicApi.password
+            && publicApi.pathname === "/" && !publicApi.search && !publicApi.hash;
+          const expectedPath = `/storage/v1/object/sign/order-documents/${canonicalPdfPath}`;
+          // A token signed for any other bucket/path must never be returned.
+          if (allowedApiOrigin && signed.pathname === expectedPath
+              && signed.searchParams.get("token")) {
+            const publicSigned = new URL(expectedPath + signed.search, publicApi);
             documentUrl = publicSigned.toString();
             documentExpiresAt = new Date(Date.now() + 604800 * 1000).toISOString();
           }
