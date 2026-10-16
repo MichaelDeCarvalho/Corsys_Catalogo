@@ -74,6 +74,36 @@ def main() -> None:
                                    {"tenantSlug": "corsys-catalogo-demo"})
             assert rejected_b.status == 403, "Tenant B buyer could access tenant A pricing"
 
+            # Negative replay: an idempotency key must never act as authority
+            # to retrieve an order from a different buyer or tenant. It is
+            # extracted only inside the disposable test DB and never logged.
+            query = """SELECT idempotency_key::text FROM public.orders
+                       WHERE shopping_mode='wholesale'
+                         AND tenant_id=(SELECT id FROM public.tenants
+                                        WHERE slug='corsys-catalogo-demo')
+                       ORDER BY created_at LIMIT 1;"""
+            prior_key = subprocess.run(
+                ["docker", "exec", "-i", local_dbs[0], "psql", "-U", "postgres",
+                 "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-At", "-c", query],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            assert re.fullmatch(r"[a-f0-9-]{36}", prior_key), "No synthetic replay key"
+            cross_buyer_replay = post_edge(jwt_b, "submit-order-checkout", {
+                "tenantSlug": "corsys-catalogo-demo",
+                "idempotencyKey": prior_key,
+                "shoppingMode": "wholesale",
+                "items": [{"productId": product_id, "quantity": 5,
+                           "selectedVariant": None}],
+                "customer": {"email": "tenant-b@qa.invalid"},
+                "shippingAddress": {"street": "Rua Fictícia QA",
+                                    "city": "Curitiba"},
+                "paymentMethod": "pix",
+                "deliveryMethod": "retirada",
+            })
+            assert cross_buyer_replay.status == 403, (
+                "Cross-tenant idempotency replay bypassed buyer authorization"
+            )
+
             # Mutation is deliberately performed against ONLY the disposable
             # postgres container after A's legitimate orders have been audited.
             sql = """DO $qa$
