@@ -58,10 +58,12 @@ def main() -> None:
                     and r.request.method == "POST", timeout=25000
                 ) as login_result:
                     page.get_by_role("button", name="Entrar no Sistema").click()
+                print("LOCAL-B2B stage=auth", {"rpc_ok": login_result.value.ok, "approved": login_result.value.json().get("status") == "approved"}, flush=True)
                 assert login_result.value.ok and login_result.value.json().get("status") == "approved"
                 expect(page.locator("#btn-mode-wholesale")).to_contain_text("Liberado", timeout=15000)
                 page.locator("#btn-mode-wholesale").click()
                 expect(page.get_by_text("R$ 20,00").first).to_be_visible(timeout=15000)
+                print("LOCAL-B2B stage=catalog", {"private_request": bool(private_catalog)}, flush=True)
                 assert private_catalog, "Approved account never requested its private catalog"
                 add = page.get_by_role(
                     "button", name=re.compile(r"^Adicionar Atacado \(\d+ [^)]+\)$")
@@ -83,9 +85,18 @@ def main() -> None:
                 ) as result:
                     page.locator("#btn-submit-order").click()
                 response = result.value
+                print("LOCAL-B2B stage=edge", {"http_status": response.status}, flush=True)
                 assert response.status == 201, "Wholesale Edge checkout did not return 201"
                 payload = response.json()
                 receipt = payload.get("order", {}) if isinstance(payload, dict) else {}
+                print("LOCAL-B2B stage=receipt", {
+                    "success": payload.get("success") is True,
+                    "mode_wholesale": receipt.get("shoppingMode") == "wholesale",
+                    "status_pending": receipt.get("status") == "pending",
+                    "qty5": bool(receipt.get("items")) and receipt["items"][0].get("quantity") == 5,
+                    "price20": bool(receipt.get("items")) and float(receipt["items"][0].get("unitPrice") or 0) == 20,
+                    "total100": float(receipt.get("total") or 0) == 100,
+                }, flush=True)
                 assert payload.get("success") is True
                 assert receipt.get("orderNumber") and receipt.get("shoppingMode") == "wholesale"
                 assert receipt.get("status") == "pending"
@@ -95,6 +106,7 @@ def main() -> None:
                 expect(page.get_by_text(
                     "Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False
                 )).to_be_visible(timeout=12000)
+                print("LOCAL-B2B stage=popup", {"submissions": len(submissions), "closed": page.evaluate("window.__qaClosedCount")}, flush=True)
                 assert len(submissions) == 1 and page.evaluate("window.__qaClosedCount") == 1
 
                 # The buyer may retry WhatsApp handoff without recreating the order.
@@ -111,6 +123,7 @@ def main() -> None:
                     timeout=30000,
                 ) as tracking:
                     page.locator("#header-my-orders-button").click()
+                print("LOCAL-B2B stage=tracking", {"http_status": tracking.value.status}, flush=True)
                 assert tracking.value.ok, "B2B tracking gateway rejected approved buyer"
                 expect(page.get_by_text("Histórico de Atacado")).to_be_visible(timeout=12000)
                 expect(page.get_by_text("#" + receipt["orderNumber"])).to_be_visible(timeout=12000)
