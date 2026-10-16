@@ -57,3 +57,9 @@
 
 - Bloqueio de reutilização indevida de `createdOrder` após popup WhatsApp fechado: o mesmo SHA-256 do `draft` e comprador precisa ser confirmado na tentativa seguinte. [Quality #107](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38672256780) passou nos testes existentes/novos de fingerprint. A regressão estrutural não é E2E.
 - Antes do merge, validar no navegador QA isolado um pedido fictício cujo popup foi fechado **após** o receipt; tentar abrir com o mesmo draft, depois editar dados e confirmar que não redireciona recibo anterior; testar mudança de sessão durante request sem revelar dados do outro comprador. Não reutilizar ambiente de produção.
+
+
+### Atualização do gate: transação local + handoff aprovado (15/10/2026)
+
+- [Isolated Browser QA #37](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38831184711) **SUCCESS** no commit `c62c65b`, Quality #152 SUCCESS. O pedido fictício PJ **foi persistido**, com HTTP 201, recibo validado, popup fechado e retry sem segundo pedido, alteração do draft recusada, retorno ao draft original gerou `wa.me` sintético com pedido/produto/total e sem CNPJ completo. Consulta direta ao Postgres QA confirmou **1** pedido no tenant correto. Nenhum WhatsApp real foi enviado; entrega efetiva exige ação manual do comprador.
+- Migrations Google continuam sem publicação, `GOOGLE_ROUTES_ENABLED` desativado; `000019`/`000020` já existentes no Hosted. Release **não está implicitamente autorizado**. Ainda pendente corrida durante submit, pedido B2B persistido/listado, tracking/filtros e documento PDF local. Revisar o risco restante antes de pedir aceite para merge/deploy Cloudflare.
