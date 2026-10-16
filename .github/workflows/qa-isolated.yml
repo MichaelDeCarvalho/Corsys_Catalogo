@@ -64,7 +64,7 @@ jobs:
         run: |
           test -z "${SUPABASE_ACCESS_TOKEN:-}" && test -z "${SUPABASE_PROJECT_ID:-}"
           install -m 600 /dev/null supabase/functions/.env
-          echo 'CHECKOUT_ENABLED=true' > supabase/functions/.env
+          printf '%s\n' 'CHECKOUT_ENABLED=true' 'PUBLIC_SUPABASE_URL=http://127.0.0.1:54321' > supabase/functions/.env
 
       - name: Start disposable local Supabase with loopback bindings
         shell: bash
