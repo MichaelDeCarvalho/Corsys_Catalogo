@@ -7,6 +7,22 @@
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
 
+## Evidência vigente — QA integrada final (16/10/2026, horário do projeto)
+
+**SHA de código testado:** `ae39e666e890367cee866d98b23db3a85054f253`. [Quality #38991112379](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112379) **SUCCESS** e [Isolated Browser QA #38991112403](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112403) **SUCCESS**, usando apenas Supabase local descartável e fixtures sem dados reais.
+
+- **B2B-04:** controle de quantidade atacadista não permite reduzir cinco unidades para quatro no Chromium; Edge independente recusa quantidade quatro (HTTP 400).
+- **B2B-05:** com valor mínimo local elevado de R$100 para R$120, carrinho de R$100 avisa o mínimo e desabilita avançar, sem POST; Edge recusa o mesmo total (HTTP 400); fixture restaurada.
+- **B2B-06/07:** browser verifica campos visíveis/obrigatórios/opcionais na configuração sintética, exclusão de `notes` e aplicabilidade PJ→PF; Edge recusa e-mail/cidade obrigatórios ausentes; snapshots PJ/PF e campos ocultos inspecionados no banco. Não foram testadas todas as combinações possíveis de configuração.
+- **B2B-09/10/12:** campos forjados `buyerUserId`, `subtotal`, `total` e `wholesalePrice` recusados; comprador aprovado faz replay idempotente com o mesmo pedido e total; buyer B e usuário revogado recebem negação, RLS e grants inspecionados.
+- **B2B-13:** pedidos **PJ e PF realmente persistidos** em PostgreSQL local; PF HTTP 201, rastreamento via token HTTP 200; PDF privado, WhatsApp interceptado sem envio, e corrida de logout mantêm PASS.
+- **Auditoria independente:** total exato de quatro pedidos fictícios (2 varejo — PJ/PF — e 2 B2B), sem pedido no tenant B; `tracking_token_hash` do PF de 64 caracteres; campos ocultos não persistidos.
+- **Rollout/rollback:** transação de configuração fictícia revertida e valores preservados, PASS **somente para DML local**. Restore de backup, rollback de Edge/Cloudflare e implantação seletiva da migration 000023 **NOT EVALUATED**.
+
+**Gate de produção: BLOCKED/PARCIAL**, não por falha desta bateria, mas porque faltam homologação de variantes e alguns testes de race ainda não integralmente reproduzidos, ensaio real de recuperação e aprovação humana separada de migration Hosted, merge e deploy. Google Routes continua desativado. Notas abaixo são histórico de revisões anteriores e não substituem este checkpoint.
+
+---
+
 ## Evidência incremental atual — 16/10/2026, PR #6
 
 **GATE: PARCIAL — NÃO LIBERADO PARA MERGE.** E2E isolado com Auth/Edge/Chromium/Postgres fictícios [QA #38978436835](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978436835) e [Quality #38978436776](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978436776) PASS no SHA `e6057c50054a34cbdaeb3146779ff29b5535072e`. Este resultado é anterior à migration de segurança 000023 e **não a aprova**. A [QA de replay adversarial #38978866418](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978866418) FAIL na etapa de replay entre tenants; a causa está sob correção em QA e nenhum dado Hosted foi alterado.
