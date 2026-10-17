@@ -106,6 +106,9 @@ jobs:
       - name: Verify configured checkout fields in real Chromium
         run: python3 scripts/qa-browser/test_checkout_field_policy_browser.py
 
+      - name: Check monetary wholesale minimum in Chromium without creating an order
+        run: python3 scripts/qa-browser/test_wholesale_ui_minimum_browser.py
+
       - name: Verify one fictitious local checkout, WhatsApp popup close and replay guard
         env:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
@@ -147,6 +150,21 @@ jobs:
         env:
           QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
         run: python3 scripts/qa-browser/test_revoked_wholesale_buyer_api.py
+
+      - name: Persist one fictitious PF retail order and validate tracking in Chromium
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: python3 scripts/qa-browser/test_pf_checkout_browser.py
+
+      - name: Audit final PF snapshot and four synthetic orders in local Postgres
+        shell: bash
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: bash scripts/qa-browser/assert_local_pf_order.sh
+
+      - name: Exercise rollback of one disposable delivery setting only
+        shell: bash
+        run: bash scripts/qa-browser/drill_local_settings_rollback.sh
 
       - name: Stop ephemeral database
         if: always()
