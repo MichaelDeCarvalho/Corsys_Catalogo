@@ -49,12 +49,14 @@ def main() -> None:
             })();""")
             try:
                 page.goto(frontend, wait_until="domcontentloaded", timeout=25000)
+                print("LOCAL-PF stage=storefront", flush=True)
                 expect(page.locator("#btn-mode-retail")).to_be_visible(timeout=25000)
                 add = page.get_by_role("button", name=re.compile(r"^Adicionar \(\d+ [^)]+\)$")).first
                 expect(add).to_be_enabled()
                 add.click()
                 page.locator("#floating-open-cart-btn").click()
                 page.locator("#btn-cart-proceed").click()
+                print("LOCAL-PF stage=details", flush=True)
                 page.get_by_role("button", name="Pessoa Física (CPF)").click()
                 expect(page.get_by_placeholder("000.000.000-00")).to_be_visible()
                 expect(page.get_by_label("Razão social (varejo PJ)")).to_have_count(0)
@@ -67,25 +69,30 @@ def main() -> None:
                 expect(page.get_by_label("Observações", exact=True)).to_have_count(0)
                 page.locator("#btn-validate-quote").click()
                 expect(page.locator("#btn-submit-order")).to_be_enabled(timeout=15000)
+                print("LOCAL-PF stage=review", flush=True)
                 with page.expect_response(
                     lambda r: r.url.startswith(endpoint) and r.request.method == "POST",
                     timeout=45000
                 ) as done:
                     page.locator("#btn-submit-order").click()
+                print("LOCAL-PF stage=edge", {"status": done.value.status}, flush=True)
                 assert done.value.status == 201, "Retail PF Edge checkout did not succeed"
                 body = done.value.json()
                 receipt = body.get("order", {})
                 assert body.get("success") is True
                 assert receipt.get("shoppingMode") == "retail"
                 assert receipt.get("orderNumber") and receipt.get("trackingToken")
+                print("LOCAL-PF stage=receipt", {"tracking_token_present": bool(receipt.get("trackingToken"))}, flush=True)
                 expect(page.get_by_text(
                     "Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False
                 )).to_be_visible(timeout=15000)
+                print("LOCAL-PF stage=confirmed", flush=True)
                 with page.expect_response(
                     lambda r: "track-order-by-token" in r.url and r.request.method == "POST",
                     timeout=30000
                 ) as track:
                     page.locator("#header-my-orders-button").click()
+                print("LOCAL-PF stage=tracking", {"status": track.value.status}, flush=True)
                 assert track.value.status == 200, "Retail PF tracking failed"
                 order = page.get_by_role(
                     "button", name=re.compile("^#" + re.escape(receipt["orderNumber"]))
