@@ -5,6 +5,16 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## QA ampliada de release — validação em 16/10/2026
+
+O código `ae39e666` passou [Quality #38991112379](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112379) e [Browser QA #38991112403](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112403), com migration 000023 somente em Supabase descartável. A revisão comprovou mínimo de quantidade no carrinho e SQL, mínimo financeiro R$120 bloqueando carrinho de R$100 e Edge, aplicação da configuração de campos e PF/PJ, persistência do PF com tracking HTTP 200, PDF privado, sem vazamento entre tenants e sem envio WhatsApp.
+
+**Mini-drill executado:** `scripts/qa-browser/drill_local_settings_rollback.sh` alterou a configuração local de atacado dentro de uma transação, reverteu-a com `ROLLBACK` e conferiu valor inicial e os quatro pedidos fictícios. **Isso NÃO comprova** restauração de backup, reversão de migration Hosted, Cloudflare ou Edge. O checklist de rollback de produção permanece **NOT EVALUATED**.
+
+**Restrições obrigatórias inalteradas:** PR #6 continua aberto; a migration 000023 não foi aplicada ao Hosted. Google Routes 000021/000022 não deve ser aplicado nem habilitado. Não executar `supabase db push` indiscriminado. Merge, migration seletiva e deploy demandam autorizações distintas e aprovação humana após smoke/rollback plan.
+
+---
+
 ## Achado crítico da revisão do diff — 16/10/2026
 
 **GATE BLOQUEADO POR AUTORIZAÇÃO B2B / REPLAY DE IDEMPOTÊNCIA.** A RPC original de 000018 retorna pedidos já existentes antes de validar o comprador em tentativas de replay. O teste adversarial de chave de A reutilizada pelo comprador B, introduzido em `cee84b7`, falhou em [QA #38978866418](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978866418); essa execução não registrou o status HTTP exato e **não prova ocorrência em Hosted**. É um risco de autorização que precisa ser fechado antes de qualquer publicação.
