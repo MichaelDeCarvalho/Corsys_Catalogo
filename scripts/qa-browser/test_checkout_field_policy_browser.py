@@ -35,6 +35,20 @@ def main():
                 assert email.get_attribute("required") is not None
                 assert city.get_attribute("required") is not None
                 expect(page.get_by_label("Observações", exact=True)).to_have_count(0)
+                # All configurable address/contact fields are checked, not
+                # only the three required ones. The synthetic DB hides notes.
+                expected_required = ("Razão social (varejo PJ)", "E-mail", "Logradouro", "Cidade")
+                expected_optional = ("Número", "Complemento", "Bairro", "UF", "CEP", "Código do vendedor")
+                for field in expected_required:
+                    input_field = page.get_by_label(field, exact=True)
+                    expect(input_field).to_be_visible()
+                    assert input_field.get_attribute("required") is not None, field
+                for field in expected_optional:
+                    input_field = page.get_by_label(field, exact=True)
+                    expect(input_field).to_be_visible()
+                    assert input_field.get_attribute("required") is None, field
+                assert page.get_by_placeholder("Nome completo").get_attribute("required") is not None
+                assert page.get_by_placeholder("Ex: 41987654321").get_attribute("required") is not None
                 page.locator("#btn-validate-quote").click()
                 expect(page.get_by_text("Razão social (varejo PJ) é obrigatório.", exact=True)).to_be_visible()
                 expect(page.get_by_text("E-mail é obrigatório.", exact=True)).to_be_visible()
@@ -49,6 +63,14 @@ def main():
                 page.get_by_label("Logradouro", exact=True).fill("Rua Fictícia QA")
                 page.locator("#btn-validate-quote").click()
                 expect(page.locator("#btn-submit-order")).to_be_visible(timeout=10000)
+                # PJ-only company field must disappear on PF, but required
+                # shared address/email rules must persist across the switch.
+                page.get_by_role("button", name="Voltar e editar").click()
+                page.get_by_role("button", name="Pessoa Física (CPF)").click()
+                expect(page.get_by_label("Razão social (varejo PJ)")).to_have_count(0)
+                for field in ("E-mail", "Cidade", "Logradouro"):
+                    assert page.get_by_label(field, exact=True).get_attribute("required") is not None
+                expect(page.get_by_label("Observações", exact=True)).to_have_count(0)
                 assert not orders, "Form validation must not create an order"
                 verify_safe(private, external)
                 print("B2B-06/07 local browser: required and hidden fields, review PASS; zero order submissions.")
