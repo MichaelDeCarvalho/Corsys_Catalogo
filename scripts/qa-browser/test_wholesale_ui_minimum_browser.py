@@ -65,6 +65,10 @@ END $qa$;""")
                         timeout=25000
                     ) as status:
                         page.get_by_role("button", name="Entrar no Sistema").click()
+                    print("LOCAL-B2B-05 stage=auth", {
+                        "http_ok": status.value.ok,
+                        "approved": status.value.json().get("status") == "approved"
+                    }, flush=True)
                     assert status.value.ok and status.value.json().get("status") == "approved"
                     expect(page.locator("#btn-mode-wholesale")).to_contain_text("Liberado", timeout=15000)
                     page.locator("#btn-mode-wholesale").click()
@@ -74,6 +78,12 @@ END $qa$;""")
                     expect(add).to_be_enabled(timeout=15000)
                     add.click()
                     page.locator("#floating-open-cart-btn").click()
+                    print("LOCAL-B2B-05 stage=cart", {
+                        "warning": page.get_by_text("Pedido mínimo da loja (Atacado):", exact=False).count(),
+                        "min120": page.get_by_text("R$ 120,00", exact=True).count(),
+                        "button_disabled": page.locator("#btn-cart-proceed").is_disabled(),
+                        "wholesale_price20": page.get_by_text("R$ 20,00", exact=False).count() > 0
+                    }, flush=True)
                     expect(page.get_by_text("Pedido mínimo da loja (Atacado):", exact=False)).to_be_visible()
                     expect(page.get_by_text("R$ 120,00", exact=True)).to_be_visible()
                     expect(page.locator("#btn-cart-proceed")).to_be_disabled()
