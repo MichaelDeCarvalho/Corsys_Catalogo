@@ -87,6 +87,10 @@ def main() -> None:
                     "Pedido registrado. Clique novamente para abrir o WhatsApp.", exact=False
                 )).to_be_visible(timeout=15000)
                 print("LOCAL-PF stage=confirmed", flush=True)
+                # Popup was intentionally closed, so checkout leaves the cart
+                # drawer open. Close it before clicking the header navigation.
+                page.get_by_title("Fechar carrinho").click()
+                expect(page.locator("#header-my-orders-button")).to_be_visible()
                 with page.expect_response(
                     lambda r: "track-order-by-token" in r.url and r.request.method == "POST",
                     timeout=30000
