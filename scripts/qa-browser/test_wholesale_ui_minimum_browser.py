@@ -85,7 +85,7 @@ END $qa$;""")
                         "wholesale_price20": page.get_by_text("R$ 20,00", exact=False).count() > 0
                     }, flush=True)
                     expect(page.get_by_text("Pedido mínimo da loja (Atacado):", exact=False)).to_be_visible()
-                    expect(page.get_by_text("R$ 120,00", exact=True)).to_be_visible()
+                    expect(page.get_by_text("R$ 120,00", exact=True).first).to_be_visible()
                     expect(page.locator("#btn-cart-proceed")).to_be_disabled()
                     assert not submissions, "Minimum warning sent order to server"
                     verify_safe(private, external)
