@@ -84,11 +84,15 @@ END $qa$;""")
                         "button_disabled": page.locator("#btn-cart-proceed").is_disabled(),
                         "wholesale_price20": page.get_by_text("R$ 20,00", exact=False).count() > 0
                     }, flush=True)
-                    expect(page.get_by_text("Pedido mínimo da loja (Atacado):", exact=False)).to_be_visible()
-                    expect(page.get_by_text("R$ 120,00", exact=True).first).to_be_visible()
+                    warning = page.get_by_text("Pedido mínimo da loja (Atacado):", exact=False)
+                    expect(warning).to_be_visible()
+                    expect(warning.locator("strong").first).to_have_text("R$ 120,00")
                     expect(page.locator("#btn-cart-proceed")).to_be_disabled()
                     assert not submissions, "Minimum warning sent order to server"
-                    verify_safe(private, external)
+                    # This buyer is approved: the *authorized* private catalog
+                    # request must exist. verify_safe() expects nonapproved users.
+                    assert private, "Approved buyer did not request the private catalog"
+                    verify_safe([], external)
                     print("LOCAL-B2B-05 UI PASS: R$100 below R$120 blocks checkout, no POST", flush=True)
                 finally:
                     ctx.close()
