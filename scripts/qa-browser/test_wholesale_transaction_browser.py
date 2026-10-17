@@ -71,6 +71,15 @@ def main() -> None:
                 expect(add).to_be_enabled()
                 add.click()
                 page.locator("#floating-open-cart-btn").click()
+                # B2B-04: cart quantity enforces the configured five-unit minimum.
+                minimum_quantity = page.get_by_label("Quantidade do produto").first
+                expect(minimum_quantity).to_have_value("5")
+                expect(page.get_by_title("Diminuir quantidade").first).to_be_disabled()
+                minimum_quantity.fill("4")
+                minimum_quantity.press("Tab")
+                expect(minimum_quantity).to_have_value("5")
+                expect(page.get_by_text("Mín. 5", exact=True)).to_be_visible()
+                expect(page.locator("#btn-cart-proceed")).to_be_enabled()
                 page.locator("#btn-cart-proceed").click()
                 expect(page.get_by_placeholder("Nome completo")).to_have_count(0)
                 page.get_by_label("E-mail", exact=True).fill("buyer@qa.invalid")
