@@ -44,6 +44,22 @@ function initSupabaseClient(): SupabaseClient {
 }
 
 let clientInstance: SupabaseClient | null = null;
+let publicCatalogClient: SupabaseClient | null = null;
+
+// Public projection uses anon RLS regardless of the signed-in buyer's staff role.
+// Never share or persist the authenticated client's session on this client.
+export const getPublicCatalogClient = (): SupabaseClient => {
+  if (!isSupabaseConfigured()) throw new Error('Supabase não configurado.');
+  if (!publicCatalogClient) {
+    publicCatalogClient = createClient(supabaseUrl, supabasePublishableKey, {
+      auth: {
+        storageKey: 'corsys-public-catalog-anon',
+        persistSession: false, autoRefreshToken: false, detectSessionInUrl: false,
+      },
+    });
+  }
+  return publicCatalogClient;
+};
 
 export const getSupabaseClient = (): SupabaseClient => {
   if (!clientInstance) {

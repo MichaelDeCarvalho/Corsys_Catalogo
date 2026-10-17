@@ -67,7 +67,7 @@ export const B2BGateModal: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Pedido mínimo reduzido no atacado: R$ 1.000,00</span>
+            <span>Pedido mínimo de atacado definido pela loja</span>
           </div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />

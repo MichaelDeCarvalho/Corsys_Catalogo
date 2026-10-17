@@ -92,11 +92,11 @@ BEGIN
     -- 8. Pedidos de Teste
     INSERT INTO public.orders (
         id, order_number, tenant_id, seller_id, seller_code, customer,
-        shipping_address, items, subtotal, total, status
+        shipping_address, items, subtotal, total, status, idempotency_key
     ) VALUES (
         v_order_a1, 'PED-A-001', v_tenant_a, v_user_sales_a, 'VEND-A',
         '{"name": "Cliente 1"}'::jsonb, '{"city": "SP"}'::jsonb,
-        '[{"sku": "SKU-A1", "quantity": 10}]'::jsonb, 85.00, 85.00, 'pending'
+        '[{"sku": "SKU-A1", "quantity": 10}]'::jsonb, 85.00, 85.00, 'pending', gen_random_uuid()
     ) ON CONFLICT (id) DO NOTHING;
 
     RAISE NOTICE 'Ambiente de teste inicializado com sucesso.';
@@ -131,16 +131,13 @@ BEGIN
     RAISE NOTICE '[PASS] Anon consulta tenant_public_settings com sucesso.';
 END $$;
 
--- 1.3 Lê wholesale_tiers de produtos ativos (SUCESSO)
+-- 1.3 Faixas de preço B2B não podem contornar o gateway de compradores aprovados.
 DO $$
-DECLARE
-    v_count INTEGER;
 BEGIN
-    SELECT count(*) INTO v_count FROM public.wholesale_tiers;
-    IF v_count < 2 THEN
-        RAISE EXCEPTION '[FALHA] Anon deveria ler faixas de atacado de produtos ativos.';
-    END IF;
-    RAISE NOTICE '[PASS] Anon consulta wholesale_tiers públicos com sucesso.';
+    PERFORM * FROM public.wholesale_tiers;
+    RAISE EXCEPTION '[FALHA DE SEGURANÇA] Anon conseguiu consultar wholesale_tiers!';
+EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE '[PASS] Anon bloqueado de ler faixas de preço B2B.';
 END $$;
 
 -- 1.4 Bloqueio de leitura em public.tenants (DEVE FALHAR COM PERMISSION DENIED)
@@ -439,12 +436,12 @@ RESET ROLE;
 DO $$
 BEGIN
     INSERT INTO public.orders (
-        order_number, tenant_id, seller_id, customer, shipping_address, items, subtotal, total
+        order_number, tenant_id, seller_id, customer, shipping_address, items, subtotal, total, idempotency_key
     ) VALUES (
         'PED-CROSS-FAIL',
         'a0000000-0000-0000-0000-000000000001'::uuid, -- Tenant A
         'b2000000-0000-0000-0000-000000000002'::uuid, -- Vendedor do Tenant B!
-        '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, 10.00, 10.00
+        '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, 10.00, 10.00, gen_random_uuid()
     );
     RAISE EXCEPTION '[FALHA DE INTEGRIDADE] Banco de dados permitiu vendedor cross-tenant em pedido!';
 EXCEPTION WHEN foreign_key_violation THEN

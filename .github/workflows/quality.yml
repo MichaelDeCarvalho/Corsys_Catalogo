@@ -40,3 +40,6 @@ jobs:
 
       - name: Run project checks
         run: bun run check
+
+      - name: Syntax-check isolated browser QA runner (no network or accounts)
+        run: python3 -m py_compile scripts/qa-browser/test_b2b_access_browser.py scripts/qa-browser/test_retail_identity_browser.py scripts/qa-browser/test_browser_preflight.py scripts/qa-browser/test_checkout_field_policy_browser.py scripts/qa-browser/test_checkout_transaction_browser.py scripts/qa-browser/test_wholesale_transaction_browser.py scripts/qa-browser/test_checkout_session_race_browser.py scripts/qa-browser/test_revoked_wholesale_buyer_api.py scripts/qa-browser/test_pf_checkout_browser.py scripts/qa-browser/test_wholesale_ui_minimum_browser.py && python3 -m unittest discover -s scripts/qa-browser -p 'test_browser_preflight.py' -v && bash -n scripts/qa-browser/diagnose_local_order_pdf.sh scripts/qa-browser/assert_local_pf_order.sh scripts/qa-browser/drill_local_settings_rollback.sh

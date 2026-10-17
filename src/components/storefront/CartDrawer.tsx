@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   Trash2,
@@ -24,11 +24,14 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { useWholesaleAccess } from '../../context/WholesaleAccessContext';
 import { PaymentMethod, TenantPublicSettings } from '../../types';
+import { AutomaticDeliveryEstimate } from './AutomaticDeliveryEstimate';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import {
   submitOrderCheckout,
+  computeOrderFingerprint,
   CheckoutOrderReceipt,
   SubmitOrderCheckoutDraft,
   OrderCheckoutError
@@ -195,9 +198,16 @@ export const CartDrawer: React.FC<{
 
   // Modalidade de compra autoritativa da UI oficial
   const { purchaseMode, isApproved, wholesaleCompany } = useWholesaleAccess();
+  const { user } = useAuth();
+  const checkoutIdentity = `${settings?.slug || ''}:${user?.id || 'anonymous'}`;
+  const currentIdentityRef = useRef(checkoutIdentity);
+  currentIdentityRef.current = checkoutIdentity;
+  const previousIdentityRef = useRef(checkoutIdentity);
 
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'review'>('cart');
   const [createdOrder, setCreatedOrder] = useState<CheckoutOrderReceipt | null>(null);
+  // Vínculo criptográfico entre o recibo já registrado e o draft/usuário original.
+  const [createdOrderFingerprint, setCreatedOrderFingerprint] = useState<string | null>(null);
   const [confirmedCustomerSnapshot, setConfirmedCustomerSnapshot] = useState<ConfirmedCustomerSnapshot | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [submittingStateText, setSubmittingStateText] = useState<string | null>(null);
@@ -245,6 +255,7 @@ export const CartDrawer: React.FC<{
   const resetCheckoutLifecycle = useCallback(() => {
     setCheckoutStep('cart');
     setCreatedOrder(null);
+    setCreatedOrderFingerprint(null);
     setConfirmedCustomerSnapshot(null);
     setSubmitError(null);
     setSubmittingStateText(null);
@@ -268,6 +279,15 @@ export const CartDrawer: React.FC<{
       sellerCode: ''
     });
   }, []);
+
+  // Clear cached receipt and customer PII on buyer/tenant change. Stable identity
+  // across JWT refresh avoids needless checkout resets.
+  useEffect(() => {
+    if (previousIdentityRef.current !== checkoutIdentity) {
+      previousIdentityRef.current = checkoutIdentity;
+      resetCheckoutLifecycle();
+    }
+  }, [checkoutIdentity, resetCheckoutLifecycle]);
 
   const handleCloseDrawer = () => {
     setIsCartOpen(false);
@@ -336,6 +356,8 @@ export const CartDrawer: React.FC<{
     if (lower === 'retirada') return 'Retirada na Loja';
     if (lower === 'entrega') return 'Entrega Padrão';
     if (lower === 'uber') return 'Uber / Entrega Rápida';
+    if (lower === 'uber_moto') return 'Uber Moto';
+    if (lower === 'uber_carro') return 'Carro / Caminhão';
     if (lower === 'transportadora') return 'Transportadora';
     if (lower === 'outro') return 'Outro Método';
     return method;
@@ -536,6 +558,9 @@ export const CartDrawer: React.FC<{
       return;
     }
 
+    // Do not show an order from another session after a login/tenant change.
+    const submissionIdentity = checkoutIdentity;
+
     // 12. Pré-abertura síncrona da janela de handoff para evitar bloqueio de popup pelo navegador pós-await
     let prepWindow: Window | null = null;
     try {
@@ -618,12 +643,27 @@ export const CartDrawer: React.FC<{
         sellerCode: formValues.sellerCode.trim() || undefined
       };
 
-      // 6. Chamada real à Edge Function com validação em runtime (ou reutilização de receipt já gerado)
+      // Só permite reutilizar recibo após popup fechado se draft e identidade não mudaram.
+      // Mesma canonicalização criptográfica usada pela idempotência oficial do serviço.
+      const currentFingerprint = await computeOrderFingerprint(draft, user?.id || 'anonymous');
+      if (currentIdentityRef.current !== submissionIdentity) {
+        throw new OrderCheckoutError('Sessão ou loja alterada durante a confirmação. Revise o pedido.', { kind: 'stale-session' });
+      }
       let receipt: CheckoutOrderReceipt;
       if (createdOrder) {
+        if (!createdOrderFingerprint || createdOrderFingerprint !== currentFingerprint) {
+          throw new OrderCheckoutError(
+            'O pedido anterior já foi registrado com outros dados. Não é possível reutilizar seu recibo. Retorne aos dados originais para abrir o WhatsApp ou inicie uma nova compra.',
+            { kind: 'stale-receipt' }
+          );
+        }
         receipt = createdOrder;
       } else {
         receipt = await submitOrderCheckout(draft);
+      }
+
+      if (currentIdentityRef.current !== submissionIdentity) {
+        throw new OrderCheckoutError('Sessão ou loja alterada durante a confirmação. Revise o pedido.', { kind: 'stale-session' });
       }
 
       // 7. Preparação do WhatsApp Handoff (Mensagem Textual Completa com Itens do Recibo Servidor)
@@ -656,6 +696,7 @@ export const CartDrawer: React.FC<{
       if (prepWindow.closed) {
         setConfirmedCustomerSnapshot(pendingCustomerSnapshot);
         setCreatedOrder(receipt);
+        setCreatedOrderFingerprint(currentFingerprint);
         setSubmitError('Pedido registrado. Clique novamente para abrir o WhatsApp.');
         showToast(`Pedido #${receipt.orderNumber} registrado.`);
         return;
@@ -902,7 +943,7 @@ export const CartDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomerData(prev => ({ ...prev, type: 'PJ' }));
+                      setCustomerData(prev => ({ ...prev, type: 'PJ', document: prev.type === 'PJ' ? prev.document : '' }));
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.document;
@@ -919,10 +960,11 @@ export const CartDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setCustomerData(prev => ({ ...prev, type: 'PF' }));
+                      setCustomerData(prev => ({ ...prev, type: 'PF', document: prev.type === 'PF' ? prev.document : '', companyName: '' }));
                       setErrors(prev => {
                         const next = { ...prev };
                         delete next.document;
+                        delete next.companyName;
                         return next;
                       });
                       setSubmitError(null);
@@ -1073,6 +1115,10 @@ export const CartDrawer: React.FC<{
               </div>
 
               {/* Endereço: logradouro permanece obrigatório em qualquer método. */}
+              {settings && import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
+                slug={settings.slug} method={deliveryMethod}
+                address={{ street: customerData.street, number: customerData.number, neighborhood: customerData.neighborhood,
+                  city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }} />}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <p className="font-bold text-slate-700">Endereço do comprador / entrega</p>
                 <div className="grid grid-cols-2 gap-2">
