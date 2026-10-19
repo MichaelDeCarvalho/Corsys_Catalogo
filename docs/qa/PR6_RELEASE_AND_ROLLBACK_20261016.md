@@ -5,6 +5,14 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Evidência atual de restore local — 19/10/2026
+
+**Code SHA `fa964f99`:** [Quality #39342161192](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39342161192) e [Isolated Browser QA #39342161033](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39342161033) SUCCESS. O drill `scripts/qa-browser/drill_local_backup_restore.sh` executou `pg_dump` e restaurou os schemas `public/private/auth/extensions` em segundo banco temporário; comparou contagem e digests dos **4 pedidos fictícios**, `wholesale_customers`, `tenant_public_settings`, `auth.users` e flag RLS, confirmou assinatura RPC e privilégios mínimos da origem e não modificou o banco original. Evidência detalhada: `docs/qa/PR6_RECOVERY_EVIDENCE_20261019.md`.
+
+**Limite do PASS:** cópia lógica restaurada com `--no-owner --no-acl`; portanto **owners/grants de destino, Storage físico, Realtime, backups Hosted, RTO/RPO e recuperação Edge/Cloudflare NÃO estão aprovados**. Requer ensaio autorizado em staging e checklist de autorização específica antes de migrar `000023`. PR segue bloqueado para merge/deploy.
+
+---
+
 ## Status de concorrência validado — 19/10/2026
 
 [Quality #39337384524](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384524) e [Browser QA #39337384495](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384495) SUCCESS no código `45340696`. RACE-01–04 aprovados em Chromium/Auth/Edge/Postgres descartáveis (aprovação e catálogo atrasados, catálogo vazio sem loop e revogação com modal aberto sem perda do carrinho). Checkouts PF/PJ/atacado, PDF privado e auditoria dos quatro pedidos fictícios também PASS.
