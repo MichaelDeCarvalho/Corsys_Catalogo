@@ -102,8 +102,13 @@ docker exec "$db" pg_dump -U postgres -d postgres -Fc \
 docker exec "$db" pg_restore -l "$archive" >/dev/null
 docker exec "$db" createdb -U postgres -T template0 "$clone"
 created=1
+# template0 already contains the default public namespace; remove it ONLY in
+# the newly created recovery database. pg_restore --clean is not suitable for
+# an empty clone with policies (DROP POLICY requires the table to exist).
+docker exec "$db" psql -U postgres -d "$clone" -v ON_ERROR_STOP=1 \
+  -q -c 'DROP SCHEMA IF EXISTS public CASCADE' >/dev/null
 docker exec "$db" pg_restore -U postgres -d "$clone" \
-  --no-owner --no-acl --clean --if-exists --exit-on-error --single-transaction "$archive" >/dev/null
+  --no-owner --no-acl --exit-on-error --single-transaction "$archive" >/dev/null
 
 restored_audit=$(docker exec "$db" psql -U postgres -d "$clone" -Atq -v ON_ERROR_STOP=1 -c "$audit_sql")
 if [[ "$source_audit" != "$restored_audit" ]]; then
