@@ -7,6 +7,14 @@
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
 
+## Evidência validada — 19/10/2026
+
+**SHA de código/QA `73ed4cc91aae8cf85c35120279dd8e364c2ad7bf`:** [Quality #39322939847](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939847) e [Browser QA #39322939786](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939786) **SUCCESS**. Nove variantes inválidas rejeitadas, tentativa cross-tenant negada e extras sem autoridade ignorados sem alterar recibo autoritativo. Revogação 403 e replay aprovado preservados; exatamente quatro pedidos sintéticos, zero no tenant B. Cenários PF/PJ, PDF privado, sessão concorrente e rollback transacional local também PASS.
+
+**Escopo ainda parcial:** permutações adicionais RACE-01–04 e configurações dinâmicas, restore de backup e rollback de Edge/Cloudflare não testados no Hosted. Migração seletiva 000023 apenas planejada; PR OPEN/BLOCKED.
+
+---
+
 ## Cobertura adversarial incremental — 19/10/2026
 
 **Novos casos adicionados, ainda NOT EVALUATED nesta revisão:** nove entradas inválidas e/ou com autoridade forjada no gateway (campos financeiros/buyer dentro do item, quantidade com tipo ou limite indevido, variante malformada, tenantSlug inválido e chave de idempotência inválida). Um comprador legítimo A tenta abrir atacado no tenant B; uma repetição legítima de chave antiga com campos extras de tenant/buyer deve retornar apenas o pedido autoritativo anterior. Auditoria existente continua exigindo quatro pedidos fictícios, e não deve haver quinto pedido por manipulação. Nenhum dado real ou WhatsApp.
