@@ -83,7 +83,7 @@ source_grants=$(docker exec "$db" psql -U postgres -d postgres -Atq -v ON_ERROR_
       'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
       'EXECUTE')::text || '|' ||
     has_function_privilege('service_role',
-      'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,text,uuid)',
+      'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
       'EXECUTE')::text")
 if [[ "$source_grants" != 'false|false|true' ]]; then
   echo 'BLOCKED: source RPC ACL is not least privilege' >&2
