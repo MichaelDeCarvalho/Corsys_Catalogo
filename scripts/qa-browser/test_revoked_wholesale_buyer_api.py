@@ -187,6 +187,59 @@ END $qa$;"""
             assert post_edge(jwt_a, "submit-order-checkout", no_city).status == 400
             print("LOCAL-B2B stage=forgery-and-required-fields PASS", flush=True)
 
+            # Additional adversarial variants are request-only and MUST never
+            # create orders or expose receipts. Client authority is ignored or
+            # rejected; the server determines prices, buyer and tenant.
+            invalid = (
+                ("nested_unit_price", lambda d: d["items"][0].update(unitPrice=0.01)),
+                ("nested_discount", lambda d: d["items"][0].update(discount=99)),
+                ("nested_buyer", lambda d: d["items"][0].update(buyer_user_id=str(uuid4()))),
+                ("negative_quantity", lambda d: d["items"][0].update(quantity=-1)),
+                ("fractional_quantity", lambda d: d["items"][0].update(quantity=5.5)),
+                ("string_quantity", lambda d: d["items"][0].update(quantity="5")),
+                ("invalid_variant", lambda d: d["items"][0].update(selectedVariant={"id": "bad"})),
+                ("invalid_tenant_type", lambda d: d.update(tenantSlug={"slug": "corsys-catalogo-demo"})),
+                ("invalid_idempotency", lambda d: d.update(idempotencyKey=str(uuid4()).replace("-4", "-1", 1))),
+            )
+            for case, tamper in invalid:
+                crafted = draft(key=str(uuid4()))
+                tamper(crafted)
+                result = post_edge(jwt_a, "submit-order-checkout", crafted)
+                assert result.status == 400, (
+                    "Invalid checkout field accepted: " + case
+                )
+
+            # A buyer approved in tenant A is not authorized to create a
+            # wholesale order in the isolated synthetic tenant B.
+            alien_tenant = draft(key=str(uuid4()))
+            alien_tenant["tenantSlug"] = "tenant-qa-b"
+            denied = post_edge(jwt_a, "submit-order-checkout", alien_tenant)
+            assert denied.status in (400, 403, 404), (
+                "Cross-tenant checkout was not denied"
+            )
+
+            # Extra properties aren't an authority grant. When ignored by
+            # the whitelist, replay must still return the original buyer's
+            # canonical order, with no extra persisted order or forged total.
+            ignored_fields = draft(key=prior_key)
+            ignored_fields["tenantId"] = str(uuid4())
+            ignored_fields["buyer_id"] = str(uuid4())
+            ignored_fields["items"][0]["tenantId"] = str(uuid4())
+            allowed_replay = post_edge(jwt_a, "submit-order-checkout", ignored_fields)
+            assert allowed_replay.status == 201, (
+                "Whitelist rejected safe idempotent replay unexpectedly"
+            )
+            safe_receipt = allowed_replay.json().get("order", {})
+            assert safe_receipt.get("id") == prior_order_id
+            assert safe_receipt.get("shoppingMode") == "wholesale"
+            assert float(safe_receipt.get("total") or 0) == 100
+            print("LOCAL-B2B stage=adversarial-variants PASS", {
+                "invalid_variants": len(invalid),
+                "cross_tenant_denied": True,
+                "untrusted_extra_fields_ignored": True
+            }, flush=True)
+
+
             # Mutation is deliberately performed against ONLY the disposable
             # postgres container after A's legitimate orders have been audited.
             sql = """DO $qa$
