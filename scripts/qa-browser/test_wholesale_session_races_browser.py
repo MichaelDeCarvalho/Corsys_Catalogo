@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from urllib.parse import urlsplit
 from playwright.sync_api import expect, sync_playwright
@@ -179,6 +180,89 @@ def main() -> None:
                 print("LOCAL-RACE-03 PASS: empty authorized catalog, one request, no duplicate fetch loop", flush=True)
             finally:
                 ctx.close()
+
+            # RACE-04: a buyer approved when opening the mode-switch modal
+            # is suspended in disposable Postgres BEFORE final confirmation.
+            # The actual status recheck must deny mode change AND retain the
+            # existing retail cart. Restore only this fixture in finally.
+            local_db_names = [
+                name for name in subprocess.run(
+                    ["docker", "ps", "--format", "{{.Names}}"],
+                    capture_output=True, text=True, check=True
+                ).stdout.splitlines()
+                if re.fullmatch(r"supabase_db_[A-Za-z0-9_-]+", name)
+            ]
+            if len(local_db_names) != 1:
+                raise RuntimeError("Exactly one disposable local database required")
+            def local_sql(query: str) -> None:
+                subprocess.run([
+                    "docker", "exec", "-i", local_db_names[0], "psql",
+                    "-U", "postgres", "-d", "postgres",
+                    "-v", "ON_ERROR_STOP=1", "-q"
+                ], input=query, capture_output=True, text=True, check=True)
+
+            ctx, page, private, external = guarded_context(browser, frontend, backend)
+            revoked = False
+            try:
+                page.goto(frontend, wait_until="domcontentloaded", timeout=25000)
+                expect(page.locator("#btn-mode-wholesale")).to_be_visible(timeout=25000)
+                login(page, *buyer_a)
+                expect(page.locator("#btn-mode-wholesale")).to_contain_text(
+                    "Liberado", timeout=20000)
+                retail_add = page.get_by_role(
+                    "button", name=re.compile(r"^Adicionar \(\d+ [^)]+\)$")
+                ).first
+                expect(retail_add).to_be_enabled(timeout=15000)
+                retail_add.click()
+                expect(page.locator("#floating-open-cart-btn")).to_be_visible()
+                page.locator("#btn-mode-wholesale").click()
+                expect(page.locator("#b2b-switch-mode-modal")).to_be_visible(timeout=10000)
+
+                local_sql("""DO $qa$
+DECLARE n integer;
+BEGIN
+ UPDATE public.wholesale_customers SET status='suspended'
+ WHERE user_id=(SELECT id FROM auth.users
+                WHERE email='qa-b2b-approved@qa.invalid')
+   AND tenant_id=(SELECT id FROM public.tenants
+                  WHERE slug='corsys-catalogo-demo')
+   AND status='approved';
+ GET DIAGNOSTICS n = ROW_COUNT;
+ IF n<>1 THEN RAISE EXCEPTION 'QA expected one approved A'; END IF;
+END $qa$;""")
+                revoked = True
+                with page.expect_response(
+                    lambda r: "get_my_wholesale_status" in r.url
+                    and r.request.method == "POST", timeout=25000
+                ) as response:
+                    page.locator("#btn-confirm-clear-and-switch").click()
+                assert response.value.status == 200
+                assert response.value.json().get("status") == "suspended"
+                expect(page.locator("#b2b-switch-mode-modal")).to_have_count(
+                    0, timeout=15000)
+                expect(page.locator("#btn-mode-retail")).to_have_class(
+                    re.compile(".*bg-white.*"), timeout=15000)
+                expect(page.locator("#floating-open-cart-btn")).to_be_visible()
+                expect(page.locator("#btn-mode-wholesale")).not_to_contain_text(
+                    "Liberado", timeout=15000)
+                assert not private, "Revoked buyer requested private catalog"
+                verify_safe([], external)
+                print("LOCAL-RACE-04 PASS: real revocation recheck denied switch, existing retail cart preserved", flush=True)
+            finally:
+                ctx.close()
+                if revoked:
+                    local_sql("""DO $qa$
+DECLARE n integer;
+BEGIN
+ UPDATE public.wholesale_customers SET status='approved'
+ WHERE user_id=(SELECT id FROM auth.users
+                WHERE email='qa-b2b-approved@qa.invalid')
+   AND tenant_id=(SELECT id FROM public.tenants
+                  WHERE slug='corsys-catalogo-demo')
+   AND status='suspended';
+ GET DIAGNOSTICS n = ROW_COUNT;
+ IF n<>1 THEN RAISE EXCEPTION 'QA approved status restore failed'; END IF;
+END $qa$;""")
         finally:
             browser.close()
 
