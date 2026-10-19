@@ -103,7 +103,7 @@ docker exec "$db" pg_restore -l "$archive" >/dev/null
 docker exec "$db" createdb -U postgres -T template0 "$clone"
 created=1
 docker exec "$db" pg_restore -U postgres -d "$clone" \
-  --no-owner --no-acl --exit-on-error --single-transaction "$archive" >/dev/null
+  --no-owner --no-acl --clean --if-exists --exit-on-error --single-transaction "$archive" >/dev/null
 
 restored_audit=$(docker exec "$db" psql -U postgres -d "$clone" -Atq -v ON_ERROR_STOP=1 -c "$audit_sql")
 if [[ "$source_audit" != "$restored_audit" ]]; then
