@@ -169,6 +169,12 @@ jobs:
         shell: bash
         run: bash scripts/qa-browser/drill_local_settings_rollback.sh
 
+      - name: Rehearse isolated logical PostgreSQL backup and restore
+        shell: bash
+        env:
+          QA_ALLOW_SYNTHETIC_LOCAL_ORDER: 'yes'
+        run: bash scripts/qa-browser/drill_local_backup_restore.sh
+
       - name: Stop ephemeral database
         if: always()
         run: supabase stop --no-backup || true
