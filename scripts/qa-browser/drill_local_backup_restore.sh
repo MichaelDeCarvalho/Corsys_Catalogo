@@ -48,7 +48,7 @@ SELECT concat_ws('|',
  (SELECT md5(string_agg(to_jsonb(o)::text, E'\n' ORDER BY o.id)) FROM public.orders o),
  (SELECT md5(string_agg(to_jsonb(w)::text, E'\n' ORDER BY w.user_id))
     FROM public.wholesale_customers w),
- (SELECT md5(string_agg(to_jsonb(t)::text, E'\n' ORDER BY t.id))
+ (SELECT md5(string_agg(to_jsonb(t)::text, E'\n' ORDER BY t.tenant_id))
     FROM public.tenant_public_settings t),
  (SELECT md5(string_agg(to_jsonb(u)::text, E'\n' ORDER BY u.id))
     FROM auth.users u),
