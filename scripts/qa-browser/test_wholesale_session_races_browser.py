@@ -165,15 +165,16 @@ def main() -> None:
                 page.wait_for_function(
                     "window.__qaWholesaleRace.processed === true", timeout=30000)
                 assert page.evaluate("window.__qaWholesaleRace.status") == 200
-                # Trigger React rerenders without changing identity or mode.
-                expect(page.locator("#btn-mode-wholesale")).to_have_class(
-                    re.compile(".*bg-white.*"), timeout=12000)
-                expect(page.get_by_role(
-                    "button", name=re.compile(r"^Adicionar Atacado")
-                )).to_have_count(0)
-                page.wait_for_timeout(1200)  # explicit bounded loop-detection window
-                assert page.evaluate("window.__qaWholesaleRace.calls") == 1
-                assert len(private) == 1
+                # The empty authorized catalog is allowed. Verify mode and
+                # absence of private prices rather than coupling to CSS classes.
+                expect(page.locator("#btn-mode-wholesale")).to_contain_text(
+                    "Liberado", timeout=12000)
+                expect(page.get_by_text("Preço Atacado")).to_have_count(0)
+                page.wait_for_timeout(1200)  # bounded loop-detection window
+                assert page.evaluate("window.__qaWholesaleRace.calls") == 1, (
+                    "Empty catalog triggered repeated client fetches"
+                )
+                assert len(private) == 1, "Expected one authorized catalog HTTP request"
                 verify_safe([], external)
                 print("LOCAL-RACE-03 PASS: empty authorized catalog, one request, no duplicate fetch loop", flush=True)
             finally:
