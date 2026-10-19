@@ -7,6 +7,14 @@
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
 
+## Cobertura adversarial incremental — 19/10/2026
+
+**Novos casos adicionados, ainda NOT EVALUATED nesta revisão:** nove entradas inválidas e/ou com autoridade forjada no gateway (campos financeiros/buyer dentro do item, quantidade com tipo ou limite indevido, variante malformada, tenantSlug inválido e chave de idempotência inválida). Um comprador legítimo A tenta abrir atacado no tenant B; uma repetição legítima de chave antiga com campos extras de tenant/buyer deve retornar apenas o pedido autoritativo anterior. Auditoria existente continua exigindo quatro pedidos fictícios, e não deve haver quinto pedido por manipulação. Nenhum dado real ou WhatsApp.
+
+As versões Google Routes 20261011* não devem ser instaladas para levar 000023 ao Hosted. Plano somente documental em `docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md`. CI novo será necessário para mudar os casos acima de NOT EVALUATED para PASS. O gate de merge/deploy segue BLOCKED.
+
+---
+
 ## Evidência vigente — QA integrada final (16/10/2026, horário do projeto)
 
 **SHA de código testado:** `ae39e666e890367cee866d98b23db3a85054f253`. [Quality #38991112379](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112379) **SUCCESS** e [Isolated Browser QA #38991112403](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112403) **SUCCESS**, usando apenas Supabase local descartável e fixtures sem dados reais.
