@@ -5,6 +5,16 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Gate automático de publicação e regressão final — 19/10/2026
+
+**Código SHA `b02025b3c639a9c9c54edca24121ef12277c2c46`:** [Quality #39344083695](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39344083695) e [Isolated Browser QA #39344083699](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39344083699) SUCCESS, incluindo `LOCAL-RESTORE PASS`, RACE-01–04, 4 pedidos fictícios, isolamento de tenant e checkout PF/PJ/B2B.
+
+`scripts/qa-browser/test_release_safety.py` foi adicionado ao Quality e executou 3 verificações PASS: os workflows versionados não contêm comandos explícitos de deploy/migration Hosted, Google Routes permanece desativado na QA, e as migrations Google pendentes e `000023` continuam inventariadas com bloqueio documental para `db push` indiscriminado.
+
+**Limites:** o guard é estático e cobre os workflows locais; não verifica automatismos do painel Cloudflare, Supabase GitHub Integration ou alterações externas. Restauro de roles/grants/Storage, RTO/RPO, backup real e rollback Edge/Cloudflare seguem NOT EVALUATED. **PR #6 ainda BLOQUEADO** para merge, migration Hosted e deploy.
+
+---
+
 ## Evidência atual de restore local — 19/10/2026
 
 **Code SHA `fa964f99`:** [Quality #39342161192](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39342161192) e [Isolated Browser QA #39342161033](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39342161033) SUCCESS. O drill `scripts/qa-browser/drill_local_backup_restore.sh` executou `pg_dump` e restaurou os schemas `public/private/auth/extensions` em segundo banco temporário; comparou contagem e digests dos **4 pedidos fictícios**, `wholesale_customers`, `tenant_public_settings`, `auth.users` e flag RLS, confirmou assinatura RPC e privilégios mínimos da origem e não modificou o banco original. Evidência detalhada: `docs/qa/PR6_RECOVERY_EVIDENCE_20261019.md`.
