@@ -5,6 +5,12 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Confirmação de QA adversarial — 19/10/2026
+
+No commit `73ed4cc9`, [Quality #39322939847](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939847) e [Browser QA #39322939786](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939786) SUCCESS. Nove variantes adversariais negadas, isolamento A→B confirmado, replay canônico preservado, quatro pedidos sintéticos auditados. **Não é autorização de produção**. A migration 000023 e seu runbook seletivo continuam sem execução no Hosted; backups/restores e rollback real não avaliados.
+
+---
+
 ## Preflight seletivo 000023 e cobertura adversarial — 19/10/2026
 
 - **Runbook novo:** `docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md`. Executar exclusivamente com autorização de banco separada, backup/restauração verificáveis e conferência read-only de grants, versões e dependências; `db push` em branch com migrations Google pendentes permanece proibido.
