@@ -11,6 +11,12 @@ Ela instala proteção de idempotência por comprador atacadista: move a funçã
 
 **Exclusões absolutas:** `20261011032224_google_routes_usage_limits.sql` e `20261011035235_google_routes_burst_protection.sql`, função `estimate-delivery`, API paga Google e flags de habilitação. Elas permanecem pendentes Hosted segundo último handoff. **NÃO** executar `supabase db push`, `supabase migration up --linked` nem `--include-all` com a pasta completa do PR: o CLI compara todo o diretório local com `supabase_migrations.schema_migrations` e poderia instalar Google involuntariamente. <https://supabase.com/docs/guides/deployment/database-migrations>
 
+## Gate de backup após ensaio local — 19/10/2026
+
+O CI do código `fa964f99` passou no [Browser QA #39342161033](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39342161033) com dump/restore lógico de dados sintéticos e preservação do banco original, conforme `docs/qa/PR6_RECOVERY_EVIDENCE_20261019.md`. O restore local **não** reproduziu ownership/grants e não incluiu Storage físico/Realtime; **não satisfaz** o pré-requisito deste runbook para aplicar a migration em Hosted. Antes de qualquer autorização de escrita, exigir staging recuperável, recuperação de ACL/roles, Storage e RTO/RPO reais.
+
+---
+
 ## Aprovações e preflight (somente leitura)
 
 - [ ] Autorização separada e registrada para **migração de banco Hosted 000023**, explicitando ambiente/projeto, janela, executor, contingência e custo. Autorizações de QA **não valem**.
