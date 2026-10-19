@@ -7,6 +7,14 @@
 
 **Evidência adicional em 2026-10-09:** `scripts/test-wholesale-context.mjs` monta o provider real com React DOM/jsdom, mocks explícitos de Auth/App/rede e cliques no DOM. Sete casos PASS após correção de troca direta de identidade (baseline 5 PASS / 2 FAIL). Isto é teste de componente, não execução B2B-01–13 ou RACE-01–04 com Supabase real. Veja o início de `SESSION_HANDOFF.md` para ambiente, release e recuperação parcial do escopo 5/6.
 
+## RACE-01–04 completos em Chromium — 19/10/2026
+
+**SHA de código `45340696`:** [Quality #39337384524](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384524) e [Browser QA #39337384495](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384495) SUCCESS com Supabase descartável. **RACE-01**: aprovação atrasada após logout não reabre atacado; **RACE-02**: resposta de catálogo de A atrasada após login de B não expõe preços A; **RACE-03**: catálogo vazio com uma chamada real e sem refetch loop; **RACE-04**: comprador suspenso no Postgres local antes da confirmação de modalidade permanece em varejo e preserva o carrinho, e a fixture aprovada é restaurada ao final. Todas as quatro situações **PASS** no mesmo workflow.
+
+Regressões PF/PJ, checkout retail e B2B, tracking token HTTP 200, PDF privado, revogação, 4 pedidos sintéticos e mini-rollback SQL local também PASS. Uma falha anterior após tracking PJ não se repetiu na execução completa com marcadores sanitizados. **Gate ainda BLOCKED:** recuperação de backup em staging, rollback Cloudflare/Edge, implantação seletiva de 000023, reconciliação do histórico e autorização separada para merge/deploy **NOT EVALUATED**.
+
+---
+
 ## Evidência validada — 19/10/2026
 
 **SHA de código/QA `73ed4cc91aae8cf85c35120279dd8e364c2ad7bf`:** [Quality #39322939847](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939847) e [Browser QA #39322939786](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939786) **SUCCESS**. Nove variantes inválidas rejeitadas, tentativa cross-tenant negada e extras sem autoridade ignorados sem alterar recibo autoritativo. Revogação 403 e replay aprovado preservados; exatamente quatro pedidos sintéticos, zero no tenant B. Cenários PF/PJ, PDF privado, sessão concorrente e rollback transacional local também PASS.
