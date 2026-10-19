@@ -5,6 +5,14 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Preflight seletivo 000023 e cobertura adversarial — 19/10/2026
+
+- **Runbook novo:** `docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md`. Executar exclusivamente com autorização de banco separada, backup/restauração verificáveis e conferência read-only de grants, versões e dependências; `db push` em branch com migrations Google pendentes permanece proibido.
+- **Testes adicionais propostos para a revisão vigente:** falsificação dentro de itens (unitPrice, discount, buyer_user_id), quantidade negativa/fracionária/string, variante com tipo inválido, tenantSlug não textual e idempotencyKey sem UUID v4. A também tenta comprar do tenant B; extras não autorizativos `tenantId`/`buyer_id` precisam ser ignorados sem modificar pedido anterior. **Status: NOT EVALUATED até CI do commit novo**.
+- **Limite:** não considerar o ensaio local de ROLLBACK como prova de restore/rollback de Hosted, Edge ou Cloudflare. PR não liberado para merge; eventual implantação seletiva requer impedir que migrations Google sejam disparadas por integração/deploy.
+
+---
+
 ## QA ampliada de release — validação em 16/10/2026
 
 O código `ae39e666` passou [Quality #38991112379](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112379) e [Browser QA #38991112403](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38991112403), com migration 000023 somente em Supabase descartável. A revisão comprovou mínimo de quantidade no carrinho e SQL, mínimo financeiro R$120 bloqueando carrinho de R$100 e Edge, aplicação da configuração de campos e PF/PJ, persistência do PF com tracking HTTP 200, PDF privado, sem vazamento entre tenants e sem envio WhatsApp.
