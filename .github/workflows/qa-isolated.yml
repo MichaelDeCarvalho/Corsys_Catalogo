@@ -106,6 +106,9 @@ jobs:
       - name: Verify configured checkout fields in real Chromium
         run: python3 scripts/qa-browser/test_checkout_field_policy_browser.py
 
+      - name: Verify wholesale status, buyer and empty-catalog session races in Chromium
+        run: python3 scripts/qa-browser/test_wholesale_session_races_browser.py
+
       - name: Check monetary wholesale minimum in Chromium without creating an order
         run: python3 scripts/qa-browser/test_wholesale_ui_minimum_browser.py
 
