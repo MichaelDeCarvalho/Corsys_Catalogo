@@ -183,16 +183,22 @@ def main() -> None:
                     timeout=30000,
                 ) as retail_tracking:
                     page.locator("#header-my-orders-button").click()
+                print("LOCAL-ORDER tracking-stage=response", {"status": retail_tracking.value.status}, flush=True)
                 assert retail_tracking.value.status == 200, "Retail tracking token was rejected"
                 expect(page.get_by_role("heading", name="Pedidos Neste Navegador")).to_be_visible(timeout=12000)
+                print("LOCAL-ORDER tracking-stage=list-visible", flush=True)
                 retail_order = page.get_by_role(
                     "button", name=re.compile(r"^#" + re.escape(receipt["orderNumber"]))
                 )
                 expect(retail_order).to_have_count(1, timeout=12000)
                 expect(retail_order).to_be_visible()
                 retail_order.click()
+                print("LOCAL-ORDER tracking-stage=order-opened", flush=True)
                 expect(page.get_by_text("Varejo", exact=True).first).to_be_visible(timeout=12000)
-                assert page.get_by_role("button", name=re.compile("Atacado B2B")).count() == 0
+                print("LOCAL-ORDER tracking-stage=retail-label", flush=True)
+                tab_count = page.get_by_role("button", name=re.compile("Atacado B2B")).count()
+                print("LOCAL-ORDER tracking-stage=tab-count", {"unexpected": tab_count}, flush=True)
+                assert tab_count == 0
                 print("LOCAL-ORDER stage=retail-tracking", {
                     "http_status": retail_tracking.value.status,
                     "pj_receipt_in_retail": True, "wholesale_tab_hidden": True
