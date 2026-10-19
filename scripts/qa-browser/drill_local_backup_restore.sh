@@ -53,15 +53,10 @@ SELECT concat_ws('|',
  (SELECT md5(string_agg(to_jsonb(u)::text, E'\n' ORDER BY u.id))
     FROM auth.users u),
  (SELECT relrowsecurity::text FROM pg_class WHERE oid='public.orders'::regclass),
- (SELECT has_function_privilege('anon',
-   'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
-   'EXECUTE')::text),
- (SELECT has_function_privilege('authenticated',
-   'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
-   'EXECUTE')::text),
- (SELECT has_function_privilege('service_role',
-   'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
-   'EXECUTE')::text)
+ (SELECT to_regprocedure(
+   'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)'
+ ) IS NOT NULL)
+
 );
 SQL
 )
@@ -72,8 +67,26 @@ if [[ "$source_n" != '4' ]]; then
   echo 'BLOCKED: expected exactly four synthetic checkout orders before backup' >&2
   exit 1
 fi
-if [[ "$source_audit" != *'|true|false|false|true' ]]; then
-  echo 'BLOCKED: checkout RLS/ACL source baseline unexpectedly changed' >&2
+# The clone deliberately omits owners/grants because this temporary
+# Supabase PG cluster has no ability to SET ROLE supabase_admin. Independently
+# require source RLS and wrapper; hosted ACL recovery remains NOT EVALUATED.
+if [[ "$source_audit" != *'|true|t' ]]; then
+  echo 'BLOCKED: checkout RLS/source RPC structure unexpectedly changed' >&2
+  exit 1
+fi
+source_grants=$(docker exec "$db" psql -U postgres -d postgres -Atq -v ON_ERROR_STOP=1 -c "
+  SELECT
+    has_function_privilege('anon',
+      'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+      'EXECUTE')::text || '|' ||
+    has_function_privilege('authenticated',
+      'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,uuid)',
+      'EXECUTE')::text || '|' ||
+    has_function_privilege('service_role',
+      'public.create_order_checkout_internal(text,uuid,text,jsonb,jsonb,jsonb,text,text,text,text,text,uuid)',
+      'EXECUTE')::text")
+if [[ "$source_grants" != 'false|false|true' ]]; then
+  echo 'BLOCKED: source RPC ACL is not least privilege' >&2
   exit 1
 fi
 
@@ -84,11 +97,11 @@ docker exec "$db" pg_restore -l "$archive" >/dev/null
 docker exec "$db" createdb -U postgres -T template0 "$clone"
 created=1
 docker exec "$db" pg_restore -U postgres -d "$clone" \
-  --exit-on-error --single-transaction "$archive" >/dev/null
+  --no-owner --no-acl --exit-on-error --single-transaction "$archive" >/dev/null
 
 restored_audit=$(docker exec "$db" psql -U postgres -d "$clone" -Atq -v ON_ERROR_STOP=1 -c "$audit_sql")
 if [[ "$source_audit" != "$restored_audit" ]]; then
-  echo 'FAIL: restored tenant/order/auth hashes, RLS or checkout privileges differ' >&2
+  echo 'FAIL: recovered synthetic tenant/order/auth data, RLS or wrapper presence differs' >&2
   exit 1
 fi
 
@@ -98,4 +111,4 @@ if [[ "$source_audit" != "$source_after" ]]; then
   echo 'FAIL: backup/restore rehearsal unexpectedly modified original QA database' >&2
   exit 1
 fi
-echo 'LOCAL-RESTORE PASS: 4 synthetic orders, Auth/tenant snapshots, RLS and RPC grants identical in isolated restored database; source preserved'
+echo 'LOCAL-RESTORE PASS: 4 synthetic orders, Auth/tenant hashes and RLS in isolated restore; source unchanged. Role ownership/ACL, Storage object files and Hosted recovery NOT VERIFIED'
