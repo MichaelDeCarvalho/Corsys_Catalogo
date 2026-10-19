@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Logical pg_dump/pg_restore rehearsal on disposable Supabase local only.
+# Application/Auth-schema pg_dump/pg_restore rehearsal on disposable Supabase local only.
 # Restore goes to a DIFFERENT temporary database in the same ephemeral
 # container. Never modifies, deletes, exports or uploads the source database.
 set -euo pipefail
@@ -92,7 +92,13 @@ fi
 
 # Keep the dump INSIDE the ephemeral container; never export it as CI artifact
 # or print sensitive SQL/rows. Fail hard on any restore error.
-docker exec "$db" pg_dump -U postgres -d postgres -Fc -f "$archive"
+# Limit the rehearsal to data-bearing application/Auth schemas. A raw Supabase
+# full dump also contains Realtime and privileged control-plane functions
+# (e.g. log_min_messages) that are not portable to a non-superuser test DB.
+# This is NOT a full-platform recovery drill.
+docker exec "$db" pg_dump -U postgres -d postgres -Fc \
+  --schema=public --schema=private --schema=auth --schema=extensions \
+  -f "$archive"
 docker exec "$db" pg_restore -l "$archive" >/dev/null
 docker exec "$db" createdb -U postgres -T template0 "$clone"
 created=1
@@ -111,4 +117,4 @@ if [[ "$source_audit" != "$source_after" ]]; then
   echo 'FAIL: backup/restore rehearsal unexpectedly modified original QA database' >&2
   exit 1
 fi
-echo 'LOCAL-RESTORE PASS: 4 synthetic orders, Auth/tenant hashes and RLS in isolated restore; source unchanged. Role ownership/ACL, Storage object files and Hosted recovery NOT VERIFIED'
+echo 'LOCAL-RESTORE PASS: isolated public/private/auth/extension schemas: 4 synthetic orders, Auth/tenant hashes, RLS; source preserved. Realtime/Storage data, ownership/ACL, backup history and Hosted restore NOT VERIFIED'
