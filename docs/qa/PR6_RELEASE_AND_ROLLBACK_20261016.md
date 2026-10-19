@@ -5,6 +5,14 @@
 **Ambiente de prova:** GitHub Actions com Supabase local descartável, dois tenants e contas/pedidos fictícios; não é staging Hosted nem produção.
 **Última baseline integrada aprovada antes da ampliação B2B-11/13:** SHA `2051cfe42ec418dfef33ee674b97f81b06e1520d`, Quality #38975306992 PASS, Isolated Browser QA #38975306909 PASS. Alterações posteriores exigem novos checks por SHA.
 
+## Status de concorrência validado — 19/10/2026
+
+[Quality #39337384524](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384524) e [Browser QA #39337384495](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39337384495) SUCCESS no código `45340696`. RACE-01–04 aprovados em Chromium/Auth/Edge/Postgres descartáveis (aprovação e catálogo atrasados, catálogo vazio sem loop e revogação com modal aberto sem perda do carrinho). Checkouts PF/PJ/atacado, PDF privado e auditoria dos quatro pedidos fictícios também PASS.
+
+**Não liberar merge/deploy:** migration Hosted 000023 não foi executada; backups/restore staging, RTO/RPO, rollback Cloudflare/Edge e smoke de produção continuam pendentes. Google Routes 000021/22 permanece excluído; não executar `db push` indiscriminado.
+
+---
+
 ## Confirmação de QA adversarial — 19/10/2026
 
 No commit `73ed4cc9`, [Quality #39322939847](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939847) e [Browser QA #39322939786](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/39322939786) SUCCESS. Nove variantes adversariais negadas, isolamento A→B confirmado, replay canônico preservado, quatro pedidos sintéticos auditados. **Não é autorização de produção**. A migration 000023 e seu runbook seletivo continuam sem execução no Hosted; backups/restores e rollback real não avaliados.
