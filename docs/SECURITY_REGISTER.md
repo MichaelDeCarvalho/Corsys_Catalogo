@@ -215,3 +215,45 @@
 - Testes de papéis reais e Hosted registrados no handoff após execução; até lá NOT EVALUATED.
 
 Advisors Hosted antes/depois do Item 4: nenhum finding novo. Aviso preexistente: [Leaked password protection desabilitada](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection), fora do escopo desta implementação. Testes de papéis reais/isolamento: PASS (ver SESSION_HANDOFF).
+
+
+---
+
+## Respostas B2B assíncronas obsoletas — isolamento de sessão (2026-10-09)
+
+- **Evidência adicional de componente:** React DOM/jsdom reproduziu manutenção de modalidade/carrinho e modal de A após troca direta para B (5 PASS / 2 FAIL na baseline PR #6). Comparação de identidade no efeito encerra a sessão comercial anterior; após correção 7/7 PASS. Stubs Auth/rede não comprovam isolamento no backend. Estado permanece FIX PREPARED / NOT DEPLOYED; não houve remediação ou mutação de produção.
+
+- **Área:** `src/context/WholesaleAccessContext.tsx`; cache privado em memória do catálogo atacadista e identidade do comprador.
+- **Finding de revisão de código:** na revisão anterior, callbacks de `refreshWholesaleStatus` e `loadWholesaleCatalog` podiam concluir depois de `clearWholesaleSession`/troca de usuário e voltar a preencher status, dados comerciais ou mapa de preços no estado React. Modal de mudança de modo também não revalidava a aprovação ao confirmar. Cenário potencial, não foi observado como exploração real em produção.
+- **Impacto potencial:** exposição transitória em UI de dados do catálogo de outro usuário no mesmo navegador e estado visual B2B inconsistente após logout. O risco NÃO equivale a execução de RPC privilegiada, pois a autorização server-side e a RLS permanecem obrigatórias.
+- **Correção candidata (PR #6, não publicada):** guard versionado por identidade (`createWholesaleRequestGate`) para status e catálogo; invalidação no logout, troca de usuário, nova consulta e revogação; descarte de respostas antigas; catálogo e identidade renderizados somente para a identidade atual; revalidação da aprovação antes de confirmar troca para atacado; controle de catálogo vazio sem loop de refetch.
+- **Testes propostos:** testes determinísticos de versão e ordem de resolução de Promises, logout/revogação e usuário diferente anexados à suíte `scripts/test-checkout-fields.ts`. Evidência de CI por commit registrada no PR após executar. Teste com React renderizado, JWT real e browser multiusuário ainda `NOT EVALUATED`.
+- **Risco residual:** requisições já transmitidas podem completar no servidor (são ignoradas pelo client); resposta já exibida antes da limpeza ou captura de tela não pode ser recuperada; backend continua sendo o perímetro de autorização. A validação B2B E2E em ambiente isolado permanece necessária.
+- **Estado:** `FIX PREPARED / NOT DEPLOYED`; não declarar remediação em produção antes de merge, deploy e homologação.
+
+
+---
+
+## Pré-release 2026-10-14 — acesso público a faixas de atacado em Hosted
+
+- **Evidência:** consulta somente leitura ao Supabase Hosted confirmou `public.wholesale_tiers` com `has_table_privilege('anon', ..., 'SELECT') = true`, política RLS `wholesale_tiers_select_public` presente e RLS habilitada. A contagem observada foi **0 registros**. Portanto não houve demonstração de exposição de preço privado de linha real, mas a configuração atual deixaria faixas futuras legíveis de forma anônima quando associadas a produtos públicos.
+- **Severidade:** ALTA como falha potencial de confidencialidade antes de cadastrar faixas de atacado; sem impacto observado em dados existentes (0 registros no instante auditado).
+- **Correção versionada e não publicada:** migration `20261010000000_000020_product_rls_and_private_wholesale_tiers.sql` remove a política de leitura pública, revoga privilégio `anon` e preserva políticas administrativas/autenticadas por tenant. Ao aplicar, validar diretamente os grants e testes com os papéis `anon`, comprador aprovado, administrador próprio e de outro tenant. O acesso a preços atacadistas para compradores deve permanecer restrito à Edge Function autorizada.
+- **Situação:** `OPEN / FIX PREPARED`. Não foi aplicada nenhuma migration Hosted nesta revisão. Pré-flight e sequência proposta em `docs/qa/PR6_RELEASE_GATE_20261014.md`.
+- **Risco de release adicional:** endpoint público de Google Routes, mesmo com reserva global SQL de tentativas, não cria limite global de cobrança fora da aplicação se uma chave for extraída. Google recomenda restrições de aplicativo e API, e proteção server-side; uso da chave sem restrição por IP foi documentado como escolha de QA. Não ativar Google em produção sem decisão explícita e política de custos/monitoramento. Referência oficial: https://developers.google.com/maps/api-security-best-practices .
+
+
+## Mitigação RLS Hosted e gate Google — atualização 2026-10-14
+
+- **Corrigido no BANCO Hosted:** 000020 aplicada e versão reconciliada. Verificação explícita confirmou has_table_privilege('anon','public.wholesale_tiers','SELECT') = false, política wholesale_tiers_select_public ausente, política tenant-scoped mantida e RLS habilitada; 0 faixas existentes, 6 pedidos e 520 produtos preservados. Achado anterior de preço público está REMEDIATED para grants/policies no schema Hosted. Teste E2E multissessão no frontend da PR não equivale a isso; continua pendente.
+- **Google Routes não ativado:** sem migrations usage/burst no Hosted, sem função estimate-delivery, nenhuma configuração estimateEnabled=true. UI comprador em CartDrawer e opção administrativa de habilitar estimativa em DeliverySettings são desativadas quando VITE_GOOGLE_ROUTES_UI_ENABLED não é exatamente 'true' no build. O servidor continua exigindo GOOGLE_ROUTES_ENABLED === 'true' separadamente; flag pública não substitui autenticação/cotas e não contém chave. Riscos de key IP irrestrita, cobrança e abuso permanecem ABERTOS antes de ativação futura.
+- A continuação da QA é autorizada, mas merge/deploy/custos requerem gates distintos. Plano completo em docs/qa/PR6_RELEASE_GATE_20261014.md.
+
+## Risco checkout B2B: idempotência sem vínculo de comprador — 16/10/2026
+
+- **Severidade:** ALTA (potencial divulgação de pedido/documento de outro comprador mediante chave de idempotência reutilizada; chave não equivale a autorização).
+- **Origem:** fast-path de `public.create_order_checkout_internal` na migration congelada 000018 consulta `tenant_id/idempotency_key` e retorna `orders` antes de vincular a identidade e status do comprador B2B.
+- **Evidência:** revisão de SQL e [Isolated Browser QA negativa #38978866418](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38978866418) com falha de asserção na etapa do replay entre tenants; status exato da resposta não registrado. Não há evidência de incidente real/Hosted.
+- **Mitigação proposta QA:** migration forward-only `20261016000000_000023_checkout_idempotency_buyer_guard.sql`, registrada em ADR 015. Wrapper SECURITY DEFINER verifica comprador aprovado, mesmo em replay, compara dono/modalidade de pedido existente e serializa por chave; legado movido para schema privado com grants retirados dos papéis de API.
+- **Status:** FIX EM QA / NÃO PUBLICADO. Gate de merge/release **BLOCKED** até PASS da QA integrada e autorização explícita do deploy/migration seletiva. Migrations 000018–000020 aplicadas não devem ser editadas, revertidas ou reaplicadas. Migrations Google mais antigas na pasta ainda não estão no Hosted.
+- **Atualização de validação:** a mitigação da migration 000023 passou [Browser QA #38979869345](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979869345) no banco/Edge descartável, com negativa de replay cruzado e revogação, e [Quality #38979475405](https://github.com/MichaelDeCarvalho/Corsys_Catalogo/actions/runs/38979475405) SUCCESS. **Status: MITIGADO NA BRANCH / AINDA NÃO REMEDIADO EM HOSTED**; aprovação de produção continua bloqueada até migration seletiva autorizada.

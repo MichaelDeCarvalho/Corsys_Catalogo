@@ -36,8 +36,9 @@ const migrationFiles = fs.readdirSync('supabase/migrations')
   .sort();
 
 assert(
-  migrationFiles.length === 18,
-  `Total de migrations no workspace é exatamente 18 (encontradas: ${migrationFiles.length})`
+  Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(6, '0'))
+    .every(version => migrationFiles.some(file => file.includes(`_${version}_`))),
+  'Todas as migrations da baseline 000001–000018 estão presentes; evolução posterior permitida'
 );
 
 const migration14File = '20261005170000_000014_admin_order_management.sql';

@@ -295,6 +295,7 @@
   - Autoridade de preços, itens e status estritamente derivada de `orderResult` e snapshots validados pelo banco de dados.
   - Paginação dinâmica com cabeçalho repetido e numeração de páginas em documentos com até 200 itens.
   - PDF server-side é preservado para auditoria e impressão/emissão administrativa.
+  - **Origem pública de Signed URLs no checkout:** a Edge Function `submit-order-checkout` pode receber `PUBLIC_SUPABASE_URL` exclusivamente por configuração server-side; na ausência usa `SUPABASE_URL`. Isso separa a origem pública HTTPS/loopback local da origem interna Docker do Supabase. O servidor só expõe URL assinada se a origem configurada for HTTPS ou `127.0.0.1` HTTP e o caminho corresponder exatamente ao bucket privado `order-documents` e ao objeto canônico do pedido, com token válido. Em QA descartável a origem explícita é `http://127.0.0.1:54321`; Hosted não foi alterado.
 
 ---
 
@@ -428,3 +429,38 @@ Schema 000018 e testes transacionais do Hosted PASS; Quality/Verify no commit 88
 Atualização: alinhamento da migration 000018 autorizado explicitamente e executado em 2026-10-08; versão Hosted=20261009020000, idêntica ao arquivo. Bloqueio anterior resolvido; publicação em andamento (estado final no SESSION_HANDOFF).
 
 Estado final Item 4: PR 2 integrado (4759ae5), Hosted alinhado em 000018=20261009020000, CI PASS e runtime Cloudflare publicado. Edição administrativa autenticada com save da política original e recarga PASS. Evidências e limites no SESSION_HANDOFF. Itens 5/6 não iniciados.
+
+
+### Hardening em revisão — ciclo assíncrono de sessão B2B (PR #6; 2026-10-09)
+- Revisão adicional: o efeito compara a identidade atual com a anterior; troca direta A→B limpa modalidade, carrinho atacadista e modal pendente antes da consulta de B. Renovação do token do mesmo usuário preserva modalidade/carrinho. Provider validado com React DOM/jsdom e fronteiras sintéticas; Auth/backend reais permanecem NOT EVALUATED no E2E.
+- **Não publicado:** alteração limitada à camada frontend `WholesaleAccessContext` e helper puro `src/utils/wholesaleRequestGate.ts`; sem mudanças em Auth, API, Edge Functions, schema, migrations ou privilégios.
+- Cada consulta de status/catálogo recebe um número monotônico por usuário; resultados atrasados de sessão anterior, consulta substituída ou após revogação/logout não atualizam estado.
+- O contexto só expõe `wholesaleStatus`, `wholesaleCompany` e `wholesaleCatalogMap` pertinentes ao usuário corrente. O modal pendente revalida aprovação B2B antes da troca de modalidade.
+- Catálogo vazio pode ser uma resposta legítima: o marcador de carregamento concluído impede reconsultas infinitas em `useEffect`. Um refresh explícito de status pode iniciar nova carga.
+- A decisão de autorização real segue exclusivamente no backend Supabase e nas políticas RLS; guards frontend são higiene de estado privado, não mecanismo de concessão de acesso.
+- Critérios de validação: `bun run check` no PR, testes de corrida determinísticos; E2E autenticado multiusuário e Supabase isolado permanecem `NOT EVALUATED` até disponibilidade de fixtures QA.
+# Atualização de QA Cloudflare — 2026-10-10
+Pipeline existente de branch usa Worker Previews com `previews: {}`; frontend somente estático, zero bindings. URLs permanecem desativadas e Base de Prévias sem variáveis de backend. Não representa Supabase QA nem comprova E2E B2B. Ver ADR 005 e SESSION_HANDOFF para evidências e limites.
+
+## QA local autenticado — 2026-10-10
+
+Ver ADR 013 para decisões, migration 000020 e diferenças controladas do ambiente local. Supabase local real, Auth real e fixtures fictícias; nenhuma alteração Hosted. RLS/integridade e checkout_fields executados no PostgreSQL com rollback: PASS. Oito testes de API local: PASS (anon/pending denied, aprovado A, isolamento A/B, total forjado negado, mínimo negado, pedido oficial total 100, idempotência). Correções encontradas: arquivamento de produto por admin, tiers B2B públicos, catálogo vazio após reload de comprador autenticado e recibo HTTP local. Bun check inclui fronteiras HTTPS/loopback.
+
+A matriz RLS legada fica corrigida pela ADR 013: anon não consulta wholesale_tiers; equipe autorizada mantém políticas próprias. Os testes de preparação de orders agora incluem idempotency_key. Não declarar que Hosted recebeu essas correções.
+
+
+## Estado consolidado — entrega Google Routes, 2026-10-11
+
+Integração local implementada: painel de métodos/endereço/tarifas, cálculo automático DRIVE básico no servidor, link Maps sem chave e estimativa separada do total oficial. Sem distância manual. Chave exclusivamente no servidor local, Routes API somente, sem restrição IP por decisão expressa do usuário após explicação dos riscos. Quatro consultas Google reais: 4143 metros, Moto R$7,46, Carro/Caminhão R$10,36. Produção permanece sem ativação.
+
+Limites persistentes: 10 tentativas por janela de 60 segundos, 250/dia e 7500/mês; reserva antes da chamada, falhas consomem cota, bloqueios sem fallback. Arquivo secreto fora do checkout com ACL restrita; check examina código e artefatos para impedir publicação de chaves. Endereço da loja é compartilhado no resultado/link, apesar de a configuração ser privada; painel informa isso explicitamente.
+
+Revalidação HTTP com Auth real local: 18/18 PASS em 2026-10-11, incluindo isolamento A/B, revogação, idempotência, mínimos, campos e varejo. Nenhuma mensagem enviada. A matriz completa de interface B2B e corridas com rede real continua PARTIAL; não converter cobertura de API/componente em E2E PASS. Relatório detalhado em docs/qa/GOOGLE_MAPS_ACTIVATION.md.
+
+Riscos: Origin não autentica; abuso pode esgotar limites. Chave vazada permite chamadas diretas que ignoram contadores locais; Routes API não restringe SKU e alertas não bloqueiam cobrança. IAM/2FA ainda não avaliados. Não há garantia de custo zero, nem autorização de merge/deploy de produção.
+
+## Baseline pré-release PR #6 — 2026-10-14
+
+- **Produção Supabase:** migrations 000001–000020 aplicadas e versões 000019=20261009030000 / 000020=20261010000000 reconciliadas. Tabela privada tenant_delivery_settings existe e segue RLS somente administrador; configuração default estimateEnabled=false. Políticas anon SELECT em wholesale_tiers removidas via 000020. 6 pedidos e 520 produtos preservados na última inspeção. Funções Edge publicadas: 8 existentes, não estimate-delivery.
+- **QA frontend na branch:** contexto B2B com guarda de identidade e revalidação da aprovação; seis regressões de estados de negação/concorrência adicionadas em 14/10. A interface da estimativa paga agora requer explicitamente VITE_GOOGLE_ROUTES_UI_ENABLED='true' no build em CartDrawer; opção de ativação pelo tenant é desabilitada no painel por padrão. Gate é apenas UX: autoridade permanece na flag server-side GOOGLE_ROUTES_ENABLED e validações backend; não confundir VITE_* com segredo.
+- **Fora da implantação:** migrations privadas Google de uso/rajada e estimate-delivery não executadas em Hosted; PR #6 não integrado em main; Cloudflare permanece na revisão anterior. CI de componente e build não substitui browser E2E completo. Ver docs/qa/PR6_RELEASE_GATE_20261014.md e CHECKOUT_B2B_E2E_VALIDATION.md.

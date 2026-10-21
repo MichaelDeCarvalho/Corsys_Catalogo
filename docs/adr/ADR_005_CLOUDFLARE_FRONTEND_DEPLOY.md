@@ -3,6 +3,10 @@
 ## Status
 **Aprovado / Validado em Runtime** (2026-09-28)
 
+### Compatibilidade com Worker Previews — 2026-10-10
+O pipeline de branches já configurado usa `npx wrangler preview` (Wrangler 4.143.0). Adicionar `previews: {}` corrige a falha de configuração confirmada no log, sem bindings nem variáveis de runtime. `preview_urls: false` permanece; não habilitar URLs nem substituir o comando de branch por deploy de produção. Variáveis de build da Base de Prévias estão vazias; não copiar Supabase de produção. O preview estático não equivale a ambiente B2B isolado. Validação local de configuração/assets por dry-run passou; publicação Preview remota deve ter evidência própria.
+Referência: https://developers.cloudflare.com/workers/previews/configuration/
+
 ---
 
 ## 1. Contexto

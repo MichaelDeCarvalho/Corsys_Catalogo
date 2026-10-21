@@ -10,7 +10,7 @@
  */
 
 import { parseCheckoutFields } from '../config/checkoutFields';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getPublicCatalogClient, isSupabaseConfigured } from '../lib/supabase';
 import { TenantPublicSettings, Product } from '../types';
 
 export interface RawTenantPublicSettingsRow {
@@ -143,7 +143,7 @@ export async function fetchTenantPublicSettings(slug: string): Promise<TenantPub
     throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no ambiente.');
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getPublicCatalogClient()
     .from('tenant_public_settings')
     .select('tenant_id, slug, public_name, whatsapp_number, logo_url, banner_url, primary_color, accent_color, min_order_value, wholesale_min_order_value, allow_b2b_mode, hide_prices_without_login, delivery_methods, checkout_fields, created_at, updated_at')
     .eq('slug', slug);
@@ -171,7 +171,7 @@ export async function fetchCatalogProducts(tenantId: string): Promise<Product[]>
     throw new Error('Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no ambiente.');
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getPublicCatalogClient()
     .from('catalog_products')
     .select('*')
     .eq('tenant_id', tenantId)

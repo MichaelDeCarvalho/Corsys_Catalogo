@@ -4,6 +4,7 @@ import { useApp } from './AppContext';
 import { WholesaleItemData, WholesaleCustomerStatus } from '../types';
 import { fetchMyWholesaleStatus, fetchWholesaleCatalog } from '../services/wholesaleService';
 import { PUBLIC_TENANT_SLUG } from '../config/tenant';
+import { createWholesaleRequestGate } from '../utils/wholesaleRequestGate';
 
 export type PurchaseMode = 'retail' | 'wholesale';
 export type WholesaleAccessStatus = 'unauthenticated' | WholesaleCustomerStatus;
@@ -58,14 +59,20 @@ export interface WholesaleAccessContextType {
 }
 
 const WholesaleAccessContext = createContext<WholesaleAccessContextType | undefined>(undefined);
+const EMPTY_WHOLESALE_CATALOG = new Map<string, WholesaleItemData>();
 
 export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const { cart, clearCart, showToast, setShoppingMode } = useApp();
+  // AppContext expõe ações recriadas em renders; seus callbacks atuais ficam em ref
+  // para não reiniciar as consultas de autorização ao mudar carrinho/toast/modo.
+  const appActionsRef = React.useRef({ clearCart, showToast, setShoppingMode });
+  appActionsRef.current = { clearCart, showToast, setShoppingMode };
 
   const [purchaseMode, setPurchaseModeState] = useState<PurchaseMode>('retail');
   const [wholesaleStatus, setWholesaleStatus] = useState<WholesaleAccessStatus>('unauthenticated');
   const [wholesaleCompany, setWholesaleCompany] = useState<WholesaleCompanyInfo | null>(null);
+  const [wholesaleOwnerId, setWholesaleOwnerId] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<boolean>(false);
 
   // Projeção autorizada de atacado (mantida estritamente em memória de sessão)
@@ -81,12 +88,20 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
 
   // Tenant canônico oficial para B2B
   const activeTenantSlug = PUBLIC_TENANT_SLUG;
+  const currentUserIdRef = React.useRef<string | null>(user?.id ?? null);
+  currentUserIdRef.current = user?.id ?? null;
+  const sessionUserIdRef = React.useRef<string | null>(user?.id ?? null);
+  const statusRequestGateRef = React.useRef(createWholesaleRequestGate());
+  const catalogRequestGateRef = React.useRef(createWholesaleRequestGate());
+  const catalogLoadedUserIdRef = React.useRef<string | null>(null);
+  const confirmationRef = React.useRef(0);
+  const confirmingRef = React.useRef(false);
 
   // Sincronização estrita entre purchaseMode autoritativo e shoppingMode legado do AppContext
   const setPurchaseModeSynchronized = useCallback((mode: PurchaseMode) => {
     setPurchaseModeState(mode);
-    setShoppingMode(mode);
-  }, [setShoppingMode]);
+    appActionsRef.current.setShoppingMode(mode);
+  }, []);
 
   const cartRef = React.useRef(cart);
   cartRef.current = cart;
@@ -96,31 +111,53 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
   // Fallback seguro para retail com limpeza de carrinho fora de state updater
   const resetToRetail = useCallback(() => {
     if (purchaseModeRef.current === 'wholesale' && cartRef.current.length > 0) {
-      clearCart();
+      appActionsRef.current.clearCart();
     }
     setPurchaseModeState('retail');
-    setShoppingMode('retail');
-  }, [clearCart, setShoppingMode]);
+    appActionsRef.current.setShoppingMode('retail');
+  }, []);
 
-  // Limpeza de cache e dados autorizados de atacado (ao deslogar ou revogar)
+  // Invalida respostas pendentes sempre que sessão B2B for limpa.
   const clearWholesaleSession = useCallback(() => {
+    confirmationRef.current++;
+    confirmingRef.current = false;
+    statusRequestGateRef.current.invalidate();
+    catalogRequestGateRef.current.invalidate();
+    catalogLoadedUserIdRef.current = null;
     resetToRetail();
     setWholesaleStatus('unauthenticated');
+    setWholesaleOwnerId(null);
     setWholesaleCompany(null);
     setWholesaleCatalogMap(new Map());
     setWholesaleCatalogError(null);
+    setLoadingStatus(false);
+    setIsLoadingWholesaleCatalog(false);
+    setIsSwitchModeDialogOpen(false);
+    setTargetPendingMode(null);
   }, [resetToRetail]);
 
-  // Carrega status B2B do usuário autenticado no tenant ativo (sem dependência em cart.length)
+  // Só a resposta mais recente do usuário ainda autenticado pode alterar status.
   const refreshWholesaleStatus = useCallback(async () => {
-    if (!user) {
+    if (!user?.id) {
       clearWholesaleSession();
       return;
     }
 
+    const request = statusRequestGateRef.current.begin(user.id);
+    catalogRequestGateRef.current.invalidate();
+    catalogLoadedUserIdRef.current = null;
+    setWholesaleOwnerId(null);
+    setWholesaleStatus('unauthenticated');
+    setWholesaleCompany(null);
+    setWholesaleCatalogMap(new Map());
+    setWholesaleCatalogError(null);
+    setIsLoadingWholesaleCatalog(false);
     setLoadingStatus(true);
     try {
       const res = await fetchMyWholesaleStatus(activeTenantSlug);
+      if (!statusRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
+
+      setWholesaleOwnerId(request.userId);
       if (res.status === 'approved') {
         setWholesaleStatus('approved');
         setWholesaleCompany({
@@ -132,6 +169,7 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
           phone: res.phone || ''
         });
       } else if (res.status === 'pending') {
+        resetToRetail();
         setWholesaleStatus('pending');
         setWholesaleCompany({
           legalName: res.legalName || 'Empresa em Análise',
@@ -144,77 +182,92 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       } else if (res.status === 'suspended') {
         resetToRetail();
         setWholesaleStatus('suspended');
-        setWholesaleCompany(null);
-        setWholesaleCatalogMap(new Map());
       } else if (res.status === 'rejected') {
         resetToRetail();
         setWholesaleStatus('rejected');
-        setWholesaleCompany(null);
-        setWholesaleCatalogMap(new Map());
       } else {
         resetToRetail();
         setWholesaleStatus('unauthenticated');
-        setWholesaleCompany(null);
-        setWholesaleCatalogMap(new Map());
       }
+      return res.status;
     } catch (err) {
+      if (!statusRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
       console.warn('[WholesaleAccessContext] Erro ao carregar status:', err);
       resetToRetail();
       setWholesaleStatus('unauthenticated');
+      setWholesaleOwnerId(null);
       setWholesaleCompany(null);
       setWholesaleCatalogMap(new Map());
     } finally {
-      setLoadingStatus(false);
+      if (statusRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) {
+        setLoadingStatus(false);
+      }
     }
   }, [user, activeTenantSlug, clearWholesaleSession, resetToRetail]);
 
-  // Carrega a projeção de preços atacadistas via RPC (sem dependência em cart.length)
+  // Catálogo privado da sessão aprovada atual; respostas obsoletas são descartadas.
   const loadWholesaleCatalog = useCallback(async () => {
-    if (wholesaleStatus !== 'approved') {
-      return;
-    }
+    if (!user?.id || wholesaleOwnerId !== user.id || wholesaleStatus !== 'approved') return;
 
+    const request = catalogRequestGateRef.current.begin(user.id);
     setIsLoadingWholesaleCatalog(true);
     setWholesaleCatalogError(null);
     try {
       const items = await fetchWholesaleCatalog(activeTenantSlug);
+      if (!catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
       const newMap = new Map<string, WholesaleItemData>();
-      for (const it of items) {
-        newMap.set(it.productId, it);
-      }
+      for (const it of items) newMap.set(it.productId, it);
+      catalogLoadedUserIdRef.current = request.userId;
       setWholesaleCatalogMap(newMap);
     } catch (err: unknown) {
+      if (!catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) return;
       const msg = err instanceof Error ? err.message : 'Falha ao carregar catálogo B2B';
       console.error('[WholesaleAccessContext] Erro no catálogo atacadista:', err);
       setWholesaleCatalogError(msg);
-      showToast(`Acesso ao atacado: ${msg}`);
+      appActionsRef.current.showToast(`Acesso ao atacado: ${msg}`);
       setWholesaleCatalogMap(new Map());
       resetToRetail();
     } finally {
-      setIsLoadingWholesaleCatalog(false);
+      if (catalogRequestGateRef.current.isCurrent(request, currentUserIdRef.current)) {
+        setIsLoadingWholesaleCatalog(false);
+      }
     }
-  }, [wholesaleStatus, activeTenantSlug, showToast, resetToRetail]);
+  }, [user?.id, wholesaleOwnerId, wholesaleStatus, activeTenantSlug, resetToRetail]);
 
   // Observa mudanças na autenticação do usuário
   useEffect(() => {
+    // Troca direta A -> B também encerra a sessão comercial anterior.
+    // Renovação do token do mesmo comprador preserva modalidade e carrinho.
+    if (sessionUserIdRef.current !== (user?.id ?? null)) {
+      sessionUserIdRef.current = user?.id ?? null;
+      clearWholesaleSession();
+    }
     if (user) {
       refreshWholesaleStatus();
     } else {
       clearWholesaleSession();
     }
+    return () => {
+      statusRequestGateRef.current.invalidate();
+      catalogRequestGateRef.current.invalidate();
+    };
   }, [user, refreshWholesaleStatus, clearWholesaleSession]);
 
   // Quando o status passa para approved e o usuário está no modo atacado, carrega o catálogo
   useEffect(() => {
-    if (wholesaleStatus === 'approved' && purchaseMode === 'wholesale' && wholesaleCatalogMap.size === 0) {
+    if (wholesaleStatus === 'approved' && wholesaleOwnerId === user?.id && purchaseMode === 'wholesale' && wholesaleCatalogMap.size === 0 && !isLoadingWholesaleCatalog && catalogLoadedUserIdRef.current !== user?.id) {
       loadWholesaleCatalog();
     }
-  }, [wholesaleStatus, purchaseMode, wholesaleCatalogMap.size, loadWholesaleCatalog]);
+  }, [wholesaleStatus, wholesaleOwnerId, user?.id, purchaseMode, wholesaleCatalogMap.size, isLoadingWholesaleCatalog, loadWholesaleCatalog]);
 
-  const isApproved = wholesaleStatus === 'approved';
-  const isPending = wholesaleStatus === 'pending';
-  const isSuspended = wholesaleStatus === 'suspended';
-  const isRejected = wholesaleStatus === 'rejected';
+  // Nunca expor status/identidade privados de uma sessão anterior nem por um render.
+  const visibleWholesaleStatus: WholesaleAccessStatus =
+    wholesaleOwnerId !== null && wholesaleOwnerId === user?.id ? wholesaleStatus : 'unauthenticated';
+  const isApproved = visibleWholesaleStatus === 'approved';
+  const isPending = visibleWholesaleStatus === 'pending';
+  const isSuspended = visibleWholesaleStatus === 'suspended';
+  const isRejected = visibleWholesaleStatus === 'rejected';
+  const visibleWholesaleCatalogMap = isApproved ? wholesaleCatalogMap : EMPTY_WHOLESALE_CATALOG;
 
   // Solicitação de mudança de modalidade com verificação de autorização e proteção de carrinho
   const requestSwitchPurchaseMode = (targetMode: PurchaseMode) => {
@@ -269,27 +322,50 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
     }
   };
 
-  const confirmSwitchPurchaseMode = () => {
-    if (!targetPendingMode) return;
-
+  const confirmSwitchPurchaseMode = async () => {
+    if (!targetPendingMode || confirmingRef.current) return;
+    const target = targetPendingMode;
+    // A aprovação pode mudar enquanto o modal de troca está aberto.
+    if (targetPendingMode === 'wholesale' && (!user || !isApproved || loadingStatus)) {
+      setIsSwitchModeDialogOpen(false);
+      setTargetPendingMode(null);
+      showToast('Acesso ao atacado não está aprovado para a sessão atual.');
+      return;
+    }
+    if (target === 'wholesale') {
+      const buyer = user!.id;
+      const confirmation = ++confirmationRef.current;
+      confirmingRef.current = true;
+      const status = await refreshWholesaleStatus();
+      if (confirmation !== confirmationRef.current || currentUserIdRef.current !== buyer) return;
+      confirmingRef.current = false;
+      if (status !== 'approved') {
+        setIsSwitchModeDialogOpen(false);
+        setTargetPendingMode(null);
+        showToast('Acesso ao atacado não confirmado. Seu carrinho de varejo foi preservado.');
+        return;
+      }
+    }
     clearCart();
-    setPurchaseModeSynchronized(targetPendingMode);
-    if (targetPendingMode === 'wholesale') {
+    setPurchaseModeSynchronized(target);
+    if (target === 'wholesale') {
       loadWholesaleCatalog();
     }
-    showToast(`Modalidade alterada para ${targetPendingMode === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
+    showToast(`Modalidade alterada para ${target === 'wholesale' ? 'ATACADO' : 'VAREJO'}. Carrinho reiniciado.`);
 
     setIsSwitchModeDialogOpen(false);
     setTargetPendingMode(null);
   };
 
   const cancelSwitchPurchaseMode = () => {
+    confirmationRef.current++;
+    confirmingRef.current = false;
     setIsSwitchModeDialogOpen(false);
     setTargetPendingMode(null);
   };
 
   const getWholesaleItem = (productId: string): WholesaleItemData | undefined => {
-    return wholesaleCatalogMap.get(productId);
+    return visibleWholesaleCatalogMap.get(productId);
   };
 
   const openB2BGateModal = () => setIsB2BGateModalOpen(true);
@@ -305,14 +381,14 @@ export const WholesaleAccessProvider: React.FC<{ children: React.ReactNode }> = 
       value={{
         purchaseMode,
         requestSwitchPurchaseMode,
-        wholesaleStatus,
+        wholesaleStatus: visibleWholesaleStatus,
         isApproved,
         isPending,
         isSuspended,
         isRejected,
-        wholesaleCompany,
+        wholesaleCompany: wholesaleOwnerId === user?.id ? wholesaleCompany : null,
         loadingStatus,
-        wholesaleCatalogMap,
+        wholesaleCatalogMap: visibleWholesaleCatalogMap,
         isLoadingWholesaleCatalog,
         wholesaleCatalogError,
         getWholesaleItem,

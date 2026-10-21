@@ -15,6 +15,7 @@
  * 11. Behavioral Simulations
  */
 
+import './order-service-test-env';
 import * as fs from 'fs';
 import { 
   computeOrderFingerprint, 
@@ -461,6 +462,24 @@ assert(
 );
 
 assert(
+  cartDrawerCode.includes("computeOrderFingerprint(draft, user?.id || 'anonymous')") &&
+  cartDrawerCode.includes('createdOrderFingerprint !== currentFingerprint') &&
+  cartDrawerCode.includes('setCreatedOrderFingerprint(currentFingerprint)') &&
+  cartDrawerCode.includes('setCreatedOrderFingerprint(null)') &&
+  cartDrawerCode.includes("kind: 'stale-receipt'"),
+  '67c. Recibo de retry é vinculado ao draft e comprador por SHA-256; mudança falha fechado, reset descarta vínculo'
+);
+
+assert(
+  cartDrawerCode.includes('const currentIdentityRef = useRef(checkoutIdentity)') &&
+  cartDrawerCode.includes('previousIdentityRef.current !== checkoutIdentity') &&
+  cartDrawerCode.includes('resetCheckoutLifecycle();') &&
+  cartDrawerCode.includes('currentIdentityRef.current !== submissionIdentity') &&
+  cartDrawerCode.includes("kind: 'stale-session'"),
+  '67d. Mudança de usuário ou tenant invalida receipt, estado pessoal e resposta tardia da confirmação'
+);
+
+assert(
   cartDrawerCode.includes('try {') &&
   cartDrawerCode.includes('receipt = await submitOrderCheckout(draft);') &&
   cartDrawerCode.includes('catch (err: unknown) {') &&
@@ -661,9 +680,11 @@ assert(
 );
 
 assert(
-  cartDrawerCode.includes("setCustomerData(prev => ({ ...prev, type: 'PJ' }))") &&
-  cartDrawerCode.includes("delete next.document"),
-  '81s. Troca entre PF e PJ limpa erros de validação anteriores'
+  cartDrawerCode.includes("type: 'PJ', document: prev.type === 'PJ' ? prev.document : ''") &&
+  cartDrawerCode.includes("type: 'PF', document: prev.type === 'PF' ? prev.document : '', companyName: ''") &&
+  cartDrawerCode.includes("delete next.document") &&
+  cartDrawerCode.includes("delete next.companyName"),
+  '81s. Troca PF/PJ limpa documentos, razão social PJ e erros incompatíveis'
 );
 
 assert(
@@ -793,9 +814,9 @@ assert(
 );
 
 assert(
-  wholesaleContextCode.includes('const confirmSwitchPurchaseMode = () => {') &&
+  wholesaleContextCode.includes('const confirmSwitchPurchaseMode = async () => {') &&
   wholesaleContextCode.includes('clearCart();') &&
-  wholesaleContextCode.includes('setPurchaseModeSynchronized(targetPendingMode);') &&
+  wholesaleContextCode.includes('setPurchaseModeSynchronized(target);') &&
   !wholesaleContextCode.includes("'recalculate'") &&
   !wholesaleContextCode.includes("'remove_incompatible'"),
   'A6. Confirmação limpa carrinho antes da troca; não existe recalculate nem remove_incompatible'
