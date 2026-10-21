@@ -1,9 +1,14 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({mode}) => {
+  // PR #6 intentionally does not ship the paid estimate-delivery Edge backend.
+  // Fail the build instead of showing a checkout button that cannot work.
+  if (loadEnv(mode, process.cwd(), 'VITE_').VITE_GOOGLE_ROUTES_UI_ENABLED === 'true') {
+    throw new Error('RELEASE_BLOCKED_GOOGLE_ROUTES: backend not shipped; keep VITE_GOOGLE_ROUTES_UI_ENABLED=false');
+  }
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
