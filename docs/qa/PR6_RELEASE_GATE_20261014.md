@@ -1,3 +1,7 @@
+## Atualização de release — 21/10/2026 (somente branch PR #6)
+
+Backend Google Routes **separado** da branch de checkout e preservado na branch `hold/google-routes-after-pr6-20261021` (snapshot `277ff2169`). Migrations Google, Edge `estimate-delivery` e seus testes de banco não estão mais entre os arquivos da candidata; o guard do CI deve negar sua reintrodução. Nenhuma função Google está ativa no Hosted. O código de UI permanece com opt-in de build desligado por padrão. CI da nova revisão requer confirmação; PASS anteriores correspondem aos commits anteriores. A migration 000023 ainda exige autorização própria de Hosted, recuperação comprovada, reconciliação de histórico e liberação independente de merge/deploy. Preflight read-only de 21/10: 000018–20 presentes; 000023 ausente, checkout público service_role-only, preços em wholesale_tiers privados, 520 produtos e 6 pedidos mantidos. Sem alteração Hosted ou de tráfego nesta separação.
+
 # PR #6 — Gate de homologação e publicação (2026-10-14)
 
 ## Gate atualizado — 16/10/2026, após recuperação de GitHub Actions
