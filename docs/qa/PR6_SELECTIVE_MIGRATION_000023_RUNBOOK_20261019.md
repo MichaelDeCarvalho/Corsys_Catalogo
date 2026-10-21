@@ -1,3 +1,13 @@
+## Checkpoint — isolamento do Google no release PR #6 (21/10/2026)
+
+Para impedir aplicação acidental de migrations pagas na publicação do checkout, as migrations de uso/rajada Google, a Edge Function `estimate-delivery`, seu registro em `supabase/config.toml` e dois testes SQL dependentes foram retirados **desta branch**. O snapshot completo pré-separação foi preservado na branch `hold/google-routes-after-pr6-20261021`, SHA `277ff2169726a1daecef72de487fdf3944345912`. O código compartilhado/UI de estimativa continua inativo por padrão, sem endpoint instalado por este PR. `scripts/qa-browser/test_release_safety.py` agora **falha** se qualquer arquivo pago excluído reaparecer. Esta separação reduz risco de deploy acidental, mas **não comprova** estado do painel Cloudflare/Supabase Integration.
+
+Read-back Hosted somente leitura na conta e projeto `vlpwtdqqnecdvccxyodp` em 21/10: migrations 000018/19/20 presentes; 000023 e migrations Google ausentes. `public.create_order_checkout_internal` existe com EXECUTE apenas service_role, `private.create_order_checkout_internal` ausente, `private` schema presente, dependências de catálogo da função: 0 (não exclui referências dinâmicas). `wholesale_tiers` sem SELECT anon nem política pública. 520 produtos e 6 pedidos preservados. Nenhuma escrita efetuada. Isto é um **preflight pontual**, não autorização nem prova de recuperação Hosted. Confirmar novamente imediatamente antes de qualquer execução.
+
+**Ainda BLOQUEADO para release:** comprovação de backup/restauração Hosted (ACL/ownership/Storage/Realtime/PITR e RTO/RPO), revisão de integrações automáticas, aprovação separada da migration 000023 e autorização distinta para merge/deploy. Não fazer `db push` sem reconciliação; remover SQL Google da branch não substitui preflight de migrations/histórico. O ensaio isolado `STAGING-000023 PASS` (21/10) não restaura integralmente um projeto Supabase Hosted.
+
+---
+
 # PR #6 — Runbook de migração seletiva 000023 (19/10/2026)
 
 **Estado:** PREPARADO PARA REVISÃO, **NÃO AUTORIZADO**. Este runbook não concede permissão para executar comandos contra o Supabase Hosted, alterar histórico ou mesclar/publicar código. Requer revisão humana, responsável DBA, backup e janelas específicas.
