@@ -1,3 +1,26 @@
+## Gate autorizado de preparação — 21/10/2026 (Supabase Free; sem escrita Hosted)
+
+**Autorização recebida:** preparar a implantação seletiva da `000023` no projeto `vlpwtdqqnecdvccxyodp`, condicionada à confirmação de backup recuperável e com Google Routes desligado. **Não autoriza contornar a condição, `db push` indiscriminado, merge ou deploy.**
+
+### Evidência confirmada nesta revisão
+
+- Projeto `Corsys_Catalogo` ACTIVE_HEALTHY, organização no plano **free**; backups diários automáticos não são fornecidos para Free, conforme documentação oficial [Supabase Database Backups](https://supabase.com/docs/guides/platform/backups). **Nenhum backup Hosted recuperável foi identificado/inspecionado.**
+- Banco Hosted somente leitura: **20 migrations**, incluindo 000018/19/20; `000023` e as duas Google **ausentes**. `public.create_order_checkout_internal` presente e `private.create_order_checkout_internal` ausente; papel `service_role` tem EXECUTE na função pública, `anon` e `authenticated` não têm. Dependências estáticas registradas: 0; isso não descarta dependências dinâmicas.
+- Snapshot de contagem: **520 produtos, 6 pedidos, 2 usuários Auth, 105 objetos Storage**, 0 compradores atacadistas aprovados. O dado dos objetos Storage é **metadado**, não cópia dos arquivos.
+- PR #6 HEAD `62895fa97c3d92060e22cf7d9102fa0218494ce8`: GitHub Actions **Quality, Isolated Browser QA e Isolated Staging Recovery 000023 = SUCCESS**. O arquivo SQL 000023 é o já testado, não modificado neste checkpoint.
+- Branch `hold/google-routes-after-pr6-20261021` preserva o código Google, ausente da candidata ao release. Não reintroduzir dependências pagas.
+
+### Recuperação obrigatória ANTES da execução de 000023
+
+1. Gerar **backup lógico verificável** do Hosted em ambiente operacional confiável, usando os recursos oficiais da CLI Supabase para exportar **roles, schema e dados**, com armazenamento privado criptografado e controle de acesso; não enviar credenciais, SQL contendo dados pessoais ou dumps ao GitHub/ChatGPT. Instruções oficiais: [Restore a Platform Project to Self-Hosted](https://supabase.com/docs/guides/self-hosting/restore-from-platform) e [Database Backups](https://supabase.com/docs/guides/platform/backups).
+2. Exportar **separadamente todos os arquivos reais** dos buckets Supabase Storage (atualmente 105 registros em `storage.objects`), manter inventário e validar a capacidade de restauração; o dump SQL **não** copia os arquivos binários. [Download Objects](https://supabase.com/docs/guides/storage/management/download-objects).
+3. Restaurar o backup lógico numa instância descartável compatível, validar dados, Auth, RLS, owner/ACL/grants, integridade e consultas/autorização críticas; verificar separadamente restauração de ao menos os objetos Storage críticos. Registrar responsável, destino privado, horário, retenção, janela aceita de perda (RPO), duração medida (RTO) e procedimentos de contingência. Não reverter ou recriar o banco produtivo como ensaio.
+4. Confirmar integrações automáticas Supabase/Cloudflare e plano de contenção/rollback **antes de tocar produção**. Exigir aprovação específica do executor, janela e plano de recuperação. Somente então revalidar o preflight Hosted, executar **a migration SQL exata** 000023 de forma seletiva e transacional por procedimento aprovado, validar grants/objetos/contagens e reconciliar histórico **somente se comprovado**. Google permanece excluído.
+
+**Conclusão do gate: BLOQUEADO PARA DDL HOSTED** por falta de evidência de backup/restauração; nenhuma migration aplicada, nenhuma credencial consultada, nenhum dado alterado. A autorização de preparação já está registrada; não confundir com autorização para eliminar os pré-requisitos.
+
+---
+
 ## Checkpoint — isolamento do Google no release PR #6 (21/10/2026)
 
 Para impedir aplicação acidental de migrations pagas na publicação do checkout, as migrations de uso/rajada Google, a Edge Function `estimate-delivery`, seu registro em `supabase/config.toml` e dois testes SQL dependentes foram retirados **desta branch**. O snapshot completo pré-separação foi preservado na branch `hold/google-routes-after-pr6-20261021`, SHA `277ff2169726a1daecef72de487fdf3944345912`. O código compartilhado/UI de estimativa continua inativo por padrão, sem endpoint instalado por este PR. `scripts/qa-browser/test_release_safety.py` agora **falha** se qualquer arquivo pago excluído reaparecer. Esta separação reduz risco de deploy acidental, mas **não comprova** estado do painel Cloudflare/Supabase Integration.
