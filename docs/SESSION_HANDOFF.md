@@ -1,3 +1,12 @@
+## Checkpoint autorizado — 21/10/2026: pré-flight Hosted verificado; backup Free pendente
+
+- **Escopo autorizado:** preparar exclusivamente implantação seletiva 000023 para Supabase `vlpwtdqqnecdvccxyodp` após backup recuperável; Google Routes desligado. Não autoriza merge/deploy nem DDL sem recuperação comprovada.
+- **Evidência READ-ONLY:** organização plano Free (sem backups automáticos diários), projeto saudável, banco com 20 migrations (18–20 presentes; 23/Google ausentes), 520 produtos/6 pedidos/2 usuários Auth/105 metadados Storage; RPC checkout pública EXECUTE somente service_role, implementação private ainda ausente; banco não alterado.
+- **Verificado:** PR #6 HEAD `62895fa97c3d92060e22cf7d9102fa0218494ce8`, CI Quality, Isolated Browser QA, Isolated Staging Recovery = SUCCESS. QA local não é recuperação da produção.
+- **BLOQUEIO REAL:** não foi possível observar backup Hosted recuperável, restore com grants/roles/Auth, blobs Storage e janela RTO/RPO. Ferramenta Supabase disponível não fornece exportação/restore verificados de backups nem acesso aos binários Storage. Não inferir PASS nem executar 000023.
+- **PRÓXIMA AÇÃO ÚNICA:** responsável operacional gerar backup lógico roles/schema/data e cópia separada de Storage, testar restauração descartável e registrar evidência **sem segredos/PII**. Depois executar preflight imediatamente anterior à implantação seletiva, mediante janela/aprovação específica. Detalhes: `docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md`.
+- Status **BLOQUEADO PARA DDL HOSTED**, sem `db push`, sem migration/merge/deploy, Google desativado.
+
 ## Retomada CorSys.Catálogo — PR #6 release sem backend Google — 21/10/2026
 
 Sistema e repo corretos: `MichaelDeCarvalho/Corsys_Catalogo`, branch `qa/b2b-checkout-e2e-readiness-20261008` / PR #6; não confundir com Corsys.TroncoDigital. Snapshot do trabalho Google antes do corte preservado em `hold/google-routes-after-pr6-20261021` (SHA `277ff2169726a1daecef72de487fdf3944345912`). O PR #6 retirou as duas migrations Google, Edge `estimate-delivery`, registro da função em config e dois testes SQL pagos; guard CI refeito para negar retorno desses arquivos. Código de UI/adapter Google permanece desativado e sem endpoint implantado. `000023` continua na branch e pendente Hosted. Leia o runbook seletivo para preflight e restrições.
