@@ -395,9 +395,6 @@ verify_jwt = true
 [functions.submit-order-checkout]
 verify_jwt = false
 
-[functions.estimate-delivery]
-verify_jwt = false
-
 [functions.get-wholesale-catalog]
 verify_jwt = true
 
