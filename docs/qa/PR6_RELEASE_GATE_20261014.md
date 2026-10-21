@@ -1,3 +1,20 @@
+## Critérios de liberação comercial — 21/10/2026
+
+**Diretriz do proprietário:** priorizar um SaaS B2C/B2B estável, funcional, seguro e comercializável. O catálogo de 520 produtos atual **não é o inventário final**; haverá exclusões, inclusões e nova curadoria na preparação da operação. Não bloquear correções do sistema em razão da permanência exata desses produtos. Isso **não autoriza** excluir pedidos, usuários, documentos ou tabelas/migrations; qualificar os dados existentes antes de qualquer limpeza.
+
+**Progresso técnico:** PR #6 HEAD anterior `ec9e3fc5` com Quality, Browser QA e Staging Recovery PASS; novo gate no `vite.config.ts` impede builds com `VITE_GOOGLE_ROUTES_UI_ENABLED=true` sem Edge Google entregue, e teste negativo foi incorporado ao Quality. CI do commit atualizado precisa ser observado. Sem Google Routes pago em release.
+
+**Aceite do primeiro lançamento:**
+1. **Checkout/RPC:** aplicar `000023` seletivamente com autorização condicionada a recuperação proporcional e prova de integridade; novo usuário B2B não deve receber replay de outro comprador. Não reaplicar 000018–20.
+2. **Jornadas B2C/B2B/admin:** preservar PASS já demonstrados de checkout PF/PJ, atacado aprovado/revogado, tracking, PDF privado e corrida de sessão; smoke real pós-deploy sem criar pedidos fictícios em Hosted.
+3. **Isolamento e controles:** tenant/RLS/segredos, custo de produto por papéis autorizados, sessão, upload e logs; revisar a configuração Hosted real antes de declarar conformidade. Supabase Security Advisor alerta `auth_leaked_password_protection` desabilitado; a função só está disponível em plano Pro+ ([docs](https://supabase.com/docs/guides/auth/password-security)); não indicar que está ativa no Free. Exigir política de senha/MFA e decisão sobre plano/limites para comercialização.
+4. **Operação e dados:** planejar carregamento/edição do catálogo definitivo; preservar pedidos e arquivos privados existentes até classificação explícita; estabelecer mecanismo de backup/restore antes de limpeza/DDL, mesmo se produtos forem recriados. A restauração de QA sintética não substitui backup de produção.
+5. **Publicação:** verificar CI exato, integração Supabase/Cloudflare, configurações de domínio/ambiente, autorizar merge e deploy separadamente; executar smoke/monitoramento pós-publicação. Não confundir CI/preview com produção.
+
+**Estado:** software em pré-release; não afirmar "sem falhas"/"comercializável" sem passar pelos gates do Hosted e produção. Não executar reset/limpeza, migration, merge, deploy ou contratação nesta etapa.
+
+---
+
 ## Atualização de release — 21/10/2026 (somente branch PR #6)
 
 Backend Google Routes **separado** da branch de checkout e preservado na branch `hold/google-routes-after-pr6-20261021` (snapshot `277ff2169`). Migrations Google, Edge `estimate-delivery` e seus testes de banco não estão mais entre os arquivos da candidata; o guard do CI deve negar sua reintrodução. Nenhuma função Google está ativa no Hosted. O código de UI permanece com opt-in de build desligado por padrão. CI da nova revisão requer confirmação; PASS anteriores correspondem aos commits anteriores. A migration 000023 ainda exige autorização própria de Hosted, recuperação comprovada, reconciliação de histórico e liberação independente de merge/deploy. Preflight read-only de 21/10: 000018–20 presentes; 000023 ausente, checkout público service_role-only, preços em wholesale_tiers privados, 520 produtos e 6 pedidos mantidos. Sem alteração Hosted ou de tráfego nesta separação.
