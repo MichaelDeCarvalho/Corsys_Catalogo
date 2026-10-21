@@ -1,3 +1,9 @@
+## Retomada CorSys.Catálogo — PR #6 release sem backend Google — 21/10/2026
+
+Sistema e repo corretos: `MichaelDeCarvalho/Corsys_Catalogo`, branch `qa/b2b-checkout-e2e-readiness-20261008` / PR #6; não confundir com Corsys.TroncoDigital. Snapshot do trabalho Google antes do corte preservado em `hold/google-routes-after-pr6-20261021` (SHA `277ff2169726a1daecef72de487fdf3944345912`). O PR #6 retirou as duas migrations Google, Edge `estimate-delivery`, registro da função em config e dois testes SQL pagos; guard CI refeito para negar retorno desses arquivos. Código de UI/adapter Google permanece desativado e sem endpoint implantado. `000023` continua na branch e pendente Hosted. Leia o runbook seletivo para preflight e restrições.
+
+Supabase Hosted `vlpwtdqqnecdvccxyodp` READ-ONLY: 000018–20 presentes, 000023/Google ausentes; checkout público service_role-only, privado ainda não criado, RLS de atacado sem SELECT anon; 520 produtos, 6 pedidos. Nenhuma alteração produtiva. QA staging sintética 000023 e CI do snapshot anterior eram PASS; **CI do novo HEAD com Google separado deve ser conferida**. Próximo: verificar CI exato e diff, fechar gate de backup/restore/ACL/Storage/RTO/RPO Hosted e revisar integrações externas; migração Hosted 000023, merge e Cloudflare deploy só com autorizações distintas. Não repetir E2E B2B/RACE já aprovado nem aplicar `db push` indiscriminado.
+
 # SESSION HANDOFF — ITEM 3: CUSTOMER ORDER TRACKING V1 — PRODUCTION HARDENING HOTFIX
 
 ## Retomada do PR #6 — revisão e regressões de identidade (2026-10-09, America/Sao_Paulo)
