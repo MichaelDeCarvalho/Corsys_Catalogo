@@ -1,3 +1,11 @@
+## Handoff — 21/10/2026: priorização da liberação comercial, sem instalação local
+
+O proprietário esclareceu que os 520 produtos são catálogo provisório e serão selecionados/recadastrados antes da comercialização. Alvo agora é liberar plataforma B2C/B2B estável/segura, não preservar SKUs atuais a qualquer custo. **Não interpretar isso como autorização de excluir o banco, 6 pedidos, 2 contas Auth ou 5 PDFs privados**; a classificação/exclusão de dados requer decisão granular.
+
+Feito na PR #6: adicionado fail-closed em `vite.config.ts` impedindo build com `VITE_GOOGLE_ROUTES_UI_ENABLED=true` porque Edge `estimate-delivery` foi isolada em outra branch. Teste negativo incorporado ao workflow Quality, que deve comprovar o motivo de falha; CI do novo HEAD exige conferência. Nenhum Hosted/deploy/merge alterado. Read-only Supabase: 20 migrations, 520 produtos, 6 pedidos, 2 usuários Auth, 5 documentos privados, 0 atacadistas aprovados. Segurança: Supabase advisor alerta leaked-password protection inativa no plano Free (controle Pro+), a tratar para lançamento comercial por configuração operacional/plano, sem inventar proteção.
+
+Próximo item crítico: conclusão do gate Hosted da `000023`, recuperação proporcional e publicação autorizada, seguida de smoke de operações reais. Após isso, catálogo definitivo e critérios comerciais; manter Google pago fora do primeiro release. Detalhes/critério de aceite em `docs/qa/PR6_RELEASE_GATE_20261014.md`.
+
 ## Checkpoint autorizado — 21/10/2026: pré-flight Hosted verificado; backup Free pendente
 
 - **Escopo autorizado:** preparar exclusivamente implantação seletiva 000023 para Supabase `vlpwtdqqnecdvccxyodp` após backup recuperável; Google Routes desligado. Não autoriza merge/deploy nem DDL sem recuperação comprovada.
