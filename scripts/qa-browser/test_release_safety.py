@@ -48,23 +48,29 @@ class ReleaseSafetyGuard(unittest.TestCase):
         self.assertRegex(data, r"(?m)^\s+VITE_GOOGLE_ROUTES_UI_ENABLED:\s*['\"]false['\"]\s*$")
         self.assertNotRegex(data, r"(?m)^\s+GOOGLE_ROUTES_ENABLED:\s*['\"]?true['\"]?\s*$")
 
-    def test_google_migrations_and_checkout_guard_are_explicit(self) -> None:
-        root = ROOT / "supabase" / "migrations"
-        required = [
-            "20261011032224_google_routes_usage_limits.sql",
-            "20261011035235_google_routes_burst_protection.sql",
-            "20261016000000_000023_checkout_idempotency_buyer_guard.sql",
-        ]
-        for name in required:
-            with self.subTest(migration=name):
-                self.assertTrue((root / name).is_file(), "Migration inventory unexpectedly changed")
-        # Coexistence in this branch means selecting 000023 with db push is unsafe.
-        # This assertion documents the known release blocker, not migration status.
-        runbook = ROOT / "docs" / "qa" / "PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md"
+    def test_release_excludes_unapproved_paid_google_backend(self) -> None:
+        # This PR intentionally carries the unpaid/manual-delivery release ONLY.
+        # The paid Google SQL, Edge entrypoint and DB tests are preserved on
+        # hold/google-routes-after-pr6-20261021 for a separately approved release.
+        excluded = (
+            ROOT / "supabase/migrations/20261011032224_google_routes_usage_limits.sql",
+            ROOT / "supabase/migrations/20261011035235_google_routes_burst_protection.sql",
+            ROOT / "supabase/functions/estimate-delivery/index.ts",
+            ROOT / "supabase/tests/database/05_google_routes_usage_test.sql",
+            ROOT / "supabase/tests/database/06_google_routes_burst_test.sql",
+        )
+        for path in excluded:
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                self.assertFalse(path.exists(), "Paid Google backend unexpectedly included in release")
+        config = (ROOT / "supabase/config.toml").read_text(encoding="utf-8")
+        self.assertNotIn("[functions.estimate-delivery]", config)
+        self.assertTrue(
+            (ROOT / "supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql").is_file()
+        )
+        runbook = ROOT / "docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md"
         self.assertTrue(runbook.is_file())
-        text = runbook.read_text(encoding="utf-8")
-        self.assertIn("NÃO", text)
-        self.assertIn("db push", text)
+        self.assertIn("db push", runbook.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
